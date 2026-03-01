@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ln:*)",
+      "Bash(ls:*)",
+      "Bash(/opt/homebrew/opt/node@20/bin/node:*)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node:*)",
+      "Bash(python3:*)"
+    ]
+  }
+}
