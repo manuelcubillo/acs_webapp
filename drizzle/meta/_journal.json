@@ -8,6 +8,13 @@
       "when": 1772386767971,
       "tag": "0000_volatile_killer_shrike",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1772565041330,
+      "tag": "0001_modern_wither",
+      "breakpoints": true
     }
   ]
 }
