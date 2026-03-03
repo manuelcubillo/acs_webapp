@@ -7,7 +7,15 @@
       "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node:*)",
       "Bash(python3:*)",
       "Bash(grep:*)",
-      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" vercel:*)"
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" vercel:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(pnpm install)",
+      "Bash(pnpm db:generate)",
+      "Bash(pnpm db:migrate)",
+      "Bash(git add .claude/launch.json drizzle/0001_modern_wither.sql drizzle/meta/0001_snapshot.json drizzle/meta/_journal.json next.config.ts src/app/\\\\\\(auth\\\\\\)/login/page.tsx src/app/\\\\\\(dashboard\\\\\\)/dashboard/page.tsx src/app/\\\\\\(dashboard\\\\\\)/dashboard/page_prototype.jsx src/lib/auth-client.ts src/lib/auth.ts src/lib/db/schema.ts)",
+      "Bash(git add .claude/settings.local.json)",
+      "Bash(git commit:*)",
+      "Bash(git push -u origin claude/adoring-albattani)"
     ]
   }
 }
