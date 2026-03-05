@@ -28,6 +28,7 @@ import {
 } from "./errors";
 import { getFieldDefinitionsByCardType } from "./field-definitions";
 import { mapValueToColumn, extractValue } from "./field-values";
+import { validateCard as runEngineValidation } from "@/lib/validation";
 import type {
   Card,
   CardWithFields,
@@ -80,40 +81,55 @@ async function enrichFieldValues(
 }
 
 /**
- * Validate field values against active field definitions.
- * Checks required fields and type compatibility.
+ * Validate field values using the shared validation engine.
  *
- * @throws {ValidationError} On missing required fields or type mismatches.
+ * Delegates to validateCard() from @/lib/validation, which runs the same
+ * logic as the frontend form validation. Throws ValidationError with a
+ * human-readable message listing all failures if any rule is violated.
+ *
+ * Also validates unknown field IDs (not belonging to this card type).
+ *
+ * @throws {ValidationError} If any required field is missing or a rule fails.
  */
 function validateFieldValues(
   values: FieldValueMap,
   defs: FieldDefinition[],
 ): void {
-  // Check required fields have a value.
-  for (const def of defs) {
-    if (def.isRequired) {
-      const val = values[def.id];
-      if (val === undefined || val === null || val === "") {
-        throw new ValidationError(
-          `Required field "${def.label}" (${def.name}) is missing a value.`,
-        );
-      }
-    }
-  }
-
-  // Validate types by attempting to map each value to its column.
-  // mapValueToColumn throws ValidationError on type mismatch.
-  const defsMap = new Map(defs.map((d) => [d.id, d]));
-  for (const [fdId, value] of Object.entries(values)) {
-    const def = defsMap.get(fdId);
-    if (!def) {
+  // Guard: reject values for unknown/inactive field definitions.
+  const knownIds = new Set(defs.map((d) => d.id));
+  for (const fdId of Object.keys(values)) {
+    if (!knownIds.has(fdId)) {
       throw new ValidationError(
         `Unknown field definition ID: ${fdId}. ` +
           `It may not belong to this card type or has been deactivated.`,
       );
     }
+  }
+
+  // Run the shared engine (same logic as the frontend).
+  const result = runEngineValidation(
+    defs.map((d) => ({
+      id: d.id,
+      name: d.name,
+      label: d.label,
+      fieldType: d.fieldType,
+      isRequired: d.isRequired,
+      validationRules: d.validationRules as import("@/lib/validation").ValidationRules | null,
+    })),
+    values as Record<string, unknown>,
+  );
+
+  if (!result.valid) {
+    const summary = result.errors.map((e) => `• ${e.message}`).join("\n");
+    throw new ValidationError(`Card validation failed:\n${summary}`);
+  }
+
+  // Also validate raw type compatibility via mapValueToColumn so the DB
+  // layer never receives a value in the wrong typed column.
+  const defsMap = new Map(defs.map((d) => [d.id, d]));
+  for (const [fdId, value] of Object.entries(values)) {
     if (value !== null && value !== undefined) {
-      mapValueToColumn(def.fieldType, value);
+      mapValueToColumn(defsMap.get(fdId)!.fieldType, value);
     }
   }
 }
