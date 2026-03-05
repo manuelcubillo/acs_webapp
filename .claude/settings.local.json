@@ -18,7 +18,13 @@
       "Bash(git push -u origin claude/adoring-albattani)",
       "Bash(test -f /Users/manuelcubillo/Projects/Veredillas/code/veredillas_web/src/middleware.ts)",
       "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm db:generate)",
-      "Bash(git add drizzle.config.ts drizzle/0002_spicy_moondragon.sql drizzle/meta/0002_snapshot.json drizzle/meta/_journal.json next.config.ts src/lib/db/schema.ts src/lib/db/schema/ .claude/settings.local.json)"
+      "Bash(git add drizzle.config.ts drizzle/0002_spicy_moondragon.sql drizzle/meta/0002_snapshot.json drizzle/meta/_journal.json next.config.ts src/lib/db/schema.ts src/lib/db/schema/ .claude/settings.local.json)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm db:migrate)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm add -D tsx)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm db:seed)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" npx tsc --noEmit)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node ./node_modules/.bin/tsc --noEmit)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm tsc --noEmit)"
     ]
   }
 }
