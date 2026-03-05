@@ -134,11 +134,19 @@ export const fieldDefinitions = pgTable(
 
 // ─── Cards ───────────────────────────────────────────────────────────────────
 
-/** An issued card (credential) belonging to a tenant, based on a card type */
+/**
+ * An issued card (credential) belonging to a tenant, based on a card type.
+ *
+ * `code` is a tenant-scoped identifier that clients use to look up their cards
+ * (e.g. badge number, employee code). It is unique within a tenant but may
+ * repeat across tenants. Most queries will filter by (tenant_id, code).
+ */
 export const cards = pgTable(
   "cards",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    /** Client-facing card code, unique per tenant */
+    code: text("code").notNull(),
     cardTypeId: uuid("card_type_id")
       .notNull()
       .references(() => cardTypes.id, { onDelete: "cascade" }),
@@ -150,6 +158,10 @@ export const cards = pgTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => [
+    /** Primary lookup path — unique code per tenant */
+    unique("cards_tenant_code_unique").on(table.tenantId, table.code),
+    /** Covers most queries: search by tenant + code */
+    index("cards_tenant_code_idx").on(table.tenantId, table.code),
     index("cards_tenant_id_idx").on(table.tenantId),
     index("cards_card_type_id_idx").on(table.cardTypeId),
     index("cards_tenant_status_idx").on(table.tenantId, table.status),
