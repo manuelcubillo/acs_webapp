@@ -15,6 +15,13 @@
       "when": 1772565041330,
       "tag": "0001_modern_wither",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1772734770014,
+      "tag": "0002_spicy_moondragon",
+      "breakpoints": true
     }
   ]
 }
