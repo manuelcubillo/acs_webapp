@@ -1,3 +1,11 @@
+/**
+ * Auth Schema - Better Auth managed tables
+ *
+ * These tables are managed by Better Auth and should not be modified
+ * directly. Any changes to auth-related tables should go through
+ * Better Auth's configuration.
+ */
+
 import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
