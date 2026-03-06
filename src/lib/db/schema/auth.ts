@@ -6,7 +6,7 @@
  * Better Auth's configuration.
  */
 
-import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, uuid } from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -16,6 +16,9 @@ export const user = pgTable("user", {
   image: text("image"),
   username: text("username").unique(),
   displayUsername: text("display_username"),
+  // Tenant association — no FK reference here to avoid circular imports
+  // with access-control.ts. Integrity enforced at the application layer.
+  tenantId: uuid("tenant_id"),
   createdAt: timestamp("created_at").notNull(),
   updatedAt: timestamp("updated_at").notNull(),
 });

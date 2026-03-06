@@ -158,6 +158,22 @@ export interface PaginatedResult<T> {
   offset: number;
 }
 
+// ─── Action Definition inputs ────────────────────────────────────────────────
+
+export type ActionType = ActionDefinition["actionType"];
+
+export interface CreateActionDefinitionInput {
+  name: string;
+  actionType: ActionType;
+  config?: Record<string, unknown> | null;
+}
+
+export interface UpdateActionDefinitionInput {
+  name?: string;
+  config?: Record<string, unknown> | null;
+  isActive?: boolean;
+}
+
 // ─── Action inputs ──────────────────────────────────────────────────────────
 
 export interface ExecuteActionInput {

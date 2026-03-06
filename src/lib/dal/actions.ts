@@ -17,10 +17,97 @@ import { NotFoundError } from "./errors";
 import type {
   ActionDefinition,
   ActionLog,
+  CreateActionDefinitionInput,
+  UpdateActionDefinitionInput,
   ExecuteActionInput,
   PaginationOptions,
   PaginatedResult,
 } from "./types";
+
+// ─── Action Definition CRUD ──────────────────────────────────────────────────
+
+/**
+ * Create a new action definition for a card type.
+ *
+ * @param cardTypeId - The card type UUID.
+ * @param input      - Action definition data.
+ * @returns The created action definition.
+ */
+export async function createActionDefinition(
+  cardTypeId: string,
+  input: CreateActionDefinitionInput,
+): Promise<ActionDefinition> {
+  const [created] = await db
+    .insert(actionDefinitions)
+    .values({
+      cardTypeId,
+      name: input.name,
+      actionType: input.actionType,
+      config: input.config ?? null,
+    })
+    .returning();
+
+  return created;
+}
+
+/**
+ * Update an existing action definition.
+ *
+ * @param id    - Action definition UUID.
+ * @param input - Fields to update.
+ * @returns The updated action definition.
+ * @throws {NotFoundError} If not found.
+ */
+export async function updateActionDefinition(
+  id: string,
+  input: UpdateActionDefinitionInput,
+): Promise<ActionDefinition> {
+  const [existing] = await db
+    .select()
+    .from(actionDefinitions)
+    .where(eq(actionDefinitions.id, id))
+    .limit(1);
+
+  if (!existing) {
+    throw new NotFoundError("ActionDefinition", id);
+  }
+
+  const [updated] = await db
+    .update(actionDefinitions)
+    .set({
+      ...(input.name !== undefined && { name: input.name }),
+      ...(input.config !== undefined && { config: input.config }),
+      ...(input.isActive !== undefined && { isActive: input.isActive }),
+      updatedAt: new Date(),
+    })
+    .where(eq(actionDefinitions.id, id))
+    .returning();
+
+  return updated;
+}
+
+/**
+ * Deactivate an action definition (soft delete).
+ *
+ * @param id - Action definition UUID.
+ * @throws {NotFoundError} If not found.
+ */
+export async function deactivateActionDefinition(id: string): Promise<void> {
+  const [existing] = await db
+    .select({ id: actionDefinitions.id })
+    .from(actionDefinitions)
+    .where(eq(actionDefinitions.id, id))
+    .limit(1);
+
+  if (!existing) {
+    throw new NotFoundError("ActionDefinition", id);
+  }
+
+  await db
+    .update(actionDefinitions)
+    .set({ isActive: false, updatedAt: new Date() })
+    .where(eq(actionDefinitions.id, id));
+}
 
 /**
  * Get all active action definitions for a card type.
