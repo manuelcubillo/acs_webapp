@@ -2,14 +2,23 @@
  * Server Actions — Card Types
  *
  * All mutations go through `actionHandler` which normalises errors into
- * `ActionResult<T>`. Every action that reads/writes tenant-scoped data
- * calls `requireTenant()` first.
+ * `ActionResult<T>`.
+ *
+ * Role matrix:
+ *   OPERATOR: read card types and field definitions (needed to render the UI)
+ *   ADMIN:    (inherits operator — no additional card-type permissions)
+ *   MASTER:   create/edit/deactivate card types, field definitions, action definitions
  */
 
 "use server";
 
 import { z } from "zod";
-import { actionHandler, requireTenant, type ActionResult } from "@/lib/api";
+import {
+  actionHandler,
+  requireOperator,
+  requireMaster,
+  type ActionResult,
+} from "@/lib/api";
 import {
   createCardType,
   getCardTypeById,
@@ -75,16 +84,43 @@ const UpdateFieldDefinitionSchema = z.object({
     .optional(),
 });
 
-// ─── Actions ─────────────────────────────────────────────────────────────────
+// ─── OPERATOR actions (read-only) ─────────────────────────────────────────────
+
+/**
+ * Get a single card type by ID (with its field definitions and action definitions).
+ * @role operator | admin | master
+ */
+export async function getCardTypeAction(
+  id: string,
+): Promise<ActionResult<CardTypeWithFullSchema>> {
+  return actionHandler(async () => {
+    const { tenantId } = await requireOperator();
+    return getCardTypeWithFullSchema(id, tenantId);
+  });
+}
+
+/**
+ * List card types for the current tenant.
+ * @role operator | admin | master
+ */
+export async function listCardTypesAction(): Promise<ActionResult<CardType[]>> {
+  return actionHandler(async () => {
+    const { tenantId } = await requireOperator();
+    return listCardTypes(tenantId);
+  });
+}
+
+// ─── MASTER actions (tenant configuration) ────────────────────────────────────
 
 /**
  * Create a new card type (with optional initial field definitions).
+ * @role master
  */
 export async function createCardTypeAction(
   input: unknown,
 ): Promise<ActionResult<CardTypeWithFields>> {
   return actionHandler(async () => {
-    const { tenantId } = await requireTenant();
+    const { tenantId } = await requireMaster();
     const data = CreateCardTypeSchema.parse(input);
     return createCardType(tenantId, {
       name: data.name,
@@ -103,36 +139,15 @@ export async function createCardTypeAction(
 }
 
 /**
- * Get a single card type by ID (with its field definitions).
- */
-export async function getCardTypeAction(
-  id: string,
-): Promise<ActionResult<CardTypeWithFullSchema>> {
-  return actionHandler(async () => {
-    const { tenantId } = await requireTenant();
-    return getCardTypeWithFullSchema(id, tenantId);
-  });
-}
-
-/**
- * List card types for the current tenant.
- */
-export async function listCardTypesAction(): Promise<ActionResult<CardType[]>> {
-  return actionHandler(async () => {
-    const { tenantId } = await requireTenant();
-    return listCardTypes(tenantId);
-  });
-}
-
-/**
  * Update a card type's name or description.
+ * @role master
  */
 export async function updateCardTypeAction(
   id: string,
   input: unknown,
 ): Promise<ActionResult<CardType>> {
   return actionHandler(async () => {
-    const { tenantId } = await requireTenant();
+    const { tenantId } = await requireMaster();
     const data = UpdateCardTypeSchema.parse(input);
     return updateCardType(id, tenantId, data);
   });
@@ -140,27 +155,29 @@ export async function updateCardTypeAction(
 
 /**
  * Deactivate (soft-delete) a card type.
+ * @role master
  */
 export async function deactivateCardTypeAction(
   id: string,
 ): Promise<ActionResult<void>> {
   return actionHandler(async () => {
-    const { tenantId } = await requireTenant();
+    const { tenantId } = await requireMaster();
     await deactivateCardType(id, tenantId);
   });
 }
 
-// ─── Field Definition sub-actions ────────────────────────────────────────────
+// ─── MASTER actions — Field Definition management ─────────────────────────────
 
 /**
  * Add a field definition to an existing card type.
+ * @role master
  */
 export async function addFieldDefinitionAction(
   cardTypeId: string,
   input: unknown,
 ): Promise<ActionResult<FieldDefinition>> {
   return actionHandler(async () => {
-    const { tenantId } = await requireTenant();
+    const { tenantId } = await requireMaster();
     await getCardTypeById(cardTypeId, tenantId); // ownership check
     const data = FieldDefinitionInputSchema.parse(input);
     return addFieldDefinition(cardTypeId, {
@@ -178,15 +195,14 @@ export async function addFieldDefinitionAction(
 /**
  * Update a field definition.
  * Note: `fieldType` changes are rejected by the DAL if values already exist.
+ * @role master
  */
 export async function updateFieldDefinitionAction(
   fieldDefinitionId: string,
   input: unknown,
 ): Promise<ActionResult<FieldDefinition>> {
   return actionHandler(async () => {
-    // No tenant ownership check here — the DAL validates cardTypeId indirectly.
-    // If needed, add a lookup by fieldDefinitionId + tenantId join.
-    await requireTenant();
+    await requireMaster();
     const data = UpdateFieldDefinitionSchema.parse(input);
     return updateFieldDefinition(fieldDefinitionId, data);
   });
@@ -194,26 +210,28 @@ export async function updateFieldDefinitionAction(
 
 /**
  * Deactivate (soft-delete) a field definition.
+ * @role master
  */
 export async function deactivateFieldDefinitionAction(
   fieldDefinitionId: string,
 ): Promise<ActionResult<void>> {
   return actionHandler(async () => {
-    await requireTenant();
+    await requireMaster();
     await deactivateFieldDefinition(fieldDefinitionId);
   });
 }
 
 /**
  * Reorder field definitions within a card type.
- * @param orderedIds - Array of field definition IDs in the desired order.
+ * @param orderedIds - Array of field definition IDs in the desired display order.
+ * @role master
  */
 export async function reorderFieldDefinitionsAction(
   cardTypeId: string,
   orderedIds: string[],
 ): Promise<ActionResult<void>> {
   return actionHandler(async () => {
-    const { tenantId } = await requireTenant();
+    const { tenantId } = await requireMaster();
     await getCardTypeById(cardTypeId, tenantId); // ownership check
     await reorderFieldDefinitions(cardTypeId, orderedIds);
   });

@@ -3,12 +3,22 @@
  *
  * Create, read, update, delete and search operations on cards.
  * All tenant-scoped; tenantId is always taken from the session.
+ *
+ * Role matrix:
+ *   OPERATOR: read cards, search, list
+ *   ADMIN:    above + create, update values, update code, delete
+ *   MASTER:   all (inherits admin)
  */
 
 "use server";
 
 import { z } from "zod";
-import { actionHandler, requireTenant, type ActionResult } from "@/lib/api";
+import {
+  actionHandler,
+  requireOperator,
+  requireAdmin,
+  type ActionResult,
+} from "@/lib/api";
 import {
   createCard,
   getCardByCode,
@@ -65,96 +75,43 @@ const SearchCardsSchema = z.object({
   offset: z.number().int().min(0).optional(),
 });
 
-// ─── Actions ─────────────────────────────────────────────────────────────────
-
-/**
- * Create a new card for the current tenant.
- */
-export async function createCardAction(
-  input: unknown,
-): Promise<ActionResult<CardWithFields>> {
-  return actionHandler(async () => {
-    const { tenantId } = await requireTenant();
-    const data = CreateCardSchema.parse(input);
-    return createCard(data.cardTypeId, tenantId, data.code, data.values);
-  });
-}
+// ─── OPERATOR actions (read-only + action execution) ─────────────────────────
 
 /**
  * Get a card by its tenant-scoped code.
+ * @role operator | admin | master
  */
 export async function getCardByCodeAction(
   code: string,
 ): Promise<ActionResult<CardWithFields>> {
   return actionHandler(async () => {
-    const { tenantId } = await requireTenant();
+    const { tenantId } = await requireOperator();
     return getCardByCode(code, tenantId);
   });
 }
 
 /**
  * Get a card by its internal UUID.
+ * @role operator | admin | master
  */
 export async function getCardByIdAction(
   id: string,
 ): Promise<ActionResult<CardWithFields>> {
   return actionHandler(async () => {
-    const { tenantId } = await requireTenant();
+    const { tenantId } = await requireOperator();
     return getCardById(id, tenantId);
-  });
-}
-
-/**
- * Update a card's field values.
- */
-export async function updateCardAction(
-  code: string,
-  input: unknown,
-): Promise<ActionResult<CardWithFields>> {
-  return actionHandler(async () => {
-    const { tenantId } = await requireTenant();
-    const data = UpdateCardSchema.parse(input);
-    return updateCard(code, tenantId, data.values);
-  });
-}
-
-/**
- * Change a card's public code.
- * Returns the full card with enriched field values after the update.
- */
-export async function updateCardCodeAction(
-  id: string,
-  input: unknown,
-): Promise<ActionResult<CardWithFields>> {
-  return actionHandler(async () => {
-    const { tenantId } = await requireTenant();
-    const { newCode } = UpdateCardCodeSchema.parse(input);
-    // updateCardCode returns the plain Card row; fetch enriched result after.
-    await updateCardCode(id, tenantId, newCode);
-    return getCardById(id, tenantId);
-  });
-}
-
-/**
- * Soft-delete a card (sets status → inactive).
- */
-export async function deleteCardAction(
-  code: string,
-): Promise<ActionResult<void>> {
-  return actionHandler(async () => {
-    const { tenantId } = await requireTenant();
-    await deleteCard(code, tenantId);
   });
 }
 
 /**
  * List cards for a given card type (paginated).
+ * @role operator | admin | master
  */
 export async function listCardsAction(
   input: unknown,
 ): Promise<ActionResult<PaginatedResult<CardWithFields>>> {
   return actionHandler(async () => {
-    const { tenantId } = await requireTenant();
+    const { tenantId } = await requireOperator();
     const data = ListCardsSchema.parse(input);
     return listCards(data.cardTypeId, tenantId, {
       limit: data.limit,
@@ -165,12 +122,13 @@ export async function listCardsAction(
 
 /**
  * Search cards with optional code partial match and field filters.
+ * @role operator | admin | master
  */
 export async function searchCardsAction(
   input: unknown,
 ): Promise<ActionResult<PaginatedResult<CardWithFields>>> {
   return actionHandler(async () => {
-    const { tenantId } = await requireTenant();
+    const { tenantId } = await requireOperator();
     const data = SearchCardsSchema.parse(input);
 
     const searchInput: SearchCardsInput = {
@@ -182,5 +140,67 @@ export async function searchCardsAction(
       limit: data.limit,
       offset: data.offset,
     });
+  });
+}
+
+// ─── ADMIN actions (card mutations) ──────────────────────────────────────────
+
+/**
+ * Create a new card for the current tenant.
+ * @role admin | master
+ */
+export async function createCardAction(
+  input: unknown,
+): Promise<ActionResult<CardWithFields>> {
+  return actionHandler(async () => {
+    const { tenantId } = await requireAdmin();
+    const data = CreateCardSchema.parse(input);
+    return createCard(data.cardTypeId, tenantId, data.code, data.values);
+  });
+}
+
+/**
+ * Update a card's field values.
+ * @role admin | master
+ */
+export async function updateCardAction(
+  code: string,
+  input: unknown,
+): Promise<ActionResult<CardWithFields>> {
+  return actionHandler(async () => {
+    const { tenantId } = await requireAdmin();
+    const data = UpdateCardSchema.parse(input);
+    return updateCard(code, tenantId, data.values);
+  });
+}
+
+/**
+ * Change a card's public code.
+ * Returns the full card with enriched field values after the update.
+ * @role admin | master
+ */
+export async function updateCardCodeAction(
+  id: string,
+  input: unknown,
+): Promise<ActionResult<CardWithFields>> {
+  return actionHandler(async () => {
+    const { tenantId } = await requireAdmin();
+    const { newCode } = UpdateCardCodeSchema.parse(input);
+    // updateCardCode returns the plain Card row; fetch enriched result after.
+    await updateCardCode(id, tenantId, newCode);
+    return getCardById(id, tenantId);
+  });
+}
+
+/**
+ * Soft-delete a card (sets status → inactive).
+ * @role admin | master
+ */
+export async function deleteCardAction(
+  code: string,
+): Promise<ActionResult<void>> {
+  return actionHandler(async () => {
+    const { tenantId } = await requireAdmin();
+    await deleteCard(code, tenantId);
   });
 }

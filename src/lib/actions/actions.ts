@@ -3,12 +3,22 @@
  *
  * Manage action definitions attached to card types, and record action
  * executions as audit log entries.
+ *
+ * Role matrix:
+ *   OPERATOR: view action definitions, execute actions, view logs
+ *   ADMIN:    (inherits operator — no additional action-definition permissions)
+ *   MASTER:   above + create/edit/deactivate action definitions
  */
 
 "use server";
 
 import { z } from "zod";
-import { actionHandler, requireTenant, type ActionResult } from "@/lib/api";
+import {
+  actionHandler,
+  requireOperator,
+  requireMaster,
+  type ActionResult,
+} from "@/lib/api";
 import {
   createActionDefinition,
   updateActionDefinition,
@@ -51,76 +61,31 @@ const GetActionLogsSchema = z.object({
   offset: z.number().int().min(0).optional(),
 });
 
-// ─── Action Definition management ────────────────────────────────────────────
-
-/**
- * Create an action definition for a card type.
- */
-export async function createActionDefinitionAction(
-  cardTypeId: string,
-  input: unknown,
-): Promise<ActionResult<ActionDefinition>> {
-  return actionHandler(async () => {
-    await requireTenant();
-    const data = CreateActionDefinitionSchema.parse(input);
-    return createActionDefinition(cardTypeId, {
-      name: data.name,
-      actionType: data.actionType,
-      config: data.config,
-    });
-  });
-}
-
-/**
- * Update an action definition.
- */
-export async function updateActionDefinitionAction(
-  id: string,
-  input: unknown,
-): Promise<ActionResult<ActionDefinition>> {
-  return actionHandler(async () => {
-    await requireTenant();
-    const data = UpdateActionDefinitionSchema.parse(input);
-    return updateActionDefinition(id, data);
-  });
-}
-
-/**
- * Deactivate (soft-delete) an action definition.
- */
-export async function deactivateActionDefinitionAction(
-  id: string,
-): Promise<ActionResult<void>> {
-  return actionHandler(async () => {
-    await requireTenant();
-    await deactivateActionDefinition(id);
-  });
-}
+// ─── OPERATOR actions (read + execute) ────────────────────────────────────────
 
 /**
  * List active action definitions for a card type.
+ * @role operator | admin | master
  */
 export async function getActionsForCardTypeAction(
   cardTypeId: string,
 ): Promise<ActionResult<ActionDefinition[]>> {
   return actionHandler(async () => {
-    await requireTenant();
+    await requireOperator();
     return getActionsForCardType(cardTypeId);
   });
 }
 
-// ─── Action execution ─────────────────────────────────────────────────────────
-
 /**
  * Execute an action on a card (creates an audit log entry).
- *
  * The `executedBy` field is automatically set to the current user's ID.
+ * @role operator | admin | master
  */
 export async function executeActionAction(
   input: unknown,
 ): Promise<ActionResult<ActionLog>> {
   return actionHandler(async () => {
-    const { userId } = await requireTenant();
+    const { userId } = await requireOperator();
     const data = ExecuteActionSchema.parse(input);
     return executeAction({
       cardId: data.cardId,
@@ -133,13 +98,14 @@ export async function executeActionAction(
 
 /**
  * Get paginated action logs for a card.
+ * @role operator | admin | master
  */
 export async function getActionLogsAction(
   cardId: string,
   input: unknown,
 ): Promise<ActionResult<PaginatedResult<ActionLog>>> {
   return actionHandler(async () => {
-    await requireTenant();
+    await requireOperator();
     const data = GetActionLogsSchema.parse(input ?? {});
     return getActionLogs(cardId, data);
   });
@@ -147,12 +113,62 @@ export async function getActionLogsAction(
 
 /**
  * Get the most recent actions across the current tenant (for dashboard).
+ * @role operator | admin | master
  */
 export async function getRecentActionsAction(
   limit = 20,
 ): Promise<ActionResult<ActionLog[]>> {
   return actionHandler(async () => {
-    const { tenantId } = await requireTenant();
+    const { tenantId } = await requireOperator();
     return getRecentActions(tenantId, limit);
+  });
+}
+
+// ─── MASTER actions — Action Definition management ────────────────────────────
+
+/**
+ * Create an action definition for a card type.
+ * @role master
+ */
+export async function createActionDefinitionAction(
+  cardTypeId: string,
+  input: unknown,
+): Promise<ActionResult<ActionDefinition>> {
+  return actionHandler(async () => {
+    await requireMaster();
+    const data = CreateActionDefinitionSchema.parse(input);
+    return createActionDefinition(cardTypeId, {
+      name: data.name,
+      actionType: data.actionType,
+      config: data.config,
+    });
+  });
+}
+
+/**
+ * Update an action definition.
+ * @role master
+ */
+export async function updateActionDefinitionAction(
+  id: string,
+  input: unknown,
+): Promise<ActionResult<ActionDefinition>> {
+  return actionHandler(async () => {
+    await requireMaster();
+    const data = UpdateActionDefinitionSchema.parse(input);
+    return updateActionDefinition(id, data);
+  });
+}
+
+/**
+ * Deactivate (soft-delete) an action definition.
+ * @role master
+ */
+export async function deactivateActionDefinitionAction(
+  id: string,
+): Promise<ActionResult<void>> {
+  return actionHandler(async () => {
+    await requireMaster();
+    await deactivateActionDefinition(id);
   });
 }

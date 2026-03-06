@@ -1,89 +1,188 @@
 /**
- * API Layer - Authentication Helpers
+ * API Layer - Authentication & Authorization Helpers
  *
- * Server-side helpers that extract the current user and tenant from the
- * Better Auth session. Import these at the top of every Server Action and
- * Route Handler that requires authentication.
+ * Two layers of access control:
  *
- * All functions throw `AuthenticationError` (→ 401) when no valid session
- * exists, and `AuthorizationError` (→ 403) when a required field is missing.
+ * 1. Authentication  — is the user logged in?
+ *    `requireAuth()` — returns { userId } or throws AuthenticationError (401).
+ *
+ * 2. Authorization — does the user have the right role in this tenant?
+ *    Roles are stored in `tenant_members` and are hierarchical:
+ *    master > admin > operator
+ *
+ *    `requireRole(...roles)` — verifies the caller belongs to the session's
+ *    tenant with one of the allowed roles. Throws AuthorizationError (403).
+ *
+ *    Convenience wrappers:
+ *    `requireOperator()` — any tenant member (operator | admin | master)
+ *    `requireAdmin()`    — admin or master
+ *    `requireMaster()`   — master only
+ *
+ * All functions throw; they never return null/undefined.
+ * Import from "@/lib/api" for brevity.
  */
 
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { getMemberByUserId } from "@/lib/dal/members";
 import { AuthenticationError, AuthorizationError } from "./errors";
+import type { TenantRole } from "@/lib/dal/types";
 
-// ─── Session shape ────────────────────────────────────────────────────────────
+// ─── Re-export TenantRole so consumers can import it from "@/lib/api" ────────
+export type { TenantRole };
 
-export interface AuthContext {
-  /** Better Auth user ID (string, e.g. "usr_abc123"). */
+// ─── Context types ────────────────────────────────────────────────────────────
+
+/** Minimal context returned by requireAuth() — no tenant info. */
+export interface BasicAuthContext {
+  /** Better Auth user ID. */
   userId: string;
-  /** Tenant UUID this user belongs to. Null for super-admins or unassigned users. */
-  tenantId: string | null;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+/**
+ * Full context returned by requireTenant() / requireRole() / requireOperator()
+ * / requireAdmin() / requireMaster().
+ */
+export interface AuthContext {
+  /** Better Auth user ID. */
+  userId: string;
+  /** Tenant UUID this request operates in. */
+  tenantId: string;
+  /** The member's role within this tenant. */
+  role: TenantRole;
+  /** TenantMember row ID (useful for self-checks). */
+  memberId: string;
+}
+
+// ─── Core helpers ─────────────────────────────────────────────────────────────
 
 /**
- * Get the current session and return the auth context.
- * Throws `AuthenticationError` if no session exists.
+ * Verify the caller has an active Better Auth session.
+ * Does NOT check tenant membership or role.
  *
- * @example
- *   const { userId, tenantId } = await requireAuth();
+ * Use this only for super-admin actions that don't operate on tenant-scoped data
+ * (e.g. creating a tenant for a new customer).
+ *
+ * @throws {AuthenticationError} If there is no valid session.
  */
-export async function requireAuth(): Promise<AuthContext> {
+export async function requireAuth(): Promise<BasicAuthContext> {
   const session = await auth.api.getSession({ headers: await headers() });
 
   if (!session?.user) {
     throw new AuthenticationError();
   }
 
-  return {
-    userId: session.user.id,
-    // Better Auth stores additionalFields directly on session.user.
-    tenantId: (session.user as { tenantId?: string | null }).tenantId ?? null,
-  };
+  return { userId: session.user.id };
 }
 
 /**
- * Like `requireAuth()` but additionally enforces that the user has a tenantId.
- * Use this in any action that operates on tenant-scoped data.
+ * Verify the caller is logged in AND is an active member of their session's
+ * tenant with one of the specified roles.
  *
- * Throws `AuthorizationError` if the user has no tenant assigned.
+ * Role lookup is performed against the `tenant_members` table on every call
+ * so that role changes take effect immediately without requiring re-login.
  *
- * @example
- *   const { userId, tenantId } = await requireTenant();
+ * @param allowedRoles - Whitelist of roles that may proceed.
+ * @throws {AuthenticationError}  If there is no valid session.
+ * @throws {AuthorizationError}   If the user has no tenant, is not a member,
+ *                                 or their role is not in `allowedRoles`.
  */
-export async function requireTenant(): Promise<
-  AuthContext & { tenantId: string }
-> {
-  const ctx = await requireAuth();
+export async function requireRole(
+  ...allowedRoles: TenantRole[]
+): Promise<AuthContext> {
+  const session = await auth.api.getSession({ headers: await headers() });
 
-  if (!ctx.tenantId) {
+  if (!session?.user) {
+    throw new AuthenticationError();
+  }
+
+  const userId = session.user.id;
+  // Tenant comes from the user's session field (set at sign-in / onboarding).
+  const tenantId = (session.user as { tenantId?: string | null }).tenantId;
+
+  if (!tenantId) {
     throw new AuthorizationError(
       "Your account is not associated with any tenant",
     );
   }
 
-  return { ...ctx, tenantId: ctx.tenantId };
+  // Fetch the live membership record (role may have changed since last login).
+  let member;
+  try {
+    member = await getMemberByUserId(tenantId, userId);
+  } catch {
+    throw new AuthorizationError(
+      "You are not an active member of this tenant",
+    );
+  }
+
+  if (!allowedRoles.includes(member.role)) {
+    const needed = allowedRoles.join(" or ");
+    throw new AuthorizationError(
+      `You need ${needed} role to perform this action`,
+    );
+  }
+
+  return {
+    userId,
+    tenantId,
+    role: member.role,
+    memberId: member.id,
+  };
+}
+
+// ─── Convenience wrappers ─────────────────────────────────────────────────────
+
+/**
+ * Allow any active tenant member (operator | admin | master).
+ * Use for read operations and action execution.
+ */
+export async function requireOperator(): Promise<AuthContext> {
+  return requireRole("operator", "admin", "master");
 }
 
 /**
+ * Keep backward compatibility — same as requireOperator().
+ * Existing code that uses `requireTenant()` continues to work.
+ */
+export async function requireTenant(): Promise<AuthContext> {
+  return requireOperator();
+}
+
+/**
+ * Allow admin or master.
+ * Use for card create / update / delete operations.
+ */
+export async function requireAdmin(): Promise<AuthContext> {
+  return requireRole("admin", "master");
+}
+
+/**
+ * Allow master only.
+ * Use for tenant configuration: card types, field definitions, action definitions,
+ * and member management.
+ */
+export async function requireMaster(): Promise<AuthContext> {
+  return requireRole("master");
+}
+
+// ─── External API helper ──────────────────────────────────────────────────────
+
+/**
  * Extract the tenant ID from the `x-tenant-id` request header.
- * Used by the external REST API for device/integration authentication.
  *
+ * Used by the external REST API for device / integration authentication.
  * In production this should be replaced by API key / JWT validation.
- * For now it trusts the header value directly (dev-only behaviour).
  *
- * @param request - The incoming `NextRequest`.
- * @throws `AuthenticationError` if the header is absent or empty.
+ * TODO: API_AUTH — implement API key lookup where each key carries a
+ * pre-configured role (e.g. "operator" for read-only scanner devices).
+ *
+ * @throws {AuthenticationError} If the header is absent or empty.
  */
 export function getTenantFromHeader(request: Request): string {
   const tenantId = request.headers.get("x-tenant-id");
   if (!tenantId) {
-    throw new AuthenticationError(
-      "Missing x-tenant-id header",
-    );
+    throw new AuthenticationError("Missing x-tenant-id header");
   }
   return tenantId;
 }

@@ -56,6 +56,19 @@ export const cardStatusEnum = pgEnum("card_status", [
   "expired",
 ]);
 
+/**
+ * Role a user holds within a tenant.
+ * Roles are strictly hierarchical: master > admin > operator.
+ * - operator: read-only + execute actions.
+ * - admin: operator + create/edit/delete cards.
+ * - master: admin + tenant configuration (card types, fields, action defs, members).
+ */
+export const tenantRoleEnum = pgEnum("tenant_role", [
+  "operator",
+  "admin",
+  "master",
+]);
+
 // ─── Tenants ─────────────────────────────────────────────────────────────────
 
 /** Organization or client that owns card types and cards */
@@ -264,5 +277,42 @@ export const actionLogs = pgTable(
     index("action_logs_card_id_idx").on(table.cardId),
     index("action_logs_action_definition_id_idx").on(table.actionDefinitionId),
     index("action_logs_executed_at_idx").on(table.executedAt),
+  ],
+);
+
+// ─── Tenant Members ───────────────────────────────────────────────────────────
+
+/**
+ * Association between a user and a tenant with an assigned role.
+ *
+ * A user can belong to multiple tenants (one row per membership).
+ * The unique constraint on (tenant_id, user_id) ensures a user cannot have
+ * two simultaneous memberships in the same tenant.
+ *
+ * Business rules enforced at the application layer:
+ * - At least one active master must always exist per tenant.
+ * - A master cannot remove their own master role if they are the last one.
+ */
+export const tenantMembers = pgTable(
+  "tenant_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    /** References the Better Auth user table. */
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    role: tenantRoleEnum("role").notNull().default("operator"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    /** A user can only have one membership per tenant. */
+    unique("tenant_members_tenant_user_unique").on(table.tenantId, table.userId),
+    index("tenant_members_tenant_id_idx").on(table.tenantId),
+    index("tenant_members_user_id_idx").on(table.userId),
   ],
 );
