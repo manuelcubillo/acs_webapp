@@ -28,7 +28,26 @@
       "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm add zod)",
       "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm build)",
       "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm test)",
-      "Bash(git add -A)"
+      "Bash(git add -A)",
+      "Bash(cat '/Users/manuelcubillo/Projects/Veredillas/code/veredillas_web/src/app/\\(dashboard\\)/dashboard/page.tsx')",
+      "Bash(cat '/Users/manuelcubillo/Projects/Veredillas/code/veredillas_web/src/app/\\(auth\\)/login/page.tsx')",
+      "Bash(cat '/Users/manuelcubillo/Projects/Veredillas/code/veredillas_web/src/app/\\(dashboard\\)/dashboard/page_prototype.tsx')",
+      "Bash(cat '/Users/manuelcubillo/Projects/Veredillas/code/veredillas_web/src/app/\\(dashboard\\)/dashboard/page_prototype.jsx')",
+      "Bash(wc -l '/Users/manuelcubillo/Projects/Veredillas/code/veredillas_web/src/app/\\(dashboard\\)/dashboard/page_prototype.jsx')",
+      "Bash(head -500 '/Users/manuelcubillo/Projects/Veredillas/code/veredillas_web/src/app/\\(dashboard\\)/dashboard/page_prototype.jsx')",
+      "Bash(tail -n +500 '/Users/manuelcubillo/Projects/Veredillas/code/veredillas_web/src/app/\\(dashboard\\)/dashboard/page_prototype.jsx')",
+      "Bash(head -n 1000 '/Users/manuelcubillo/Projects/Veredillas/code/veredillas_web/src/app/\\(dashboard\\)/dashboard/page_prototype.jsx')",
+      "Bash(head -n 150 '/Users/manuelcubillo/Projects/Veredillas/code/veredillas_web/src/app/\\(dashboard\\)/dashboard/page_prototype.jsx')",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm add @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities lucide-react)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node /opt/homebrew/lib/node_modules/pnpm/bin/pnpm.cjs exec tsc --noEmit)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node /opt/homebrew/lib/node_modules/pnpm/bin/pnpm.cjs build)",
+      "Bash(git add src/app/globals.css src/components/ src/hooks/ src/app/\\\\\\(dashboard\\\\\\)/card-types/)",
+      "Bash(git add package.json pnpm-lock.yaml)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node /opt/homebrew/lib/node_modules/pnpm/bin/pnpm.cjs db:generate)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm add html5-qrcode)",
+      "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node /opt/homebrew/lib/node_modules/pnpm/bin/pnpm.cjs build)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node /opt/homebrew/lib/node_modules/pnpm/bin/pnpm.cjs exec next build --debug)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node node_modules/next/dist/bin/next build)"
     ]
   }
 }

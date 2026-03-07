@@ -11,11 +11,17 @@
 "use server";
 
 import { z } from "zod";
-import { actionHandler, requireAuth, type ActionResult } from "@/lib/api";
+import {
+  actionHandler,
+  requireAuth,
+  requireMaster,
+  type ActionResult,
+} from "@/lib/api";
 import {
   createTenant,
   getTenantById,
   updateTenant,
+  updateTenantSettings,
   listTenants,
   deleteTenant,
 } from "@/lib/dal";
@@ -29,6 +35,10 @@ const CreateTenantSchema = z.object({
 
 const UpdateTenantSchema = z.object({
   name: z.string().min(1).max(200).optional(),
+});
+
+const UpdateTenantSettingsSchema = z.object({
+  scanMode: z.enum(["camera", "external_reader", "both"]).optional(),
 });
 
 // ─── Actions ─────────────────────────────────────────────────────────────────
@@ -79,6 +89,20 @@ export async function updateTenantAction(
     await requireAuth();
     const data = UpdateTenantSchema.parse(input);
     return updateTenant(id, data);
+  });
+}
+
+/**
+ * Update tenant-level settings (e.g. scan mode).
+ * Master only.
+ */
+export async function updateTenantSettingsAction(
+  input: unknown,
+): Promise<ActionResult<Tenant>> {
+  return actionHandler(async () => {
+    const { tenantId } = await requireMaster();
+    const data = UpdateTenantSettingsSchema.parse(input);
+    return updateTenantSettings(tenantId, data);
   });
 }
 

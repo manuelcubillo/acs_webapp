@@ -36,6 +36,10 @@ export type TenantRole = TenantMember["role"];
 
 export type FieldType = FieldDefinition["fieldType"];
 
+// ─── Scan mode ───────────────────────────────────────────────────────────────
+
+export type ScanMode = Tenant["scanMode"];
+
 // ─── Tenant inputs ──────────────────────────────────────────────────────────
 
 export interface CreateTenantInput {
@@ -44,6 +48,11 @@ export interface CreateTenantInput {
 
 export interface UpdateTenantInput {
   name?: string;
+}
+
+/** Settings the master can configure for their tenant. */
+export interface UpdateTenantSettingsInput {
+  scanMode?: ScanMode;
 }
 
 // ─── CardType inputs ────────────────────────────────────────────────────────
