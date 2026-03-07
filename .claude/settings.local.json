@@ -47,7 +47,10 @@
       "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm add html5-qrcode)",
       "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node /opt/homebrew/lib/node_modules/pnpm/bin/pnpm.cjs build)",
       "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node /opt/homebrew/lib/node_modules/pnpm/bin/pnpm.cjs exec next build --debug)",
-      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node node_modules/next/dist/bin/next build)"
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node node_modules/next/dist/bin/next build)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" cat /Users/manuelcubillo/Projects/Veredillas/code/veredillas_web/package.json)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" npx tsx --env-file=.env.local scripts/seed-tenant-losfresnos.ts)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" npx tsx --env-file=.env.local -e \":*)"
     ]
   }
 }

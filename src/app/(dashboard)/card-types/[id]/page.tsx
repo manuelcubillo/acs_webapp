@@ -191,7 +191,6 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
                   <div style={{ flexShrink: 0, width: 180 }}>
                     <FieldTypeSelector
                       value={field.fieldType as FieldType}
-                      onChange={() => {}}
                       readOnly
                     />
                   </div>

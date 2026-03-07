@@ -79,7 +79,7 @@ const FIELD_TYPES: FieldTypeMeta[] = [
 
 interface FieldTypeSelectorProps {
   value: FieldType | null;
-  onChange: (type: FieldType) => void;
+  onChange?: (type: FieldType) => void;
   /** If true, the selector is read-only (used in detail view). */
   readOnly?: boolean;
 }
@@ -105,7 +105,7 @@ export default function FieldTypeSelector({
             key={ft.type}
             type="button"
             disabled={readOnly}
-            onClick={() => !readOnly && onChange(ft.type)}
+            onClick={() => !readOnly && onChange?.(ft.type)}
             style={{
               display: "flex",
               flexDirection: "column",
