@@ -15,6 +15,7 @@ import type {
   fieldValues,
   actionDefinitions,
   actionLogs,
+  tenantMembers,
 } from "@/lib/db/schema";
 
 // ─── Drizzle-derived row types ──────────────────────────────────────────────
@@ -26,6 +27,10 @@ export type Card = InferSelectModel<typeof cards>;
 export type FieldValue = InferSelectModel<typeof fieldValues>;
 export type ActionDefinition = InferSelectModel<typeof actionDefinitions>;
 export type ActionLog = InferSelectModel<typeof actionLogs>;
+export type TenantMember = InferSelectModel<typeof tenantMembers>;
+
+/** Role a user holds within a tenant. Hierarchical: master > admin > operator. */
+export type TenantRole = TenantMember["role"];
 
 // ─── Field type enum literal ────────────────────────────────────────────────
 
@@ -158,6 +163,22 @@ export interface PaginatedResult<T> {
   offset: number;
 }
 
+// ─── Action Definition inputs ────────────────────────────────────────────────
+
+export type ActionType = ActionDefinition["actionType"];
+
+export interface CreateActionDefinitionInput {
+  name: string;
+  actionType: ActionType;
+  config?: Record<string, unknown> | null;
+}
+
+export interface UpdateActionDefinitionInput {
+  name?: string;
+  config?: Record<string, unknown> | null;
+  isActive?: boolean;
+}
+
 // ─── Action inputs ──────────────────────────────────────────────────────────
 
 export interface ExecuteActionInput {
@@ -166,4 +187,20 @@ export interface ExecuteActionInput {
   /** Auth user ID of the person executing the action. */
   executedBy?: string;
   metadata?: Record<string, unknown>;
+}
+
+// ─── TenantMember inputs ─────────────────────────────────────────────────────
+
+export interface AddMemberInput {
+  role: TenantRole;
+}
+
+export interface UpdateMemberRoleInput {
+  role: TenantRole;
+}
+
+/** Member row enriched with the auth user's name and email for display. */
+export interface MemberWithUser extends TenantMember {
+  userName: string;
+  userEmail: string;
 }

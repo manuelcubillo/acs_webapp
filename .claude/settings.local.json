@@ -24,7 +24,11 @@
       "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm db:seed)",
       "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" npx tsc --noEmit)",
       "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node ./node_modules/.bin/tsc --noEmit)",
-      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm tsc --noEmit)"
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm tsc --noEmit)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm add zod)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm build)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm test)",
+      "Bash(git add -A)"
     ]
   }
 }
