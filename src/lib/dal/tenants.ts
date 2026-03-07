@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tenants } from "@/lib/db/schema";
 import { NotFoundError } from "./errors";
-import type { Tenant, CreateTenantInput, UpdateTenantInput } from "./types";
+import type { Tenant, CreateTenantInput, UpdateTenantInput, UpdateTenantSettingsInput } from "./types";
 
 /**
  * Create a new tenant.
@@ -92,4 +92,29 @@ export async function deleteTenant(id: string): Promise<void> {
   // Verify the tenant exists before deleting.
   await getTenantById(id);
   await db.delete(tenants).where(eq(tenants.id, id));
+}
+
+/**
+ * Update tenant-level settings (scan mode, etc.).
+ *
+ * @param id   - Tenant UUID.
+ * @param data - Settings to update.
+ * @returns The updated tenant row.
+ * @throws {NotFoundError} If no tenant matches the given id.
+ */
+export async function updateTenantSettings(
+  id: string,
+  data: UpdateTenantSettingsInput,
+): Promise<Tenant> {
+  const [tenant] = await db
+    .update(tenants)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(tenants.id, id))
+    .returning();
+
+  if (!tenant) {
+    throw new NotFoundError("Tenant", id);
+  }
+
+  return tenant;
 }

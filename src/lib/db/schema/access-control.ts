@@ -69,12 +69,26 @@ export const tenantRoleEnum = pgEnum("tenant_role", [
   "master",
 ]);
 
+/**
+ * Scan mode configures how operators scan card codes.
+ * - camera: device camera (QR/barcode via html5-qrcode).
+ * - external_reader: USB/Bluetooth barcode reader (acts as keyboard).
+ * - both: allow either method.
+ */
+export const scanModeEnum = pgEnum("scan_mode", [
+  "camera",
+  "external_reader",
+  "both",
+]);
+
 // ─── Tenants ─────────────────────────────────────────────────────────────────
 
 /** Organization or client that owns card types and cards */
 export const tenants = pgTable("tenants", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
+  /** Preferred card scanning method for all operators of this tenant. */
+  scanMode: scanModeEnum("scan_mode").notNull().default("both"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

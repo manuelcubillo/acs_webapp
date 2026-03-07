@@ -18,6 +18,7 @@ import Link from "next/link";
 import {
   LayoutGrid,
   CreditCard,
+  IdCard,
   Users,
   Settings,
   Shield,
@@ -38,6 +39,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Vista Principal", icon: LayoutGrid },
   { href: "/card-types", label: "Tipos de Tarjeta", icon: CreditCard, minRole: "operator" },
+  { href: "/cards", label: "Carnets", icon: IdCard, minRole: "operator" },
   { href: "/members", label: "Miembros", icon: Users, minRole: "master" },
 ];
 
