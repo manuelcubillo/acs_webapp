@@ -385,100 +385,103 @@ export async function getCompatibleFieldsForAction(
 export async function executeAction(
   input: ExecuteActionInput,
 ): Promise<ActionExecutionResult> {
-  return db.transaction(async (tx) => {
-    // 1. Load action definition joined with target field
-    const [actionDef] = await tx
-      .select({
-        id: actionDefinitions.id,
-        actionType: actionDefinitions.actionType,
-        targetFieldDefinitionId: actionDefinitions.targetFieldDefinitionId,
-        config: actionDefinitions.config,
-        fieldName: fieldDefinitions.name,
-        fieldLabel: fieldDefinitions.label,
-        fieldType: fieldDefinitions.fieldType,
-      })
-      .from(actionDefinitions)
-      .innerJoin(
-        fieldDefinitions,
-        eq(actionDefinitions.targetFieldDefinitionId, fieldDefinitions.id),
-      )
-      .where(
-        and(
-          eq(actionDefinitions.id, input.actionDefinitionId),
-          eq(actionDefinitions.isActive, true),
-        ),
-      )
-      .limit(1);
+  // NOTE: neon-http does not support interactive transactions (db.transaction).
+  // Operations are performed sequentially. If the log insert fails after the
+  // field update, the field mutation stands but the audit entry is lost — an
+  // acceptable trade-off for this driver.
 
-    if (!actionDef) {
-      throw new NotFoundError("ActionDefinition", input.actionDefinitionId);
-    }
+  // 1. Load action definition joined with target field
+  const [actionDef] = await db
+    .select({
+      id: actionDefinitions.id,
+      actionType: actionDefinitions.actionType,
+      targetFieldDefinitionId: actionDefinitions.targetFieldDefinitionId,
+      config: actionDefinitions.config,
+      fieldName: fieldDefinitions.name,
+      fieldLabel: fieldDefinitions.label,
+      fieldType: fieldDefinitions.fieldType,
+    })
+    .from(actionDefinitions)
+    .innerJoin(
+      fieldDefinitions,
+      eq(actionDefinitions.targetFieldDefinitionId, fieldDefinitions.id),
+    )
+    .where(
+      and(
+        eq(actionDefinitions.id, input.actionDefinitionId),
+        eq(actionDefinitions.isActive, true),
+      ),
+    )
+    .limit(1);
 
-    // 2. Read current field value
-    const [existingFv] = await tx
-      .select()
-      .from(fieldValues)
-      .where(
-        and(
-          eq(fieldValues.cardId, input.cardId),
-          eq(fieldValues.fieldDefinitionId, actionDef.targetFieldDefinitionId),
-        ),
-      )
-      .limit(1);
+  if (!actionDef) {
+    throw new NotFoundError("ActionDefinition", input.actionDefinitionId);
+  }
 
-    const previousValue = existingFv
-      ? extractValue(existingFv, actionDef.fieldType as FieldType)
-      : null;
+  // 2. Read current field value
+  const [existingFv] = await db
+    .select()
+    .from(fieldValues)
+    .where(
+      and(
+        eq(fieldValues.cardId, input.cardId),
+        eq(fieldValues.fieldDefinitionId, actionDef.targetFieldDefinitionId),
+      ),
+    )
+    .limit(1);
 
-    // 3. Compute new value
-    const cfg = actionDef.config as { amount?: number } | null;
-    const amount = cfg?.amount ?? 1;
-    const newValue = computeNewValue(
-      actionDef.actionType as "increment" | "decrement" | "check" | "uncheck",
-      previousValue,
-      amount,
-    );
+  const previousValue = existingFv
+    ? extractValue(existingFv, actionDef.fieldType as FieldType)
+    : null;
 
-    // 4. Upsert field value
-    const typedPayload = mapValueToColumn(actionDef.fieldType as FieldType, newValue);
-    await tx
-      .insert(fieldValues)
-      .values({
-        cardId: input.cardId,
-        fieldDefinitionId: actionDef.targetFieldDefinitionId,
-        ...typedPayload,
-      })
-      .onConflictDoUpdate({
-        target: [fieldValues.cardId, fieldValues.fieldDefinitionId],
-        set: { ...typedPayload, updatedAt: new Date() },
-      });
+  // 3. Compute new value
+  const cfg = actionDef.config as { amount?: number } | null;
+  const amount = cfg?.amount ?? 1;
+  const newValue = computeNewValue(
+    actionDef.actionType as "increment" | "decrement" | "check" | "uncheck",
+    previousValue,
+    amount,
+  );
 
-    // 5. Write audit log (log_type defaults to "action")
-    const [log] = await tx
-      .insert(actionLogs)
-      .values({
-        tenantId: input.tenantId,
-        cardId: input.cardId,
-        actionDefinitionId: input.actionDefinitionId,
-        logType: "action",
-        executedBy: input.executedBy ?? null,
-        metadata: {
-          action_type: actionDef.actionType,
-          target_field: actionDef.fieldName,
-          before_value: previousValue,
-          after_value: newValue,
-        },
-      })
-      .returning();
+  // 4. Upsert field value
+  const typedPayload = mapValueToColumn(actionDef.fieldType as FieldType, newValue);
+  await db
+    .insert(fieldValues)
+    .values({
+      cardId: input.cardId,
+      fieldDefinitionId: actionDef.targetFieldDefinitionId,
+      ...typedPayload,
+    })
+    .onConflictDoUpdate({
+      target: [fieldValues.cardId, fieldValues.fieldDefinitionId],
+      set: { ...typedPayload, updatedAt: new Date() },
+    });
 
-    return {
-      log,
-      previousValue,
-      newValue,
-      targetFieldName: actionDef.fieldName,
-      targetFieldLabel: actionDef.fieldLabel,
-    };
-  });
+  // 5. Write audit log (log_type = "action")
+  const [log] = await db
+    .insert(actionLogs)
+    .values({
+      tenantId: input.tenantId,
+      cardId: input.cardId,
+      actionDefinitionId: input.actionDefinitionId,
+      logType: "action",
+      executedBy: input.executedBy ?? null,
+      metadata: {
+        action_type: actionDef.actionType,
+        target_field: actionDef.fieldName,
+        before_value: previousValue,
+        after_value: newValue,
+      },
+    })
+    .returning();
+
+  return {
+    log,
+    previousValue,
+    newValue,
+    targetFieldName: actionDef.fieldName,
+    targetFieldLabel: actionDef.fieldLabel,
+  };
 }
 
 /**

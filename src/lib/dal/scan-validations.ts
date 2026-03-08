@@ -207,19 +207,20 @@ export async function reorderScanValidations(
   cardTypeId: string,
   orderedIds: string[],
 ): Promise<void> {
-  await db.transaction(async (tx) => {
-    for (let i = 0; i < orderedIds.length; i++) {
-      await tx
-        .update(scanValidations)
-        .set({ position: i, updatedAt: new Date() })
-        .where(
-          and(
-            eq(scanValidations.id, orderedIds[i]),
-            eq(scanValidations.cardTypeId, cardTypeId),
-          ),
-        );
-    }
-  });
+  // NOTE: neon-http does not support interactive transactions (db.transaction).
+  // Updates are performed sequentially — acceptable for a low-frequency
+  // admin reorder operation.
+  for (let i = 0; i < orderedIds.length; i++) {
+    await db
+      .update(scanValidations)
+      .set({ position: i, updatedAt: new Date() })
+      .where(
+        and(
+          eq(scanValidations.id, orderedIds[i]),
+          eq(scanValidations.cardTypeId, cardTypeId),
+        ),
+      );
+  }
 }
 
 /**

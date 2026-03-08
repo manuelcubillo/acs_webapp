@@ -168,27 +168,30 @@ export async function setCardTypeSummaryFields(
     }
   }
 
-  return db.transaction(async (tx) => {
-    // Delete existing summary fields for this card type.
-    await tx
-      .delete(cardTypeSummaryFields)
-      .where(eq(cardTypeSummaryFields.cardTypeId, cardTypeId));
+  // NOTE: neon-http does not support interactive transactions (db.transaction).
+  // Operations are performed sequentially. The delete + insert is not atomic,
+  // but this is acceptable for settings updates which are low-frequency and
+  // admin-only. Use the WebSocket driver if atomicity is required.
 
-    if (input.fieldDefinitionIds.length === 0) return [];
+  // Delete existing summary fields for this card type.
+  await db
+    .delete(cardTypeSummaryFields)
+    .where(eq(cardTypeSummaryFields.cardTypeId, cardTypeId));
 
-    // Insert new ones in order.
-    const rows = await tx
-      .insert(cardTypeSummaryFields)
-      .values(
-        input.fieldDefinitionIds.map((fid, idx) => ({
-          tenantId,
-          cardTypeId,
-          fieldDefinitionId: fid,
-          position: idx,
-        })),
-      )
-      .returning();
+  if (input.fieldDefinitionIds.length === 0) return [];
 
-    return rows;
-  });
+  // Insert new ones in order.
+  const rows = await db
+    .insert(cardTypeSummaryFields)
+    .values(
+      input.fieldDefinitionIds.map((fid, idx) => ({
+        tenantId,
+        cardTypeId,
+        fieldDefinitionId: fid,
+        position: idx,
+      })),
+    )
+    .returning();
+
+  return rows;
 }
