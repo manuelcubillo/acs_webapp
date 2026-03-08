@@ -4,74 +4,149 @@
  * ActionsStep (Step 2)
  *
  * Define action definitions for the card type.
- * Currently supports: guest_entry, guest_exit.
+ * Supports: increment, decrement, check, uncheck.
+ * Each action targets a specific field compatible with its type.
  */
 
 import { useState } from "react";
-import { Plus, Trash2, LogIn, LogOut } from "lucide-react";
-import type { ActionDefinitionDraft, ActionType } from "@/hooks/useCardTypeWizard";
+import { Plus, Trash2, TrendingUp, TrendingDown, CheckSquare, Square } from "lucide-react";
+import type {
+  ActionDefinitionDraft,
+  ActionType,
+  FieldDefinitionDraft,
+} from "@/hooks/useCardTypeWizard";
 
-interface ActionsStepProps {
-  actions: ActionDefinitionDraft[];
-  onAdd: (draft: Omit<ActionDefinitionDraft, "tempId">) => void;
-  onRemove: (tempId: string) => void;
-}
+// ─── Action type metadata ──────────────────────────────────────────────────────
 
 const ACTION_TYPE_META: Record<
   ActionType,
-  { label: string; description: string; icon: React.ComponentType<{ size?: number; strokeWidth?: number }>; color: string; bg: string }
+  {
+    label: string;
+    description: string;
+    fieldFilter: "number" | "boolean";
+    icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+    color: string;
+    bg: string;
+    hasAmount: boolean;
+  }
 > = {
-  guest_entry: {
-    label: "Entrada de invitado",
-    description: "Registra la entrada de una persona invitada",
-    icon: LogIn,
+  increment: {
+    label: "Incrementar",
+    description: "Suma una cantidad a un campo numérico",
+    fieldFilter: "number",
+    icon: TrendingUp,
     color: "#059669",
     bg: "#ecfdf5",
+    hasAmount: true,
   },
-  guest_exit: {
-    label: "Salida de invitado",
-    description: "Registra la salida de una persona invitada",
-    icon: LogOut,
+  decrement: {
+    label: "Decrementar",
+    description: "Resta una cantidad a un campo numérico",
+    fieldFilter: "number",
+    icon: TrendingDown,
     color: "#dc2626",
     bg: "#fef2f2",
+    hasAmount: true,
+  },
+  check: {
+    label: "Marcar como Sí",
+    description: "Establece un campo Sí/No a verdadero",
+    fieldFilter: "boolean",
+    icon: CheckSquare,
+    color: "#4f5bff",
+    bg: "#eef0ff",
+    hasAmount: false,
+  },
+  uncheck: {
+    label: "Marcar como No",
+    description: "Establece un campo Sí/No a falso",
+    fieldFilter: "boolean",
+    icon: Square,
+    color: "#6b7094",
+    bg: "#f3f4f6",
+    hasAmount: false,
   },
 };
 
-const AVAILABLE_ACTION_TYPES: ActionType[] = ["guest_entry", "guest_exit"];
+const ACTION_TYPE_ORDER: ActionType[] = ["increment", "decrement", "check", "uncheck"];
 
-export default function ActionsStep({ actions, onAdd, onRemove }: ActionsStepProps) {
-  const [showPicker, setShowPicker] = useState(false);
+// ─── Component ─────────────────────────────────────────────────────────────────
+
+interface ActionsStepProps {
+  fields: FieldDefinitionDraft[];
+  actions: ActionDefinitionDraft[];
+  onAdd: (draft: Omit<ActionDefinitionDraft, "tempId" | "position">) => void;
+  onRemove: (tempId: string) => void;
+}
+
+const EMPTY_AMOUNT = "";
+
+export default function ActionsStep({ fields, actions, onAdd, onRemove }: ActionsStepProps) {
+  const [showForm, setShowForm] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newType, setNewType] = useState<ActionType>("guest_entry");
+  const [newType, setNewType] = useState<ActionType>("increment");
+  const [newTargetTempId, setNewTargetTempId] = useState("");
+  const [newAmount, setNewAmount] = useState<string>(EMPTY_AMOUNT);
 
-  const usedTypes = new Set(actions.map((a) => a.actionType));
+  const meta = ACTION_TYPE_META[newType];
+
+  // Filter fields compatible with selected action type
+  const compatibleFields = fields.filter((f) => f.fieldType === meta.fieldFilter);
+
+  function handleTypeChange(type: ActionType) {
+    setNewType(type);
+    setNewTargetTempId("");
+    setNewAmount(EMPTY_AMOUNT);
+  }
 
   function handleAdd() {
-    if (!newName.trim()) return;
-    onAdd({ name: newName.trim(), actionType: newType, config: null });
-    setNewName("");
-    setShowPicker(false);
+    if (!newName.trim() || !newTargetTempId) return;
+    const amount = meta.hasAmount ? (parseFloat(newAmount) || 1) : undefined;
+    onAdd({
+      name: newName.trim(),
+      actionType: newType,
+      targetFieldTempId: newTargetTempId,
+      config: meta.hasAmount ? { amount } : null,
+      icon: null,
+      color: null,
+    });
+    resetForm();
   }
+
+  function resetForm() {
+    setShowForm(false);
+    setNewName("");
+    setNewType("increment");
+    setNewTargetTempId("");
+    setNewAmount(EMPTY_AMOUNT);
+  }
+
+  const canAdd = newName.trim().length > 0 && newTargetTempId.length > 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Header */}
       <div>
         <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--color-dark)", marginBottom: 6 }}>
-          Definiciones de acciones
+          Acciones de tarjeta
         </div>
         <div style={{ fontSize: 13.5, color: "var(--color-secondary)" }}>
-          Las acciones permiten registrar eventos específicos sobre las tarjetas.
-          Por ejemplo: registrar la entrada o salida de un invitado.
+          Las acciones modifican campos específicos de la tarjeta cuando el operador las ejecuta.
+          Por ejemplo: incrementar un contador de asistencia o marcar un campo como completado.
         </div>
       </div>
 
-      {/* Existing actions */}
+      {/* Existing actions list */}
       {actions.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {actions.map((action) => {
-            const meta = ACTION_TYPE_META[action.actionType];
-            const Icon = meta.icon;
+            const m = ACTION_TYPE_META[action.actionType];
+            const Icon = m.icon;
+            // Find the target field name
+            const targetField = fields.find((f) => f.tempId === action.targetFieldTempId);
+            const amountLabel = m.hasAmount && action.config?.amount != null
+              ? ` · ${action.config.amount}`
+              : "";
             return (
               <div
                 key={action.tempId}
@@ -79,7 +154,7 @@ export default function ActionsStep({ actions, onAdd, onRemove }: ActionsStepPro
                   display: "flex",
                   alignItems: "center",
                   gap: 12,
-                  padding: "14px 16px",
+                  padding: "13px 16px",
                   background: "#fff",
                   border: "1.5px solid var(--color-border)",
                   borderRadius: 12,
@@ -89,11 +164,11 @@ export default function ActionsStep({ actions, onAdd, onRemove }: ActionsStepPro
                   width: 38,
                   height: 38,
                   borderRadius: 10,
-                  background: meta.bg,
+                  background: m.bg,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: meta.color,
+                  color: m.color,
                   flexShrink: 0,
                 }}>
                   <Icon size={18} strokeWidth={1.8} />
@@ -103,36 +178,32 @@ export default function ActionsStep({ actions, onAdd, onRemove }: ActionsStepPro
                     {action.name}
                   </div>
                   <div style={{ fontSize: 12, color: "var(--color-muted)", marginTop: 2 }}>
-                    {meta.label}
+                    {m.label}{amountLabel}
+                    {targetField && (
+                      <> · <span style={{ color: "var(--color-secondary)" }}>{targetField.label}</span></>
+                    )}
                   </div>
                 </div>
                 <span style={{
-                  fontSize: 11,
+                  fontSize: 10.5,
                   fontWeight: 600,
-                  padding: "3px 8px",
+                  padding: "2px 8px",
                   borderRadius: 5,
-                  background: meta.bg,
-                  color: meta.color,
-                  border: `1px solid ${meta.color}30`,
+                  background: m.bg,
+                  color: m.color,
+                  border: `1px solid ${m.color}30`,
                   flexShrink: 0,
                 }}>
-                  {action.actionType}
+                  {m.label}
                 </span>
                 <button
                   onClick={() => onRemove(action.tempId)}
                   title="Eliminar acción"
                   style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 8,
-                    border: "1.5px solid #fecaca",
-                    background: "#fef2f2",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#dc2626",
-                    flexShrink: 0,
+                    width: 32, height: 32, borderRadius: 8,
+                    border: "1.5px solid #fecaca", background: "#fef2f2",
+                    cursor: "pointer", display: "flex", alignItems: "center",
+                    justifyContent: "center", color: "#dc2626", flexShrink: 0,
                   }}
                 >
                   <Trash2 size={14} strokeWidth={1.8} />
@@ -143,8 +214,8 @@ export default function ActionsStep({ actions, onAdd, onRemove }: ActionsStepPro
         </div>
       )}
 
-      {/* Add action picker */}
-      {showPicker ? (
+      {/* Add form */}
+      {showForm ? (
         <div style={{
           padding: "20px",
           background: "#fafbfc",
@@ -155,25 +226,25 @@ export default function ActionsStep({ actions, onAdd, onRemove }: ActionsStepPro
             Nueva acción
           </div>
 
-          {/* Action type selection */}
+          {/* Action type */}
           <div style={{ marginBottom: 16 }}>
             <label style={labelStyle}>Tipo de acción</label>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
-              {AVAILABLE_ACTION_TYPES.map((type) => {
-                const meta = ACTION_TYPE_META[type];
-                const Icon = meta.icon;
-                const alreadyUsed = usedTypes.has(type) && actions.find((a) => a.actionType === type);
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+              {ACTION_TYPE_ORDER.map((type) => {
+                const m = ACTION_TYPE_META[type];
+                const Icon = m.icon;
+                const selected = newType === type;
                 return (
                   <label
                     key={type}
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 12,
-                      padding: "12px 14px",
-                      border: `1.5px solid ${newType === type ? meta.color : "var(--color-border)"}`,
+                      gap: 10,
+                      padding: "10px 12px",
+                      border: `1.5px solid ${selected ? m.color : "var(--color-border)"}`,
                       borderRadius: 10,
-                      background: newType === type ? meta.bg : "#fff",
+                      background: selected ? m.bg : "#fff",
                       cursor: "pointer",
                       transition: "all 0.15s",
                     }}
@@ -182,31 +253,21 @@ export default function ActionsStep({ actions, onAdd, onRemove }: ActionsStepPro
                       type="radio"
                       name="actionType"
                       value={type}
-                      checked={newType === type}
-                      onChange={() => setNewType(type)}
-                      style={{ accentColor: meta.color }}
+                      checked={selected}
+                      onChange={() => handleTypeChange(type)}
+                      style={{ accentColor: m.color, flexShrink: 0 }}
                     />
                     <div style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 8,
-                      background: newType === type ? meta.color : "#f3f4f6",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: newType === type ? "#fff" : "#6b7094",
-                      flexShrink: 0,
+                      width: 28, height: 28, borderRadius: 7,
+                      background: selected ? m.color : "#f3f4f6",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      color: selected ? "#fff" : "#6b7094", flexShrink: 0,
                     }}>
-                      <Icon size={16} strokeWidth={1.8} />
+                      <Icon size={14} strokeWidth={1.8} />
                     </div>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
-                        {meta.label}
-                        {alreadyUsed && (
-                          <span style={{ fontSize: 10.5, color: "#d97706", marginLeft: 6 }}>ya añadido</span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 11.5, color: "var(--color-muted)" }}>{meta.description}</div>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--color-dark)" }}>{m.label}</div>
+                      <div style={{ fontSize: 11, color: "var(--color-muted)", lineHeight: 1.3 }}>{m.description}</div>
                     </div>
                   </label>
                 );
@@ -214,33 +275,82 @@ export default function ActionsStep({ actions, onAdd, onRemove }: ActionsStepPro
             </div>
           </div>
 
+          {/* Target field */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>
+              Campo destino <span style={{ color: "#dc2626" }}>*</span>
+              <span style={{ fontWeight: 400, color: "var(--color-muted)", marginLeft: 6 }}>
+                (campos de tipo {meta.fieldFilter === "number" ? "número" : "Sí/No"})
+              </span>
+            </label>
+            {compatibleFields.length === 0 ? (
+              <div style={{
+                marginTop: 8, padding: "10px 14px",
+                background: "#fff3cd", border: "1px solid #ffc107",
+                borderRadius: 8, fontSize: 12.5, color: "#856404",
+              }}>
+                No hay campos de tipo {meta.fieldFilter === "number" ? "número" : "Sí/No"} definidos.
+                Añade un campo compatible en el paso anterior.
+              </div>
+            ) : (
+              <select
+                className="form-input"
+                value={newTargetTempId}
+                onChange={(e) => setNewTargetTempId(e.target.value)}
+                style={{ marginTop: 6 }}
+              >
+                <option value="">— Selecciona un campo —</option>
+                {compatibleFields.map((f) => (
+                  <option key={f.tempId} value={f.tempId}>
+                    {f.label} ({f.name})
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Amount (increment/decrement only) */}
+          {meta.hasAmount && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelStyle}>
+                Cantidad <span style={{ fontWeight: 400, color: "var(--color-muted)" }}>(por defecto: 1)</span>
+              </label>
+              <input
+                className="form-input"
+                type="number"
+                min="0.01"
+                step="any"
+                value={newAmount}
+                onChange={(e) => setNewAmount(e.target.value)}
+                placeholder="1"
+                style={{ marginTop: 6, maxWidth: 160 }}
+              />
+            </div>
+          )}
+
           {/* Action name */}
           <div style={{ marginBottom: 16 }}>
             <label style={labelStyle}>
-              Nombre de la acción <span style={{ color: "#dc2626" }}>*</span>
+              Nombre del botón <span style={{ color: "#dc2626" }}>*</span>
             </label>
-            <div style={{ marginTop: 6 }}>
-              <input
-                className="form-input"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="Ej: Registrar entrada de visitante"
-                autoFocus
-              />
-            </div>
+            <input
+              className="form-input"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Ej: Registrar asistencia"
+              style={{ marginTop: 6 }}
+              autoFocus
+            />
           </div>
 
           <div style={{ display: "flex", gap: 10 }}>
-            <button
-              className="btn btn-ghost"
-              onClick={() => { setShowPicker(false); setNewName(""); }}
-            >
+            <button className="btn btn-ghost" onClick={resetForm}>
               Cancelar
             </button>
             <button
               className="btn btn-primary"
               onClick={handleAdd}
-              disabled={!newName.trim()}
+              disabled={!canAdd}
             >
               Añadir acción
             </button>
@@ -249,7 +359,7 @@ export default function ActionsStep({ actions, onAdd, onRemove }: ActionsStepPro
       ) : (
         <button
           className="btn btn-ghost"
-          onClick={() => setShowPicker(true)}
+          onClick={() => setShowForm(true)}
           style={{ alignSelf: "flex-start" }}
         >
           <Plus size={16} strokeWidth={2} />
@@ -257,7 +367,8 @@ export default function ActionsStep({ actions, onAdd, onRemove }: ActionsStepPro
         </button>
       )}
 
-      {actions.length === 0 && !showPicker && (
+      {/* Empty state */}
+      {actions.length === 0 && !showForm && (
         <div style={{
           textAlign: "center",
           padding: "36px 24px",

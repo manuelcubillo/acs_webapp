@@ -42,10 +42,17 @@ export const fieldTypeEnum = pgEnum("field_type", [
   "select",
 ]);
 
-/** Types of actions that can be performed on a card */
+/**
+ * Types of actions that can be performed on a card.
+ * Each type operates on a specific target field:
+ *   - increment / decrement → numeric fields
+ *   - check / uncheck       → boolean fields
+ */
 export const actionTypeEnum = pgEnum("action_type", [
-  "guest_entry",
-  "guest_exit",
+  "increment",
+  "decrement",
+  "check",
+  "uncheck",
 ]);
 
 /** Lifecycle status of an issued card */
@@ -242,9 +249,13 @@ export const fieldValues = pgTable(
 // ─── Action Definitions ──────────────────────────────────────────────────────
 
 /**
- * Configurable action types for a card type.
- * Currently supports guest_entry and guest_exit, which render
- * action buttons when a card is scanned.
+ * Configurable action definitions for a card type.
+ * Each action targets a specific field and modifies its value on execution.
+ *
+ * - increment / decrement: operate on numeric fields (config: { amount: number })
+ * - check / uncheck:       operate on boolean fields (config: null)
+ *
+ * action_logs records the before/after values whenever an action is executed.
  */
 export const actionDefinitions = pgTable(
   "action_definitions",
@@ -253,16 +264,96 @@ export const actionDefinitions = pgTable(
     cardTypeId: uuid("card_type_id")
       .notNull()
       .references(() => cardTypes.id, { onDelete: "cascade" }),
+    /** Button label shown to operators (e.g. "Registrar visita", "Entrada") */
     name: text("name").notNull(),
+    /** Operation type — determines the field type compatibility */
     actionType: actionTypeEnum("action_type").notNull(),
-    /** Extensible configuration (e.g. button color, confirmation message) */
+    /** The field this action reads/writes. Must match actionType field type compatibility. */
+    targetFieldDefinitionId: uuid("target_field_definition_id")
+      .notNull()
+      .references(() => fieldDefinitions.id, { onDelete: "restrict" }),
+    /**
+     * Action parameters.
+     * increment/decrement: { amount: number } (default amount = 1)
+     * check/uncheck:       null
+     */
     config: jsonb("config"),
+    /** lucide-react icon name for the action button (e.g. "plus", "log-in") */
+    icon: text("icon"),
+    /**
+     * Button color key: "green" | "red" | "blue" | "orange" | "purple" | "gray"
+     * Default by type: increment=blue, decrement=orange, check=green, uncheck=red
+     */
+    color: text("color"),
+    /** Display order among action buttons for this card type */
+    position: integer("position").notNull().default(0),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => [
     index("action_definitions_card_type_id_idx").on(table.cardTypeId),
+    index("action_definitions_card_type_active_idx").on(
+      table.cardTypeId,
+      table.isActive,
+    ),
+  ],
+);
+
+// ─── Scan Validations ────────────────────────────────────────────────────────
+
+/**
+ * Rules evaluated automatically when a card is scanned.
+ * They are informational only — they do NOT block action execution.
+ *
+ * Each rule evaluates the current value of a specific field and produces
+ * an alert (error or warning) if the evaluation fails.
+ *
+ * Supported rules by field type:
+ *   boolean: boolean_is_true | boolean_is_false
+ *   number:  number_eq | number_gt | number_lt | number_gte | number_lte | number_between
+ *   date:    date_before | date_after | date_equals
+ */
+export const scanValidations = pgTable(
+  "scan_validations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    cardTypeId: uuid("card_type_id")
+      .notNull()
+      .references(() => cardTypes.id, { onDelete: "cascade" }),
+    /** The field whose current value is evaluated by this rule */
+    fieldDefinitionId: uuid("field_definition_id")
+      .notNull()
+      .references(() => fieldDefinitions.id, { onDelete: "restrict" }),
+    /**
+     * Rule identifier matching a key in SCAN_RULE_EVALUATORS.
+     * Examples: "boolean_is_true", "number_gt", "date_after"
+     */
+    rule: text("rule").notNull(),
+    /**
+     * Rule parameter value (JSONB).
+     * null for boolean rules.
+     * { target: number } for number_eq/gt/lt/gte/lte.
+     * { min: number, max: number } for number_between.
+     * { target: string } or { relative: "today" } for date rules.
+     */
+    value: jsonb("value"),
+    /** Message shown to the operator when this validation fails */
+    errorMessage: text("error_message").notNull(),
+    /** "error" (red, serious problem) | "warning" (yellow, informational) */
+    severity: text("severity").notNull().default("error"),
+    /** Evaluation order; lower runs first */
+    position: integer("position").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("scan_validations_card_type_id_idx").on(table.cardTypeId),
+    index("scan_validations_card_type_active_idx").on(
+      table.cardTypeId,
+      table.isActive,
+    ),
   ],
 );
 

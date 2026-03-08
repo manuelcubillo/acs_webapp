@@ -1,21 +1,24 @@
 /**
  * /cards/[code] — Card Detail
  *
- * Shows all field values for a card + executable actions.
+ * Shows all field values for a card + executable actions + scan validation alerts.
  * Accessible to: operator | admin | master
  */
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Edit, ArrowLeft, Trash2 } from "lucide-react";
+import { Edit, ArrowLeft } from "lucide-react";
 import { requireOperator, AuthenticationError, AuthorizationError } from "@/lib/api";
 import {
   getCardByCode,
   getActionsForCardType,
+  getScanValidationsByCardType,
 } from "@/lib/dal";
+import { validateScan } from "@/lib/validation/scan-validator";
 import DashboardShell from "@/components/layout/DashboardShell";
 import DynamicFieldRenderer from "@/components/cards/DynamicFieldRenderer";
 import CardActions from "@/components/cards/CardActions";
+import ScanAlerts from "@/components/cards/ScanAlerts";
 
 export const dynamic = "force-dynamic";
 
@@ -47,13 +50,20 @@ export default async function CardDetailPage({ params }: CardDetailPageProps) {
     redirect("/cards");
   }
 
-  const actions = await getActionsForCardType(card.cardTypeId).catch(() => []);
+  // Fetch actions and scan validations in parallel
+  const [actions, svRules] = await Promise.all([
+    getActionsForCardType(card.cardTypeId).catch(() => []),
+    getScanValidationsByCardType(card.cardTypeId).catch(() => []),
+  ]);
+
+  // Run scan validations (pure, never throws)
+  const scanResult = validateScan(card.fields, svRules);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <DashboardShell title="Detalle de carnet" role={role}>
       <div style={{ maxWidth: 720, margin: "0 auto" }}>
-        {/* Back + actions */}
+        {/* Back + edit */}
         <div
           style={{
             display: "flex",
@@ -79,29 +89,32 @@ export default async function CardDetailPage({ params }: CardDetailPageProps) {
           </Link>
 
           {isAdmin && (
-            <div style={{ display: "flex", gap: 8 }}>
-              <Link
-                href={`/cards/${encodeURIComponent(decodedCode)}/edit`}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  border: "1.5px solid var(--color-border)",
-                  background: "#fff",
-                  textDecoration: "none",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "var(--color-dark)",
-                }}
-              >
-                <Edit size={14} strokeWidth={1.8} />
-                Editar
-              </Link>
-            </div>
+            <Link
+              href={`/cards/${encodeURIComponent(decodedCode)}/edit`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: "1.5px solid var(--color-border)",
+                background: "#fff",
+                textDecoration: "none",
+                fontSize: 13,
+                fontWeight: 600,
+                color: "var(--color-dark)",
+              }}
+            >
+              <Edit size={14} strokeWidth={1.8} />
+              Editar
+            </Link>
           )}
         </div>
+
+        {/* Scan alerts — shown when any check fails */}
+        {!scanResult.passed && (
+          <ScanAlerts scanResult={scanResult} />
+        )}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 20 }}>
           {/* Card panel */}

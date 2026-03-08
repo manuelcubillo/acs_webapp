@@ -15,18 +15,31 @@ import {
 import { getCardTypeWithFullSchema } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
 import FieldTypeSelector from "@/components/card-types/fields/FieldTypeSelector";
-import type { FieldType } from "@/lib/dal";
 import {
   ArrowLeft,
   Pencil,
   CreditCard,
-  LogIn,
-  LogOut,
+  TrendingUp,
+  TrendingDown,
+  CheckSquare,
+  Square,
+  AlertCircle,
+  AlertTriangle,
   CircleDot,
   CircleOff,
 } from "lucide-react";
+import type { ActionDefinitionWithField, ScanValidationWithField, FieldType } from "@/lib/dal";
 
 export const dynamic = "force-dynamic";
+
+// ─── Action type display metadata ─────────────────────────────────────────────
+
+const ACTION_TYPE_META_DETAIL = {
+  increment: { icon: TrendingUp,   color: "#059669", bg: "#ecfdf5", label: "Incrementar" },
+  decrement: { icon: TrendingDown, color: "#dc2626", bg: "#fef2f2", label: "Decrementar" },
+  check:     { icon: CheckSquare,  color: "#4f5bff", bg: "#eef0ff", label: "Marcar Sí" },
+  uncheck:   { icon: Square,       color: "#6b7094", bg: "#f3f4f6", label: "Marcar No" },
+} as const;
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -56,7 +69,8 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
   }
 
   const activeFields = cardType.fieldDefinitions.filter((f) => f.isActive);
-  const activeActions = cardType.actionDefinitions.filter((a) => a.isActive);
+  const activeActions = (cardType.actionDefinitions as ActionDefinitionWithField[]).filter((a) => a.isActive);
+  const activeScanValidations = (cardType.scanValidations as ScanValidationWithField[]).filter((sv) => sv.isActive);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -135,6 +149,7 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
               <StatChip label="Campos" value={activeFields.length} />
               <StatChip label="Obligatorios" value={activeFields.filter(f => f.isRequired).length} />
               <StatChip label="Acciones" value={activeActions.length} />
+              <StatChip label="Validaciones" value={activeScanValidations.length} />
             </div>
           </div>
 
@@ -152,7 +167,7 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
         </div>
       </div>
 
-      {/* Two-column layout: fields + actions */}
+      {/* Layout: fields (wide) + right column (actions + scan validations) */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 20, alignItems: "start" }}>
 
         {/* Fields */}
@@ -191,7 +206,6 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
                   <div style={{ flexShrink: 0, width: 180 }}>
                     <FieldTypeSelector
                       value={field.fieldType as FieldType}
-                      onChange={() => {}}
                       readOnly
                     />
                   </div>
@@ -230,53 +244,110 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
           )}
         </div>
 
-        {/* Actions */}
-        <div className="card animate-fadein" style={{ padding: "0", overflow: "hidden" }}>
-          <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--color-border-soft)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--color-dark)" }}>
-              Acciones
+        {/* Right column: actions + scan validations stacked */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* Actions */}
+          <div className="card animate-fadein" style={{ padding: "0", overflow: "hidden" }}>
+            <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--color-border-soft)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--color-dark)" }}>
+                Acciones
+              </div>
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--color-muted)", background: "var(--color-page-bg)", padding: "2px 8px", borderRadius: 5 }}>
+                {activeActions.length}
+              </span>
             </div>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--color-muted)", background: "var(--color-page-bg)", padding: "2px 8px", borderRadius: 5 }}>
-              {activeActions.length}
-            </span>
+            {activeActions.length === 0 ? (
+              <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--color-muted)", fontSize: 13, fontStyle: "italic" }}>
+                Sin acciones definidas.
+              </div>
+            ) : (
+              <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+                {activeActions.map((action) => {
+                  const actionMeta = ACTION_TYPE_META_DETAIL[action.actionType as keyof typeof ACTION_TYPE_META_DETAIL] ?? ACTION_TYPE_META_DETAIL.increment;
+                  const Icon = actionMeta.icon;
+                  const amount = (action.config as { amount?: number } | null)?.amount;
+                  return (
+                    <div key={action.id} style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "10px 12px",
+                      background: "#fafbfc",
+                      border: "1px solid var(--color-border-soft)",
+                      borderRadius: 10,
+                    }}>
+                      <div style={{ width: 32, height: 32, borderRadius: 8, background: actionMeta.bg, display: "flex", alignItems: "center", justifyContent: "center", color: actionMeta.color, flexShrink: 0 }}>
+                        <Icon size={15} strokeWidth={1.8} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
+                          {action.name}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--color-muted)", marginTop: 2 }}>
+                          {actionMeta.label}
+                          {amount != null && ` · ${amount}`}
+                          {` → `}
+                          <span style={{ color: "var(--color-secondary)" }}>
+                            {(action as ActionDefinitionWithField).targetFieldLabel}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-          {activeActions.length === 0 ? (
-            <div style={{ padding: "36px 22px", textAlign: "center", color: "var(--color-muted)", fontSize: 13, fontStyle: "italic" }}>
-              Sin acciones definidas.
+
+          {/* Scan Validations */}
+          <div className="card animate-fadein" style={{ padding: "0", overflow: "hidden" }}>
+            <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--color-border-soft)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--color-dark)" }}>
+                Validaciones de escaneo
+              </div>
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--color-muted)", background: "var(--color-page-bg)", padding: "2px 8px", borderRadius: 5 }}>
+                {activeScanValidations.length}
+              </span>
             </div>
-          ) : (
-            <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-              {activeActions.map((action) => {
-                const isEntry = action.actionType === "guest_entry";
-                const Icon = isEntry ? LogIn : LogOut;
-                const color = isEntry ? "#059669" : "#dc2626";
-                const bg = isEntry ? "#ecfdf5" : "#fef2f2";
-                return (
-                  <div key={action.id} style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "10px 12px",
-                    background: "#fafbfc",
-                    border: "1px solid var(--color-border-soft)",
-                    borderRadius: 10,
-                  }}>
-                    <div style={{ width: 32, height: 32, borderRadius: 8, background: bg, display: "flex", alignItems: "center", justifyContent: "center", color, flexShrink: 0 }}>
-                      <Icon size={15} strokeWidth={1.8} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
-                        {action.name}
+            {activeScanValidations.length === 0 ? (
+              <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--color-muted)", fontSize: 13, fontStyle: "italic" }}>
+                Sin validaciones definidas.
+              </div>
+            ) : (
+              <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+                {activeScanValidations.map((sv) => {
+                  const isError = sv.severity === "error";
+                  const color = isError ? "#dc2626" : "#d97706";
+                  const bg = isError ? "#fef2f2" : "#fffbeb";
+                  const Icon = isError ? AlertCircle : AlertTriangle;
+                  return (
+                    <div key={sv.id} style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      padding: "10px 12px",
+                      background: "#fafbfc",
+                      border: "1px solid var(--color-border-soft)",
+                      borderRadius: 10,
+                    }}>
+                      <div style={{ width: 28, height: 28, borderRadius: 7, background: bg, display: "flex", alignItems: "center", justifyContent: "center", color, flexShrink: 0, marginTop: 1 }}>
+                        <Icon size={13} strokeWidth={1.8} />
                       </div>
-                      <div style={{ fontSize: 11, color: "var(--color-muted)", marginTop: 2 }}>
-                        {action.actionType}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--color-dark)" }}>
+                          {sv.errorMessage}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--color-muted)", marginTop: 2 }}>
+                          {(sv as ScanValidationWithField).fieldLabel} · {sv.rule}
+                        </div>
                       </div>
+                      <Tag color={color} bg={bg}>{isError ? "Error" : "Aviso"}</Tag>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

@@ -36,7 +36,6 @@ interface RouteParams {
 
 const ExecuteBodySchema = z.object({
   executedBy: z.string().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
 }).optional();
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
@@ -69,7 +68,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       cardId: card.id,
       actionDefinitionId,
       executedBy: body?.executedBy,
-      metadata: body?.metadata,
     });
 
     return apiSuccess(log, 201);

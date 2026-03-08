@@ -16,3 +16,4 @@ export * from "./field-values";
 export * from "./cards";
 export * from "./actions";
 export * from "./members";
+export * from "./scan-validations";

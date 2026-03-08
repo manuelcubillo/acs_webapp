@@ -28,12 +28,25 @@ import {
   deleteCard,
   listCards,
   searchCards,
+  getScanValidationsByCardType,
 } from "@/lib/dal";
 import type {
   CardWithFields,
   PaginatedResult,
   SearchCardsInput,
 } from "@/lib/dal";
+import {
+  validateScan,
+  type ScanValidationResult,
+} from "@/lib/validation/scan-validator";
+
+// ─── Composite types ──────────────────────────────────────────────────────────
+
+/** Card data enriched with scan validation results, returned on lookup/scan. */
+export interface CardScanResult {
+  card: CardWithFields;
+  scanResult: ScanValidationResult;
+}
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
 
@@ -79,14 +92,21 @@ const SearchCardsSchema = z.object({
 
 /**
  * Get a card by its tenant-scoped code.
+ * Also runs all active scan validations and returns results alongside the card.
  * @role operator | admin | master
  */
 export async function getCardByCodeAction(
   code: string,
-): Promise<ActionResult<CardWithFields>> {
+): Promise<ActionResult<CardScanResult>> {
   return actionHandler(async () => {
     const { tenantId } = await requireOperator();
-    return getCardByCode(code, tenantId);
+    const card = await getCardByCode(code, tenantId);
+
+    // Run scan validations (never throws — informational only)
+    const svRules = await getScanValidationsByCardType(card.cardTypeId);
+    const scanResult = validateScan(card.fields, svRules);
+
+    return { card, scanResult };
   });
 }
 

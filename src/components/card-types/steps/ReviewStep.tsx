@@ -1,26 +1,30 @@
 "use client";
 
 /**
- * ReviewStep (Step 3)
+ * ReviewStep (Step 4)
  *
  * Shows a read-only summary of all wizard data before submission.
  */
 
 import {
   Type, Hash, ToggleLeft, Calendar, Camera, List,
-  LogIn, LogOut, CheckCircle, AlertCircle,
+  TrendingUp, TrendingDown, CheckSquare, Square,
+  AlertCircle, AlertTriangle, CheckCircle,
 } from "lucide-react";
 import type {
   BasicInfo,
   FieldDefinitionDraft,
   ActionDefinitionDraft,
+  ScanValidationDraft,
   FieldType,
+  ActionType,
 } from "@/hooks/useCardTypeWizard";
 
 interface ReviewStepProps {
   basicInfo: BasicInfo;
   fields: FieldDefinitionDraft[];
   actions: ActionDefinitionDraft[];
+  scanValidations: ScanValidationDraft[];
   isEdit: boolean;
   submitError: string | null;
 }
@@ -36,15 +40,28 @@ const FIELD_ICONS: Record<FieldType, { icon: React.ComponentType<{ size?: number
   select:  { icon: List,       color: "#0284c7", bg: "#f0f9ff", label: "Selección" },
 };
 
+// ─── Action type icons ─────────────────────────────────────────────────────────
+
+const ACTION_ICONS: Record<ActionType, { icon: React.ComponentType<{ size?: number; strokeWidth?: number }>; color: string; bg: string; label: string }> = {
+  increment: { icon: TrendingUp,   color: "#059669", bg: "#ecfdf5", label: "Incrementar" },
+  decrement: { icon: TrendingDown, color: "#dc2626", bg: "#fef2f2", label: "Decrementar" },
+  check:     { icon: CheckSquare,  color: "#4f5bff", bg: "#eef0ff", label: "Marcar Sí" },
+  uncheck:   { icon: Square,       color: "#6b7094", bg: "#f3f4f6", label: "Marcar No" },
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ReviewStep({
   basicInfo,
   fields,
   actions,
+  scanValidations,
   isEdit,
   submitError,
 }: ReviewStepProps) {
+  // Build field lookup by tempId for display
+  const fieldByTempId = new Map(fields.map((f) => [f.tempId, f]));
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {/* Header */}
@@ -114,15 +131,10 @@ export default function ReviewStep({
                     {i + 1}
                   </div>
                   <div style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 8,
-                    background: meta.bg,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: meta.color,
-                    flexShrink: 0,
+                    width: 32, height: 32, borderRadius: 8,
+                    background: meta.bg, display: "flex",
+                    alignItems: "center", justifyContent: "center",
+                    color: meta.color, flexShrink: 0,
                   }}>
                     <Icon size={15} strokeWidth={1.8} />
                   </div>
@@ -157,10 +169,12 @@ export default function ReviewStep({
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {actions.map((action) => {
-              const isEntry = action.actionType === "guest_entry";
-              const Icon = isEntry ? LogIn : LogOut;
-              const color = isEntry ? "#059669" : "#dc2626";
-              const bg = isEntry ? "#ecfdf5" : "#fef2f2";
+              const meta = ACTION_ICONS[action.actionType];
+              const Icon = meta.icon;
+              const targetField = fieldByTempId.get(action.targetFieldTempId);
+              const amountText = meta.label === "Incrementar" || meta.label === "Decrementar"
+                ? ` · ${action.config?.amount ?? 1}`
+                : "";
               return (
                 <div
                   key={action.tempId}
@@ -174,13 +188,78 @@ export default function ReviewStep({
                     borderRadius: 10,
                   }}
                 >
-                  <div style={{ width: 32, height: 32, borderRadius: 8, background: bg, display: "flex", alignItems: "center", justifyContent: "center", color, flexShrink: 0 }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: 8,
+                    background: meta.bg, display: "flex",
+                    alignItems: "center", justifyContent: "center",
+                    color: meta.color, flexShrink: 0,
+                  }}>
                     <Icon size={15} strokeWidth={1.8} />
                   </div>
-                  <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
-                    {action.name}
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
+                      {action.name}
+                    </span>
+                    {targetField && (
+                      <span style={{ fontSize: 12, color: "var(--color-muted)", marginLeft: 8 }}>
+                        → {targetField.label}{amountText}
+                      </span>
+                    )}
                   </div>
-                  <Tag color={color} bg={bg}>{action.actionType}</Tag>
+                  <Tag color={meta.color} bg={meta.bg}>{meta.label}</Tag>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Section>
+
+      {/* Scan Validations */}
+      <Section title={`Validaciones de escaneo (${scanValidations.length})`}>
+        {scanValidations.length === 0 ? (
+          <EmptyNote>No se han definido validaciones de escaneo.</EmptyNote>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {scanValidations.map((sv) => {
+              const targetField = fieldByTempId.get(sv.fieldTempId);
+              const isError = sv.severity === "error";
+              const color = isError ? "#dc2626" : "#d97706";
+              const bg = isError ? "#fef2f2" : "#fffbeb";
+              const SvIcon = isError ? AlertCircle : AlertTriangle;
+              return (
+                <div
+                  key={sv.tempId}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 12,
+                    padding: "10px 14px",
+                    background: "#fafbfc",
+                    border: "1px solid var(--color-border-soft)",
+                    borderRadius: 10,
+                  }}
+                >
+                  <div style={{
+                    width: 32, height: 32, borderRadius: 8,
+                    background: bg, display: "flex",
+                    alignItems: "center", justifyContent: "center",
+                    color, flexShrink: 0,
+                  }}>
+                    <SvIcon size={15} strokeWidth={1.8} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
+                      {sv.errorMessage}
+                    </span>
+                    {targetField && (
+                      <div style={{ fontSize: 11.5, color: "var(--color-muted)", marginTop: 2 }}>
+                        {targetField.label} · {sv.rule}
+                      </div>
+                    )}
+                  </div>
+                  <Tag color={color} bg={bg}>
+                    {isError ? "Error" : "Aviso"}
+                  </Tag>
                 </div>
               );
             })}

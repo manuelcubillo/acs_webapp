@@ -11,10 +11,11 @@ import { db } from "@/lib/db";
 import {
   cardTypes,
   fieldDefinitions,
-  actionDefinitions,
 } from "@/lib/db/schema";
 import { NotFoundError } from "./errors";
 import { addFieldDefinition } from "./field-definitions";
+import { getActionsForCardType } from "./actions";
+import { getScanValidationsByCardType } from "./scan-validations";
 import type {
   CardType,
   CreateCardTypeInput,
@@ -22,7 +23,6 @@ import type {
   CardTypeWithFields,
   CardTypeWithFullSchema,
   FieldDefinition,
-  ActionDefinition,
 } from "./types";
 
 /**
@@ -117,17 +117,12 @@ export async function getCardTypeWithFullSchema(
 ): Promise<CardTypeWithFullSchema> {
   const cardType = await getCardTypeById(id, tenantId);
 
-  const actions: ActionDefinition[] = await db
-    .select()
-    .from(actionDefinitions)
-    .where(
-      and(
-        eq(actionDefinitions.cardTypeId, id),
-        eq(actionDefinitions.isActive, true),
-      ),
-    );
+  const [actionDefinitions, scanValidations] = await Promise.all([
+    getActionsForCardType(id),
+    getScanValidationsByCardType(id),
+  ]);
 
-  return { ...cardType, actionDefinitions: actions };
+  return { ...cardType, actionDefinitions, scanValidations };
 }
 
 /**

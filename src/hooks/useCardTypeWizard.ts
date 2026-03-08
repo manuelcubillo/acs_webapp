@@ -3,13 +3,14 @@
 /**
  * useCardTypeWizard
  *
- * Manages state for the 4-step CardType schema builder wizard.
+ * Manages state for the 5-step CardType schema builder wizard.
  *
  * Steps:
- *   0 — BasicInfo       (name, description)
- *   1 — FieldDefinitions (add / reorder / edit fields)
- *   2 — Actions          (add action definitions)
- *   3 — Review           (summary + submit)
+ *   0 — BasicInfo           (name, description)
+ *   1 — FieldDefinitions    (add / reorder / edit fields)
+ *   2 — Actions             (configurable increment/decrement/check/uncheck)
+ *   3 — ScanValidations     (rules evaluated on scan to alert operators)
+ *   4 — Review              (summary + submit)
  *
  * Works in both CREATE mode and EDIT mode (pass `initialData`).
  */
@@ -28,12 +29,18 @@ import {
   updateActionDefinitionAction,
   deactivateActionDefinitionAction,
 } from "@/lib/actions/actions";
+import {
+  createScanValidationAction,
+  updateScanValidationAction,
+  deactivateScanValidationAction,
+} from "@/lib/actions/scan-validations";
 
 // ─── Exported types ───────────────────────────────────────────────────────────
 
 export type FieldType = "text" | "number" | "boolean" | "date" | "photo" | "select";
-export type ActionType = "guest_entry" | "guest_exit";
-export type WizardStep = 0 | 1 | 2 | 3;
+export type ActionType = "increment" | "decrement" | "check" | "uncheck";
+export type ScanValidationSeverity = "error" | "warning";
+export type WizardStep = 0 | 1 | 2 | 3 | 4;
 
 export interface ValidationRule {
   rule: string;
@@ -61,6 +68,11 @@ export interface FieldDefinitionDraft {
 
 /**
  * An action definition in the wizard.
+ *
+ * `targetFieldTempId` references the FieldDefinitionDraft by its `tempId`.
+ * During submit this is resolved to the real DB field_definition_id.
+ * Tip for edit mode: set field drafts' `tempId` equal to their DB `id`,
+ * so `targetFieldTempId` can be set directly to the DB id.
  */
 export interface ActionDefinitionDraft {
   tempId: string;
@@ -68,7 +80,34 @@ export interface ActionDefinitionDraft {
   id?: string;
   name: string;
   actionType: ActionType;
-  config: Record<string, unknown> | null;
+  /** tempId of the target FieldDefinitionDraft. */
+  targetFieldTempId: string;
+  /** increment / decrement: { amount: number }. check / uncheck: null. */
+  config: { amount?: number } | null;
+  icon?: string | null;
+  color?: string | null;
+  position: number;
+}
+
+/**
+ * A scan validation rule in the wizard.
+ *
+ * `fieldTempId` references the FieldDefinitionDraft by its `tempId`.
+ * Resolved to a real DB field_definition_id during submit (same convention
+ * as ActionDefinitionDraft.targetFieldTempId).
+ */
+export interface ScanValidationDraft {
+  tempId: string;
+  /** Undefined for new rules; set in edit mode for existing rules. */
+  id?: string;
+  /** tempId of the target FieldDefinitionDraft. */
+  fieldTempId: string;
+  rule: string;
+  /** Rule-specific config (JSONB). See scan-validator.ts for shapes. */
+  value: unknown;
+  errorMessage: string;
+  severity: ScanValidationSeverity;
+  position: number;
 }
 
 export interface BasicInfo {
@@ -81,16 +120,18 @@ export interface WizardInitialData {
   basicInfo: BasicInfo;
   fields: FieldDefinitionDraft[];
   actions: ActionDefinitionDraft[];
+  scanValidations: ScanValidationDraft[];
 }
 
 // ─── Hook return type ─────────────────────────────────────────────────────────
 
 export interface UseCardTypeWizardReturn {
-  /** Current step index (0–3). */
+  /** Current step index (0–4). */
   step: WizardStep;
   basicInfo: BasicInfo;
   fields: FieldDefinitionDraft[];
   actions: ActionDefinitionDraft[];
+  scanValidations: ScanValidationDraft[];
   isSubmitting: boolean;
   submitError: string | null;
 
@@ -110,9 +151,15 @@ export interface UseCardTypeWizardReturn {
   reorderFields: (newOrder: FieldDefinitionDraft[]) => void;
 
   // Action mutations
-  addAction: (draft: Omit<ActionDefinitionDraft, "tempId">) => void;
+  addAction: (draft: Omit<ActionDefinitionDraft, "tempId" | "position">) => void;
   updateAction: (tempId: string, patch: Partial<Omit<ActionDefinitionDraft, "tempId">>) => void;
   removeAction: (tempId: string) => void;
+
+  // ScanValidation mutations
+  addScanValidation: (draft: Omit<ScanValidationDraft, "tempId" | "position">) => void;
+  updateScanValidation: (tempId: string, patch: Partial<Omit<ScanValidationDraft, "tempId">>) => void;
+  removeScanValidation: (tempId: string) => void;
+  reorderScanValidations: (newOrder: ScanValidationDraft[]) => void;
 
   // Submit
   submit: () => Promise<{ success: true; cardTypeId: string } | { success: false; error: string }>;
@@ -136,10 +183,14 @@ export function useCardTypeWizard(
   const [actions, setActions] = useState<ActionDefinitionDraft[]>(
     initialData?.actions ?? [],
   );
-  /** IDs of existing fields that were removed in edit mode (need to be deactivated). */
+  const [scanValidations, setScanValidations] = useState<ScanValidationDraft[]>(
+    initialData?.scanValidations ?? [],
+  );
+
+  /** IDs of existing DB records removed in edit mode (need deactivation). */
   const [removedFieldIds, setRemovedFieldIds] = useState<string[]>([]);
-  /** IDs of existing actions removed in edit mode. */
   const [removedActionIds, setRemovedActionIds] = useState<string[]>([]);
+  const [removedScanValidationIds, setRemovedScanValidationIds] = useState<string[]>([]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -148,15 +199,13 @@ export function useCardTypeWizard(
 
   const canAdvance: boolean = (() => {
     if (step === 0) return basicInfo.name.trim().length >= 1;
-    if (step === 1) return true; // Fields are optional
-    if (step === 2) return true; // Actions are optional
-    return true;
+    return true; // steps 1–4: optional sections, always advanceable
   })();
 
   // ─── Navigation ──────────────────────────────────────────────────────────
 
   const nextStep = useCallback(() => {
-    if (step < 3 && canAdvance) setStep((s) => (s + 1) as WizardStep);
+    if (step < 4 && canAdvance) setStep((s) => (s + 1) as WizardStep);
   }, [step, canAdvance]);
 
   const prevStep = useCallback(() => {
@@ -195,7 +244,6 @@ export function useCardTypeWizard(
   const removeField = useCallback((tempId: string) => {
     setFields((prev) => {
       const removed = prev.find((f) => f.tempId === tempId);
-      // Track existing DB fields that are removed
       if (removed?.id) {
         setRemovedFieldIds((ids) => [...ids, removed.id!]);
       }
@@ -212,8 +260,11 @@ export function useCardTypeWizard(
   // ─── Action mutations ─────────────────────────────────────────────────────
 
   const addAction = useCallback(
-    (draft: Omit<ActionDefinitionDraft, "tempId">) => {
-      setActions((prev) => [...prev, { ...draft, tempId: crypto.randomUUID() }]);
+    (draft: Omit<ActionDefinitionDraft, "tempId" | "position">) => {
+      setActions((prev) => [
+        ...prev,
+        { ...draft, tempId: crypto.randomUUID(), position: prev.length },
+      ]);
     },
     [],
   );
@@ -237,6 +288,43 @@ export function useCardTypeWizard(
     });
   }, []);
 
+  // ─── ScanValidation mutations ─────────────────────────────────────────────
+
+  const addScanValidation = useCallback(
+    (draft: Omit<ScanValidationDraft, "tempId" | "position">) => {
+      setScanValidations((prev) => [
+        ...prev,
+        { ...draft, tempId: crypto.randomUUID(), position: prev.length },
+      ]);
+    },
+    [],
+  );
+
+  const updateScanValidation = useCallback(
+    (tempId: string, patch: Partial<Omit<ScanValidationDraft, "tempId">>) => {
+      setScanValidations((prev) =>
+        prev.map((sv) => (sv.tempId === tempId ? { ...sv, ...patch } : sv)),
+      );
+    },
+    [],
+  );
+
+  const removeScanValidation = useCallback((tempId: string) => {
+    setScanValidations((prev) => {
+      const removed = prev.find((sv) => sv.tempId === tempId);
+      if (removed?.id) {
+        setRemovedScanValidationIds((ids) => [...ids, removed.id!]);
+      }
+      return prev
+        .filter((sv) => sv.tempId !== tempId)
+        .map((sv, i) => ({ ...sv, position: i }));
+    });
+  }, []);
+
+  const reorderScanValidations = useCallback((newOrder: ScanValidationDraft[]) => {
+    setScanValidations(newOrder.map((sv, i) => ({ ...sv, position: i })));
+  }, []);
+
   // ─── Submit ───────────────────────────────────────────────────────────────
 
   const submit = useCallback(async (): Promise<
@@ -248,40 +336,77 @@ export function useCardTypeWizard(
     try {
       let resolvedCardTypeId: string;
 
+      // Build tempId → real DB id mapping for all fields.
+      // In edit mode, existing fields already have `id`; new ones get mapped
+      // after they're created. For edit mode, we pre-seed the map with known IDs.
+      const fieldIdMap = new Map<string, string>(); // tempId → realId
+
       if (!isEdit) {
         // ── CREATE MODE ──────────────────────────────────────────────────────
+
+        // 1. Create card type (name + description only)
         const createResult = await createCardTypeAction({
           name: basicInfo.name.trim(),
           description: basicInfo.description.trim() || undefined,
-          fieldDefinitions: fields.map((f) => ({
-            name: f.name,
-            label: f.label,
-            fieldType: f.fieldType,
-            isRequired: f.isRequired,
-            position: f.position,
-            defaultValue: f.defaultValue,
-            validationRules: f.validationRules,
-          })),
         });
-
         if (!createResult.success) {
           setSubmitError(createResult.error);
           return { success: false, error: createResult.error };
         }
-
         resolvedCardTypeId = createResult.data.id;
 
-        // Create action definitions
+        // 2. Create fields one-by-one → build fieldIdMap
+        for (const field of fields) {
+          const r = await addFieldDefinitionAction(resolvedCardTypeId, {
+            name: field.name,
+            label: field.label,
+            fieldType: field.fieldType,
+            isRequired: field.isRequired,
+            position: field.position,
+            defaultValue: field.defaultValue,
+            validationRules: field.validationRules,
+          });
+          if (r.success) {
+            fieldIdMap.set(field.tempId, r.data.id);
+          }
+        }
+
+        // 3. Create actions using resolved field IDs
         for (const action of actions) {
+          const targetFieldDefinitionId = fieldIdMap.get(action.targetFieldTempId);
+          if (!targetFieldDefinitionId) continue;
           await createActionDefinitionAction(resolvedCardTypeId, {
             name: action.name,
             actionType: action.actionType,
+            targetFieldDefinitionId,
             config: action.config,
+            icon: action.icon,
+            color: action.color,
+            position: action.position,
+          });
+        }
+
+        // 4. Create scan validations using resolved field IDs
+        for (const sv of scanValidations) {
+          const fieldDefinitionId = fieldIdMap.get(sv.fieldTempId);
+          if (!fieldDefinitionId) continue;
+          await createScanValidationAction(resolvedCardTypeId, {
+            fieldDefinitionId,
+            rule: sv.rule,
+            value: sv.value,
+            errorMessage: sv.errorMessage,
+            severity: sv.severity,
+            position: sv.position,
           });
         }
       } else {
         // ── EDIT MODE ────────────────────────────────────────────────────────
         resolvedCardTypeId = cardTypeId!;
+
+        // Pre-seed fieldIdMap with all existing fields (tempId === id in edit mode)
+        for (const field of fields) {
+          if (field.id) fieldIdMap.set(field.tempId, field.id);
+        }
 
         // 1. Update basic info
         const updateResult = await updateCardTypeAction(resolvedCardTypeId, {
@@ -299,7 +424,7 @@ export function useCardTypeWizard(
         }
 
         // 3. Process fields: add new, update existing
-        const newFieldIds: string[] = [];
+        const orderedFieldIds: string[] = [];
         for (const field of fields) {
           if (!field.id) {
             // New field
@@ -312,9 +437,12 @@ export function useCardTypeWizard(
               defaultValue: field.defaultValue,
               validationRules: field.validationRules,
             });
-            if (r.success) newFieldIds.push(r.data.id);
+            if (r.success) {
+              fieldIdMap.set(field.tempId, r.data.id);
+              orderedFieldIds.push(r.data.id);
+            }
           } else {
-            // Existing field — update
+            // Existing field — update mutable fields
             await updateFieldDefinitionAction(field.id, {
               label: field.label,
               isRequired: field.isRequired,
@@ -322,13 +450,13 @@ export function useCardTypeWizard(
               defaultValue: field.defaultValue,
               validationRules: field.validationRules,
             });
-            newFieldIds.push(field.id);
+            orderedFieldIds.push(field.id);
           }
         }
 
-        // 4. Reorder (by persisted IDs in the new order)
-        if (newFieldIds.length > 0) {
-          await reorderFieldDefinitionsAction(resolvedCardTypeId, newFieldIds);
+        // 4. Reorder fields (use persisted IDs in the new order)
+        if (orderedFieldIds.length > 0) {
+          await reorderFieldDefinitionsAction(resolvedCardTypeId, orderedFieldIds);
         }
 
         // 5. Deactivate removed actions
@@ -339,15 +467,53 @@ export function useCardTypeWizard(
         // 6. Process actions: add new, update existing
         for (const action of actions) {
           if (!action.id) {
+            const targetFieldDefinitionId = fieldIdMap.get(action.targetFieldTempId);
+            if (!targetFieldDefinitionId) continue;
             await createActionDefinitionAction(resolvedCardTypeId, {
               name: action.name,
               actionType: action.actionType,
+              targetFieldDefinitionId,
               config: action.config,
+              icon: action.icon,
+              color: action.color,
+              position: action.position,
             });
           } else {
             await updateActionDefinitionAction(action.id, {
               name: action.name,
               config: action.config,
+              icon: action.icon,
+              color: action.color,
+              position: action.position,
+            });
+          }
+        }
+
+        // 7. Deactivate removed scan validations
+        for (const svId of removedScanValidationIds) {
+          await deactivateScanValidationAction(svId);
+        }
+
+        // 8. Process scan validations: add new, update existing
+        for (const sv of scanValidations) {
+          if (!sv.id) {
+            const fieldDefinitionId = fieldIdMap.get(sv.fieldTempId);
+            if (!fieldDefinitionId) continue;
+            await createScanValidationAction(resolvedCardTypeId, {
+              fieldDefinitionId,
+              rule: sv.rule,
+              value: sv.value,
+              errorMessage: sv.errorMessage,
+              severity: sv.severity,
+              position: sv.position,
+            });
+          } else {
+            await updateScanValidationAction(sv.id, {
+              rule: sv.rule,
+              value: sv.value,
+              errorMessage: sv.errorMessage,
+              severity: sv.severity,
+              position: sv.position,
             });
           }
         }
@@ -367,8 +533,10 @@ export function useCardTypeWizard(
     basicInfo,
     fields,
     actions,
+    scanValidations,
     removedFieldIds,
     removedActionIds,
+    removedScanValidationIds,
   ]);
 
   return {
@@ -376,6 +544,7 @@ export function useCardTypeWizard(
     basicInfo,
     fields,
     actions,
+    scanValidations,
     isSubmitting,
     submitError,
     canAdvance,
@@ -390,6 +559,10 @@ export function useCardTypeWizard(
     addAction,
     updateAction,
     removeAction,
+    addScanValidation,
+    updateScanValidation,
+    removeScanValidation,
+    reorderScanValidations,
     submit,
   };
 }

@@ -24,36 +24,49 @@ import {
   updateActionDefinition,
   deactivateActionDefinition,
   getActionsForCardType,
+  getCompatibleFieldsForAction,
   executeAction,
   getActionLogs,
   getRecentActions,
 } from "@/lib/dal";
 import type {
-  ActionDefinition,
+  ActionDefinitionWithField,
+  ActionExecutionResult,
   ActionLog,
+  FieldDefinition,
   PaginatedResult,
 } from "@/lib/dal";
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
 
-const ActionTypeSchema = z.enum(["guest_entry", "guest_exit"]);
+const ActionTypeSchema = z.enum(["increment", "decrement", "check", "uncheck"]);
 
 const CreateActionDefinitionSchema = z.object({
   name: z.string().min(1).max(200),
   actionType: ActionTypeSchema,
-  config: z.record(z.string(), z.unknown()).nullable().optional(),
+  /** The field this action will modify. */
+  targetFieldDefinitionId: z.string().uuid(),
+  /** increment/decrement: { amount: number }; check/uncheck: null */
+  config: z.object({ amount: z.number().positive().optional() }).nullable().optional(),
+  /** lucide-react icon name (optional) */
+  icon: z.string().max(100).nullable().optional(),
+  /** Tailwind / hex color key (optional) */
+  color: z.string().max(50).nullable().optional(),
+  position: z.number().int().min(0).optional(),
 });
 
 const UpdateActionDefinitionSchema = z.object({
   name: z.string().min(1).max(200).optional(),
-  config: z.record(z.string(), z.unknown()).nullable().optional(),
+  config: z.object({ amount: z.number().positive().optional() }).nullable().optional(),
+  icon: z.string().max(100).nullable().optional(),
+  color: z.string().max(50).nullable().optional(),
+  position: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
 });
 
 const ExecuteActionSchema = z.object({
   cardId: z.string().uuid(),
   actionDefinitionId: z.string().uuid(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 const GetActionLogsSchema = z.object({
@@ -64,12 +77,12 @@ const GetActionLogsSchema = z.object({
 // ─── OPERATOR actions (read + execute) ────────────────────────────────────────
 
 /**
- * List active action definitions for a card type.
+ * List active action definitions for a card type (enriched with field info).
  * @role operator | admin | master
  */
 export async function getActionsForCardTypeAction(
   cardTypeId: string,
-): Promise<ActionResult<ActionDefinition[]>> {
+): Promise<ActionResult<ActionDefinitionWithField[]>> {
   return actionHandler(async () => {
     await requireOperator();
     return getActionsForCardType(cardTypeId);
@@ -77,13 +90,30 @@ export async function getActionsForCardTypeAction(
 }
 
 /**
- * Execute an action on a card (creates an audit log entry).
+ * Get field definitions compatible with a given action type.
+ * Used to populate the target-field selector in the wizard.
+ * @role master
+ */
+export async function getCompatibleFieldsForActionAction(
+  cardTypeId: string,
+  actionType: string,
+): Promise<ActionResult<FieldDefinition[]>> {
+  return actionHandler(async () => {
+    await requireMaster();
+    const parsed = ActionTypeSchema.parse(actionType);
+    return getCompatibleFieldsForAction(cardTypeId, parsed);
+  });
+}
+
+/**
+ * Execute an action on a card.
  * The `executedBy` field is automatically set to the current user's ID.
+ * Returns before/after field values alongside the log entry.
  * @role operator | admin | master
  */
 export async function executeActionAction(
   input: unknown,
-): Promise<ActionResult<ActionLog>> {
+): Promise<ActionResult<ActionExecutionResult>> {
   return actionHandler(async () => {
     const { userId } = await requireOperator();
     const data = ExecuteActionSchema.parse(input);
@@ -91,7 +121,6 @@ export async function executeActionAction(
       cardId: data.cardId,
       actionDefinitionId: data.actionDefinitionId,
       executedBy: userId,
-      metadata: data.metadata,
     });
   });
 }
@@ -133,14 +162,18 @@ export async function getRecentActionsAction(
 export async function createActionDefinitionAction(
   cardTypeId: string,
   input: unknown,
-): Promise<ActionResult<ActionDefinition>> {
+): Promise<ActionResult<ActionDefinitionWithField>> {
   return actionHandler(async () => {
     await requireMaster();
     const data = CreateActionDefinitionSchema.parse(input);
     return createActionDefinition(cardTypeId, {
       name: data.name,
       actionType: data.actionType,
+      targetFieldDefinitionId: data.targetFieldDefinitionId,
       config: data.config,
+      icon: data.icon,
+      color: data.color,
+      position: data.position,
     });
   });
 }
@@ -152,7 +185,7 @@ export async function createActionDefinitionAction(
 export async function updateActionDefinitionAction(
   id: string,
   input: unknown,
-): Promise<ActionResult<ActionDefinition>> {
+): Promise<ActionResult<ActionDefinitionWithField>> {
   return actionHandler(async () => {
     await requireMaster();
     const data = UpdateActionDefinitionSchema.parse(input);

@@ -16,6 +16,7 @@ import {
   fieldValues,
   actionDefinitions,
   actionLogs,
+  scanValidations,
 } from "./access-control";
 
 // ─── Auth Relations ──────────────────────────────────────────────────────────
@@ -58,6 +59,7 @@ export const cardTypesRelations = relations(cardTypes, ({ one, many }) => ({
   fieldDefinitions: many(fieldDefinitions),
   cards: many(cards),
   actionDefinitions: many(actionDefinitions),
+  scanValidations: many(scanValidations),
 }));
 
 // ─── Field Definition Relations ──────────────────────────────────────────────
@@ -70,6 +72,8 @@ export const fieldDefinitionsRelations = relations(
       references: [cardTypes.id],
     }),
     fieldValues: many(fieldValues),
+    actionDefinitions: many(actionDefinitions),
+    scanValidations: many(scanValidations),
   }),
 );
 
@@ -110,9 +114,26 @@ export const actionDefinitionsRelations = relations(
       fields: [actionDefinitions.cardTypeId],
       references: [cardTypes.id],
     }),
+    targetField: one(fieldDefinitions, {
+      fields: [actionDefinitions.targetFieldDefinitionId],
+      references: [fieldDefinitions.id],
+    }),
     actionLogs: many(actionLogs),
   }),
 );
+
+// ─── Scan Validation Relations ───────────────────────────────────────────────
+
+export const scanValidationsRelations = relations(scanValidations, ({ one }) => ({
+  cardType: one(cardTypes, {
+    fields: [scanValidations.cardTypeId],
+    references: [cardTypes.id],
+  }),
+  fieldDefinition: one(fieldDefinitions, {
+    fields: [scanValidations.fieldDefinitionId],
+    references: [fieldDefinitions.id],
+  }),
+}));
 
 // ─── Action Log Relations ────────────────────────────────────────────────────
 

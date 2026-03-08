@@ -141,13 +141,6 @@ export async function requireOperator(): Promise<AuthContext> {
   return requireRole("operator", "admin", "master");
 }
 
-/**
- * Keep backward compatibility — same as requireOperator().
- * Existing code that uses `requireTenant()` continues to work.
- */
-export async function requireTenant(): Promise<AuthContext> {
-  return requireOperator();
-}
 
 /**
  * Allow admin or master.

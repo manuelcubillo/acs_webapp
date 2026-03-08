@@ -3,12 +3,11 @@
 /**
  * CardTypeWizard
  *
- * Orchestrates the 4-step wizard for creating or editing a card type.
+ * Orchestrates the 5-step wizard for creating or editing a card type.
  * Manages step navigation, delegates data to the useCardTypeWizard hook,
  * and renders the appropriate step component.
  *
- * After a successful submit, calls onSuccess(cardTypeId) so the parent
- * can redirect to the detail page.
+ * After a successful submit, redirects to the card type detail page.
  */
 
 import { useRouter } from "next/navigation";
@@ -18,12 +17,15 @@ import WizardStepIndicator from "./WizardStepIndicator";
 import BasicInfoStep from "./steps/BasicInfoStep";
 import FieldDefinitionsStep from "./steps/FieldDefinitionsStep";
 import ActionsStep from "./steps/ActionsStep";
+import ScanValidationsStep from "./steps/ScanValidationsStep";
 import ReviewStep from "./steps/ReviewStep";
 import type { WizardInitialData } from "@/hooks/useCardTypeWizard";
 
 interface CardTypeWizardProps {
   initialData?: WizardInitialData;
 }
+
+const TOTAL_STEPS = 5;
 
 export default function CardTypeWizard({ initialData }: CardTypeWizardProps) {
   const router = useRouter();
@@ -34,6 +36,7 @@ export default function CardTypeWizard({ initialData }: CardTypeWizardProps) {
     basicInfo,
     fields,
     actions,
+    scanValidations,
     isSubmitting,
     submitError,
     canAdvance,
@@ -47,6 +50,8 @@ export default function CardTypeWizard({ initialData }: CardTypeWizardProps) {
     reorderFields,
     addAction,
     removeAction,
+    addScanValidation,
+    removeScanValidation,
     submit,
   } = useCardTypeWizard(initialData);
 
@@ -57,7 +62,7 @@ export default function CardTypeWizard({ initialData }: CardTypeWizardProps) {
     }
   }
 
-  const isLastStep = step === 3;
+  const isLastStep = step === TOTAL_STEPS - 1;
   const isFirstStep = step === 0;
 
   return (
@@ -109,7 +114,7 @@ export default function CardTypeWizard({ initialData }: CardTypeWizardProps) {
           overflow: "auto",
           marginBottom: 24,
         }}
-        key={step} // remount on step change triggers animation
+        key={step} // remount on step change to trigger animation
       >
         {step === 0 && (
           <BasicInfoStep basicInfo={basicInfo} onChange={setBasicInfo} />
@@ -125,16 +130,26 @@ export default function CardTypeWizard({ initialData }: CardTypeWizardProps) {
         )}
         {step === 2 && (
           <ActionsStep
+            fields={fields}
             actions={actions}
             onAdd={addAction}
             onRemove={removeAction}
           />
         )}
         {step === 3 && (
+          <ScanValidationsStep
+            fields={fields}
+            scanValidations={scanValidations}
+            onAdd={addScanValidation}
+            onRemove={removeScanValidation}
+          />
+        )}
+        {step === 4 && (
           <ReviewStep
             basicInfo={basicInfo}
             fields={fields}
             actions={actions}
+            scanValidations={scanValidations}
             isEdit={isEdit}
             submitError={submitError}
           />
@@ -177,7 +192,7 @@ export default function CardTypeWizard({ initialData }: CardTypeWizardProps) {
             fontWeight: 500,
           }}
         >
-          Paso {step + 1} de 4
+          Paso {step + 1} de {TOTAL_STEPS}
         </div>
 
         {/* Right: Next or Submit */}

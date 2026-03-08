@@ -16,6 +16,7 @@ import type {
   actionDefinitions,
   actionLogs,
   tenantMembers,
+  scanValidations,
 } from "@/lib/db/schema";
 
 // ─── Drizzle-derived row types ──────────────────────────────────────────────
@@ -28,6 +29,7 @@ export type FieldValue = InferSelectModel<typeof fieldValues>;
 export type ActionDefinition = InferSelectModel<typeof actionDefinitions>;
 export type ActionLog = InferSelectModel<typeof actionLogs>;
 export type TenantMember = InferSelectModel<typeof tenantMembers>;
+export type ScanValidation = InferSelectModel<typeof scanValidations>;
 
 /** Role a user holds within a tenant. Hierarchical: master > admin > operator. */
 export type TenantRole = TenantMember["role"];
@@ -138,7 +140,8 @@ export interface CardTypeWithFields extends CardType {
 
 /** A card type with field definitions and action definitions. */
 export interface CardTypeWithFullSchema extends CardTypeWithFields {
-  actionDefinitions: ActionDefinition[];
+  actionDefinitions: ActionDefinitionWithField[];
+  scanValidations: ScanValidationWithField[];
 }
 
 // ─── Search / filter ────────────────────────────────────────────────────────
@@ -179,13 +182,33 @@ export type ActionType = ActionDefinition["actionType"];
 export interface CreateActionDefinitionInput {
   name: string;
   actionType: ActionType;
-  config?: Record<string, unknown> | null;
+  /** The field this action will modify. Must be compatible with actionType. */
+  targetFieldDefinitionId: string;
+  /** increment/decrement: { amount: number }. check/uncheck: null. */
+  config?: { amount?: number } | null;
+  /** lucide-react icon name (optional) */
+  icon?: string | null;
+  /** Button color key (optional) */
+  color?: string | null;
+  position?: number;
 }
 
 export interface UpdateActionDefinitionInput {
   name?: string;
-  config?: Record<string, unknown> | null;
+  config?: { amount?: number } | null;
+  icon?: string | null;
+  color?: string | null;
+  position?: number;
   isActive?: boolean;
+}
+
+/** Returned by executeAction — carries before/after field values */
+export interface ActionExecutionResult {
+  log: ActionLog;
+  previousValue: unknown;
+  newValue: unknown;
+  targetFieldName: string;
+  targetFieldLabel: string;
 }
 
 // ─── Action inputs ──────────────────────────────────────────────────────────
@@ -195,7 +218,46 @@ export interface ExecuteActionInput {
   actionDefinitionId: string;
   /** Auth user ID of the person executing the action. */
   executedBy?: string;
-  metadata?: Record<string, unknown>;
+}
+
+// ─── Action Definition with target field info ────────────────────────────────
+
+/** ActionDefinition enriched with the target field's name and type */
+export interface ActionDefinitionWithField extends ActionDefinition {
+  targetFieldName: string;
+  targetFieldLabel: string;
+  targetFieldType: FieldType;
+}
+
+// ─── Scan Validation inputs ──────────────────────────────────────────────────
+
+export type ScanValidationSeverity = "error" | "warning";
+
+export interface CreateScanValidationInput {
+  fieldDefinitionId: string;
+  rule: string;
+  value?: unknown;
+  errorMessage: string;
+  severity?: ScanValidationSeverity;
+  position?: number;
+}
+
+export interface UpdateScanValidationInput {
+  rule?: string;
+  value?: unknown;
+  errorMessage?: string;
+  severity?: ScanValidationSeverity;
+  position?: number;
+  isActive?: boolean;
+}
+
+// ─── Scan Validation enriched ────────────────────────────────────────────────
+
+/** ScanValidation enriched with field metadata */
+export interface ScanValidationWithField extends ScanValidation {
+  fieldName: string;
+  fieldLabel: string;
+  fieldType: FieldType;
 }
 
 // ─── TenantMember inputs ─────────────────────────────────────────────────────

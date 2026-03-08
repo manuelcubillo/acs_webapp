@@ -198,17 +198,39 @@ async function seed() {
   const actionDefs = await db
     .insert(schema.actionDefinitions)
     .values([
+      // Visitante: increment/decrement on "visita_a" (number field)
       {
         cardTypeId: ctVisitante.id,
         name: "Registrar entrada",
-        actionType: "guest_entry",
-        config: { buttonColor: "green", confirmMessage: "¿Confirmar entrada del visitante?" },
+        actionType: "increment" as const,
+        targetFieldDefinitionId: fdVisitante[2].id,  // visita_a (number)
+        config: { amount: 1 },
+        position: 0,
       },
       {
         cardTypeId: ctVisitante.id,
         name: "Registrar salida",
-        actionType: "guest_exit",
-        config: { buttonColor: "red", confirmMessage: "¿Confirmar salida del visitante?" },
+        actionType: "decrement" as const,
+        targetFieldDefinitionId: fdVisitante[2].id,  // visita_a (number)
+        config: { amount: 1 },
+        position: 1,
+      },
+      // Trabajador: check/uncheck on "activo" (boolean field)
+      {
+        cardTypeId: ctTrabajador.id,
+        name: "Marcar activo",
+        actionType: "check" as const,
+        targetFieldDefinitionId: fdTrabajador[3].id,  // activo (boolean)
+        config: null,
+        position: 0,
+      },
+      {
+        cardTypeId: ctTrabajador.id,
+        name: "Marcar inactivo",
+        actionType: "uncheck" as const,
+        targetFieldDefinitionId: fdTrabajador[3].id,  // activo (boolean)
+        config: null,
+        position: 1,
       },
     ])
     .returning();

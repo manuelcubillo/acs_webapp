@@ -11,10 +11,11 @@ import { Check } from "lucide-react";
 import type { WizardStep } from "@/hooks/useCardTypeWizard";
 
 const STEPS: { label: string; sublabel: string }[] = [
-  { label: "Información", sublabel: "Nombre y descripción" },
-  { label: "Campos",      sublabel: "Esquema de datos" },
-  { label: "Acciones",    sublabel: "Definiciones de acción" },
-  { label: "Revisión",    sublabel: "Confirmar y guardar" },
+  { label: "Información",  sublabel: "Nombre y descripción" },
+  { label: "Campos",       sublabel: "Esquema de datos" },
+  { label: "Acciones",     sublabel: "Operaciones de campo" },
+  { label: "Validaciones", sublabel: "Alertas de escaneo" },
+  { label: "Revisión",     sublabel: "Confirmar y guardar" },
 ];
 
 interface WizardStepIndicatorProps {

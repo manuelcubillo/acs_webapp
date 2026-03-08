@@ -47,7 +47,14 @@
       "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm add html5-qrcode)",
       "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node /opt/homebrew/lib/node_modules/pnpm/bin/pnpm.cjs build)",
       "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node /opt/homebrew/lib/node_modules/pnpm/bin/pnpm.cjs exec next build --debug)",
-      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node node_modules/next/dist/bin/next build)"
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node node_modules/next/dist/bin/next build)",
+      "Bash(lsof -i :3000)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/card-types/test-id)",
+      "Bash(curl -s http://localhost:3000/ -L -o /dev/null -w \"%{http_code}\")",
+      "Bash(kill 63525)",
+      "Bash(kill 92316)",
+      "Bash(lsof -ti :3000)",
+      "Bash(xargs kill -9)"
     ]
   }
 }

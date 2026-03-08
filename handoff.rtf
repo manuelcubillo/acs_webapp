@@ -1,0 +1,882 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2868
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 # VEREDILLAS WEB \'97 Technical Handoff Document\
+\
+**Stack**: Next.js 16.1.6 (App Router, Turbopack), React 19, TypeScript, Tailwind CSS 4, Better Auth 1.5.0, Drizzle ORM 0.45.1, Neon PostgreSQL (neon-http), pnpm, Vercel.\
+\
+**Node**: v20 only \'97 Node 22 (homebrew default) is broken (icu4c ABI mismatch v74\uc0\u8596 v77). Use `/opt/homebrew/opt/node@20/bin/node`.\
+\
+---\
+\
+## FILE INVENTORY\
+\
+```\
+src/\
+\uc0\u9500 \u9472 \u9472  middleware.ts                                  \'97 DOES NOT EXIST (no middleware file)\
+\uc0\u9500 \u9472 \u9472  app/\
+\uc0\u9474    \u9500 \u9472 \u9472  layout.tsx                                 \'97 Root layout (Geist fonts, Tailwind)\
+\uc0\u9474    \u9500 \u9472 \u9472  page.tsx                                   \'97 Redirects to /login\
+\uc0\u9474    \u9500 \u9472 \u9472  (auth)/login/page.tsx                      \'97 Login form (client component, authClient.signIn.email)\
+\uc0\u9474    \u9500 \u9472 \u9472  (dashboard)/\
+\uc0\u9474    \u9474    \u9500 \u9472 \u9472  dashboard/\
+\uc0\u9474    \u9474    \u9474    \u9500 \u9472 \u9472  page.tsx                           \'97 Session check \u8594  renders page_prototype\
+\uc0\u9474    \u9474    \u9474    \u9492 \u9472 \u9472  page_prototype.jsx                 \'97 Main dashboard UI (standalone layout, live clock)\
+\uc0\u9474    \u9474    \u9500 \u9472 \u9472  card-types/\
+\uc0\u9474    \u9474    \u9474    \u9500 \u9472 \u9472  page.tsx                           \'97 List all card types (OPERATOR+)\
+\uc0\u9474    \u9474    \u9474    \u9500 \u9472 \u9472  new/page.tsx                       \'97 CardTypeWizard create mode (MASTER)\
+\uc0\u9474    \u9474    \u9474    \u9492 \u9472 \u9472  [id]/\
+\uc0\u9474    \u9474    \u9474        \u9500 \u9472 \u9472  page.tsx                       \'97 Card type detail with full schema (OPERATOR+)\
+\uc0\u9474    \u9474    \u9474        \u9492 \u9472 \u9472  edit/page.tsx                  \'97 CardTypeWizard edit mode, pre-populates initialData (MASTER)\
+\uc0\u9474    \u9474    \u9500 \u9472 \u9472  cards/\
+\uc0\u9474    \u9474    \u9474    \u9500 \u9472 \u9472  page.tsx                           \'97 Card list, ?cardTypeId=&q= search params (OPERATOR+)\
+\uc0\u9474    \u9474    \u9474    \u9500 \u9472 \u9472  new/\
+\uc0\u9474    \u9474    \u9474    \u9474    \u9500 \u9472 \u9472  page.tsx                       \'97 Server shell, ?cardTypeId required (ADMIN+)\
+\uc0\u9474    \u9474    \u9474    \u9474    \u9492 \u9472 \u9472  CardNewClient.tsx              \'97 CardForm in create mode\
+\uc0\u9474    \u9474    \u9474    \u9500 \u9472 \u9472  [code]/\
+\uc0\u9474    \u9474    \u9474    \u9474    \u9500 \u9472 \u9472  page.tsx                       \'97 Card detail: fields + CardActions + ScanAlerts (OPERATOR+)\
+\uc0\u9474    \u9474    \u9474    \u9474    \u9492 \u9472 \u9472  edit/\
+\uc0\u9474    \u9474    \u9474    \u9474        \u9500 \u9472 \u9472  page.tsx                   \'97 Server shell (ADMIN+)\
+\uc0\u9474    \u9474    \u9474    \u9474        \u9492 \u9472 \u9472  CardEditClient.tsx         \'97 CardForm in edit mode\
+\uc0\u9474    \u9474    \u9474    \u9492 \u9472 \u9472  scan/\
+\uc0\u9474    \u9474    \u9474        \u9500 \u9472 \u9472  page.tsx                       \'97 Scan page: reads tenant scanMode (OPERATOR+)\
+\uc0\u9474    \u9474    \u9474        \u9492 \u9472 \u9472  ScanClient.tsx                 \'97 QRScanner + useExternalScanner \u8594  router.push(/cards/[code])\
+\uc0\u9474    \u9474    \u9492 \u9472 \u9472  settings/\
+\uc0\u9474    \u9474        \u9500 \u9472 \u9472  page.tsx                           \'97 Tenant settings shell (MASTER)\
+\uc0\u9474    \u9474        \u9492 \u9472 \u9472  SettingsClient.tsx                 \'97 scanMode selector, calls updateTenantSettingsAction\
+\uc0\u9474    \u9492 \u9472 \u9472  api/\
+\uc0\u9474        \u9500 \u9472 \u9472  auth/[...all]/route.ts                 \'97 Better Auth handler (GET+POST)\
+\uc0\u9474        \u9500 \u9472 \u9472  cards/[code]/route.ts                  \'97 GET card by code (x-tenant-id header)\
+\uc0\u9474        \u9492 \u9472 \u9472  cards/[code]/actions/[actionDefinitionId]/execute/route.ts \'97 POST execute action (x-tenant-id header)\
+\uc0\u9500 \u9472 \u9472  components/\
+\uc0\u9474    \u9500 \u9472 \u9472  layout/\
+\uc0\u9474    \u9474    \u9492 \u9472 \u9472  DashboardShell.tsx                    \'97 Sidebar + topbar layout (client, usePathname)\
+\uc0\u9474    \u9500 \u9472 \u9472  card-types/\
+\uc0\u9474    \u9474    \u9500 \u9472 \u9472  CardTypeWizard.tsx                    \'97 Wizard container, useCardTypeWizard, router.push on success\
+\uc0\u9474    \u9474    \u9500 \u9472 \u9472  WizardStepIndicator.tsx               \'97 Step dots UI\
+\uc0\u9474    \u9474    \u9500 \u9472 \u9472  CardTypeCard.tsx                      \'97 Single card type display card\
+\uc0\u9474    \u9474    \u9500 \u9472 \u9472  CardTypeList.tsx                      \'97 Grid of CardTypeCard\
+\uc0\u9474    \u9474    \u9500 \u9472 \u9472  steps/\
+\uc0\u9474    \u9474    \u9474    \u9500 \u9472 \u9472  BasicInfoStep.tsx                 \'97 name + description inputs\
+\uc0\u9474    \u9474    \u9474    \u9500 \u9472 \u9472  FieldDefinitionsStep.tsx          \'97 FieldList + FieldEditor\
+\uc0\u9474    \u9474    \u9474    \u9500 \u9472 \u9472  ActionsStep.tsx                   \'97 Add/remove action definitions\
+\uc0\u9474    \u9474    \u9474    \u9500 \u9472 \u9472  ScanValidationsStep.tsx           \'97 Add/remove scan validation rules\
+\uc0\u9474    \u9474    \u9474    \u9492 \u9472 \u9472  ReviewStep.tsx                    \'97 Read-only summary (suppressHydrationWarning on clock spans)\
+\uc0\u9474    \u9474    \u9492 \u9472 \u9472  fields/\
+\uc0\u9474    \u9474        \u9500 \u9472 \u9472  FieldEditor.tsx                   \'97 Slide-in panel, create/edit FieldDefinitionDraft\
+\uc0\u9474    \u9474        \u9500 \u9472 \u9472  FieldList.tsx                     \'97 dnd-kit drag-drop reorder list\
+\uc0\u9474    \u9474        \u9500 \u9472 \u9472  FieldTypeSelector.tsx             \'97 6-type visual grid; onChange? optional (Server Component safe)\
+\uc0\u9474    \u9474        \u9492 \u9472 \u9472  ValidationRulesEditor.tsx         \'97 Per-field validation rule toggles\
+\uc0\u9474    \u9492 \u9472 \u9472  cards/\
+\uc0\u9474        \u9500 \u9472 \u9472  CardForm.tsx                          \'97 useCardForm, DynamicFieldInput per field, create/edit\
+\uc0\u9474        \u9500 \u9472 \u9472  CardActions.tsx                       \'97 Execute buttons, before\u8594 after feedback, executeActionAction\
+\uc0\u9474        \u9500 \u9472 \u9472  CardList.tsx                          \'97 Tabs: list/table/profile + CardSearch + CardViewToggle\
+\uc0\u9474        \u9500 \u9472 \u9472  CardTableView.tsx                     \'97 Table with useCardColumns + CardColumnSelector\
+\uc0\u9474        \u9500 \u9472 \u9472  CardProfileView.tsx                   \'97 Single card detail view\
+\uc0\u9474        \u9500 \u9472 \u9472  CardSearch.tsx                        \'97 Controlled search input\
+\uc0\u9474        \u9500 \u9472 \u9472  CardViewToggle.tsx                    \'97 Toggle list/table/profile\
+\uc0\u9474        \u9500 \u9472 \u9472  CardColumnSelector.tsx                \'97 Column visibility picker (useCardColumns)\
+\uc0\u9474        \u9500 \u9472 \u9472  ScanAlerts.tsx                        \'97 Renders ScanValidationResult checks\
+\uc0\u9474        \u9500 \u9472 \u9472  DynamicFieldRenderer.tsx              \'97 switch(fieldType) \u8594  *Renderer\
+\uc0\u9474        \u9500 \u9472 \u9472  DynamicFieldInput.tsx                 \'97 switch(fieldType) \u8594  *Input\
+\uc0\u9474        \u9500 \u9472 \u9472  inputs/\
+\uc0\u9474        \u9474    \u9500 \u9472 \u9472  TextInput.tsx\
+\uc0\u9474        \u9474    \u9500 \u9472 \u9472  NumberInput.tsx\
+\uc0\u9474        \u9474    \u9500 \u9472 \u9472  BooleanInput.tsx\
+\uc0\u9474        \u9474    \u9500 \u9472 \u9472  DateInput.tsx\
+\uc0\u9474        \u9474    \u9500 \u9472 \u9472  PhotoInput.tsx                    \'97 upload to /api/upload\
+\uc0\u9474        \u9474    \u9492 \u9472 \u9472  SelectInput.tsx                   \'97 reads options from validationRules\
+\uc0\u9474        \u9500 \u9472 \u9472  renderers/\
+\uc0\u9474        \u9474    \u9500 \u9472 \u9472  TextRenderer.tsx\
+\uc0\u9474        \u9474    \u9500 \u9472 \u9472  NumberRenderer.tsx\
+\uc0\u9474        \u9474    \u9500 \u9472 \u9472  BooleanRenderer.tsx\
+\uc0\u9474        \u9474    \u9500 \u9472 \u9472  DateRenderer.tsx\
+\uc0\u9474        \u9474    \u9500 \u9472 \u9472  PhotoRenderer.tsx\
+\uc0\u9474        \u9474    \u9492 \u9472 \u9472  SelectRenderer.tsx\
+\uc0\u9474        \u9492 \u9472 \u9472  scanner/\
+\uc0\u9474            \u9500 \u9472 \u9472  QRScanner.tsx                     \'97 html5-qrcode wrapper, dynamic imported (ssr:false)\
+\uc0\u9474            \u9492 \u9472 \u9472  ScannerOverlay.tsx                \'97 UI overlay for QR viewfinder\
+\uc0\u9500 \u9472 \u9472  hooks/\
+\uc0\u9474    \u9500 \u9472 \u9472  useCardTypeWizard.ts                      \'97 5-step wizard state + sequential Server Action submit\
+\uc0\u9474    \u9500 \u9472 \u9472  useCardForm.ts                            \'97 Field values + validateCard + per-field error clearing\
+\uc0\u9474    \u9500 \u9472 \u9472  useCardColumns.ts                         \'97 localStorage-persisted column visibility\
+\uc0\u9474    \u9500 \u9472 \u9472  useScanMode.ts                            \'97 Derives showCamera/showExternalReader from ScanMode\
+\uc0\u9474    \u9500 \u9472 \u9472  useExternalScanner.ts                     \'97 HID barcode reader detection via keydown timing\
+\uc0\u9474    \u9492 \u9472 \u9472  useQRScanner.ts                           \'97 html5-qrcode lifecycle management\
+\uc0\u9492 \u9472 \u9472  lib/\
+    \uc0\u9500 \u9472 \u9472  auth.ts                                   \'97 Better Auth server config\
+    \uc0\u9500 \u9472 \u9472  auth-client.ts                            \'97 Better Auth browser client\
+    \uc0\u9500 \u9472 \u9472  api/\
+    \uc0\u9474    \u9500 \u9472 \u9472  auth.ts                               \'97 requireAuth/requireRole/requireOperator/requireAdmin/requireMaster\
+    \uc0\u9474    \u9500 \u9472 \u9472  errors.ts                             \'97 AppError, AuthenticationError, AuthorizationError, UnprocessableError, ActionResult<T>\
+    \uc0\u9474    \u9500 \u9472 \u9472  response.ts                           \'97 actionHandler, routeHandler, apiSuccess, apiError\
+    \uc0\u9474    \u9492 \u9472 \u9472  index.ts                              \'97 barrel export\
+    \uc0\u9500 \u9472 \u9472  dal/\
+    \uc0\u9474    \u9500 \u9472 \u9472  types.ts                              \'97 All Drizzle-derived types + input/output shapes\
+    \uc0\u9474    \u9500 \u9472 \u9472  errors.ts                             \'97 DalError, NotFoundError, ValidationError, ForbiddenOperationError, DuplicateCodeError\
+    \uc0\u9474    \u9500 \u9472 \u9472  card-types.ts\
+    \uc0\u9474    \u9500 \u9472 \u9472  cards.ts\
+    \uc0\u9474    \u9500 \u9472 \u9472  field-definitions.ts\
+    \uc0\u9474    \u9500 \u9472 \u9472  field-values.ts\
+    \uc0\u9474    \u9500 \u9472 \u9472  actions.ts\
+    \uc0\u9474    \u9500 \u9472 \u9472  scan-validations.ts\
+    \uc0\u9474    \u9500 \u9472 \u9472  members.ts\
+    \uc0\u9474    \u9500 \u9472 \u9472  tenants.ts\
+    \uc0\u9474    \u9492 \u9472 \u9472  index.ts                              \'97 barrel export\
+    \uc0\u9500 \u9472 \u9472  actions/                                  \'97 Server Actions ("use server")\
+    \uc0\u9474    \u9500 \u9472 \u9472  card-types.ts\
+    \uc0\u9474    \u9500 \u9472 \u9472  cards.ts\
+    \uc0\u9474    \u9500 \u9472 \u9472  actions.ts\
+    \uc0\u9474    \u9500 \u9472 \u9472  scan-validations.ts\
+    \uc0\u9474    \u9500 \u9472 \u9472  members.ts\
+    \uc0\u9474    \u9492 \u9472 \u9472  tenants.ts\
+    \uc0\u9500 \u9472 \u9472  validation/\
+    \uc0\u9474    \u9500 \u9472 \u9472  types.ts\
+    \uc0\u9474    \u9500 \u9472 \u9472  engine.ts\
+    \uc0\u9474    \u9500 \u9472 \u9472  scan-validator.ts\
+    \uc0\u9474    \u9500 \u9472 \u9472  validators.ts\
+    \uc0\u9474    \u9500 \u9472 \u9472  rules.ts\
+    \uc0\u9474    \u9500 \u9472 \u9472  messages.ts\
+    \uc0\u9474    \u9492 \u9472 \u9472  index.ts\
+    \uc0\u9492 \u9472 \u9472  db/\
+        \uc0\u9500 \u9472 \u9472  index.ts                              \'97 Lazy Proxy: drizzle(neon(DATABASE_URL))\
+        \uc0\u9492 \u9472 \u9472  schema/\
+            \uc0\u9500 \u9472 \u9472  auth.ts                           \'97 Better Auth tables (user, session, account, verification)\
+            \uc0\u9500 \u9472 \u9472  access-control.ts                 \'97 All app tables + enums\
+            \uc0\u9500 \u9472 \u9472  relations.ts                      \'97 Drizzle relations\
+            \uc0\u9492 \u9472 \u9472  index.ts                          \'97 barrel export\
+```\
+\
+---\
+\
+## DATABASE SCHEMA\
+\
+### Enums\
+```sql\
+field_type:    text | number | boolean | date | photo | select\
+action_type:   increment | decrement | check | uncheck\
+card_status:   active | inactive | suspended | expired\
+tenant_role:   operator | admin | master\
+scan_mode:     camera | external_reader | both\
+```\
+\
+### Tables\
+\
+**`tenants`**\
+| Column | Type | Constraints |\
+|---|---|---|\
+| id | uuid | PK, defaultRandom |\
+| name | text | NOT NULL |\
+| scan_mode | scan_mode | NOT NULL, default 'both' |\
+| created_at | timestamp | NOT NULL, defaultNow |\
+| updated_at | timestamp | NOT NULL, defaultNow |\
+\
+**`card_types`**\
+| Column | Type | Constraints |\
+|---|---|---|\
+| id | uuid | PK, defaultRandom |\
+| tenant_id | uuid | NOT NULL, FK\uc0\u8594 tenants(cascade) |\
+| name | text | NOT NULL |\
+| description | text | \'97 |\
+| is_active | boolean | NOT NULL, default true |\
+| created_at / updated_at | timestamp | NOT NULL, defaultNow |\
+\
+Indexes: `card_types_tenant_id_idx`\
+\
+**`field_definitions`**\
+| Column | Type | Constraints |\
+|---|---|---|\
+| id | uuid | PK, defaultRandom |\
+| card_type_id | uuid | NOT NULL, FK\uc0\u8594 card_types(cascade) |\
+| name | text | NOT NULL (internal snake_case key) |\
+| label | text | NOT NULL (display label) |\
+| field_type | field_type | NOT NULL |\
+| is_required | boolean | NOT NULL, default false |\
+| position | integer | NOT NULL, default 0 |\
+| default_value | text | \'97 |\
+| validation_rules | jsonb | \'97 (shape: `\{rules:[\{rule,value,message?\}]\}`) |\
+| is_active | boolean | NOT NULL, default true |\
+| created_at / updated_at | timestamp | NOT NULL |\
+\
+Indexes: `field_definitions_card_type_id_idx`, `field_definitions_card_type_position_idx(cardTypeId, position)`\
+\
+**`cards`**\
+| Column | Type | Constraints |\
+|---|---|---|\
+| id | uuid | PK, defaultRandom |\
+| code | text | NOT NULL |\
+| card_type_id | uuid | NOT NULL, FK\uc0\u8594 card_types(cascade) |\
+| tenant_id | uuid | NOT NULL, FK\uc0\u8594 tenants(cascade) |\
+| status | card_status | NOT NULL, default 'active' |\
+| created_at / updated_at | timestamp | NOT NULL |\
+\
+Unique: `(tenant_id, code)`. Indexes: tenant_code, tenant_id, card_type_id, tenant_status.\
+\
+**`field_values`**\
+| Column | Type | Constraints |\
+|---|---|---|\
+| id | uuid | PK, defaultRandom |\
+| card_id | uuid | NOT NULL, FK\uc0\u8594 cards(cascade) |\
+| field_definition_id | uuid | NOT NULL, FK\uc0\u8594 field_definitions(**restrict**) |\
+| value_text | text | \'97 |\
+| value_number | doublePrecision | \'97 |\
+| value_boolean | boolean | \'97 |\
+| value_date | timestamp | \'97 |\
+| value_json | jsonb | \'97 |\
+| created_at / updated_at | timestamp | NOT NULL |\
+\
+Unique: `(card_id, field_definition_id)`.\
+\
+**`action_definitions`**\
+| Column | Type | Constraints |\
+|---|---|---|\
+| id | uuid | PK |\
+| card_type_id | uuid | NOT NULL, FK\uc0\u8594 card_types(cascade) |\
+| name | text | NOT NULL |\
+| action_type | action_type | NOT NULL |\
+| target_field_definition_id | uuid | NOT NULL, FK\uc0\u8594 field_definitions(**restrict**) |\
+| config | jsonb | \'97 (`\{amount?: number\}` for inc/dec) |\
+| icon | text | \'97 |\
+| color | text | \'97 |\
+| position | integer | NOT NULL, default 0 |\
+| is_active | boolean | NOT NULL, default true |\
+| created_at / updated_at | timestamp | NOT NULL |\
+\
+**`scan_validations`**\
+| Column | Type | Constraints |\
+|---|---|---|\
+| id | uuid | PK |\
+| card_type_id | uuid | NOT NULL, FK\uc0\u8594 card_types(cascade) |\
+| field_definition_id | uuid | NOT NULL, FK\uc0\u8594 field_definitions(**restrict**) |\
+| rule | text | NOT NULL |\
+| value | jsonb | \'97 |\
+| error_message | text | NOT NULL |\
+| severity | text | NOT NULL, default 'error' |\
+| position | integer | NOT NULL, default 0 |\
+| is_active | boolean | NOT NULL, default true |\
+| created_at / updated_at | timestamp | NOT NULL |\
+\
+**`action_logs`**\
+| Column | Type | Constraints |\
+|---|---|---|\
+| id | uuid | PK |\
+| card_id | uuid | NOT NULL, FK\uc0\u8594 cards(cascade) |\
+| action_definition_id | uuid | NOT NULL, FK\uc0\u8594 action_definitions(**restrict**) |\
+| executed_at | timestamp | NOT NULL, defaultNow |\
+| executed_by | text | FK\uc0\u8594 user(**set null**) |\
+| metadata | jsonb | \'97 (`\{action_type, target_field, before_value, after_value\}`) |\
+\
+Indexes: card_id, action_definition_id, executed_at.\
+\
+**`tenant_members`**\
+| Column | Type | Constraints |\
+|---|---|---|\
+| id | uuid | PK |\
+| tenant_id | uuid | NOT NULL, FK\uc0\u8594 tenants(cascade) |\
+| user_id | text | NOT NULL, FK\uc0\u8594 user(cascade) |\
+| role | tenant_role | NOT NULL, default 'operator' |\
+| is_active | boolean | NOT NULL, default true |\
+| created_at / updated_at | timestamp | NOT NULL |\
+\
+Unique: `(tenant_id, user_id)`. Indexes: tenant_id, user_id.\
+\
+**Better Auth tables** (managed by library): `user`, `session`, `account`, `verification`.\
+- `user` has extra columns: `username text unique`, `display_username text`, `tenant_id uuid`.\
+- `tenant_id` on user is set at login/onboarding; used by `requireRole()` to identify tenant.\
+\
+**Migrations**: `drizzle/0000_*.sql` \uc0\u8594  `0007_*.sql` (8 migrations applied).\
+\
+---\
+\
+## AUTH & ROLES\
+\
+### `src/lib/auth.ts`\
+```typescript\
+betterAuth(\{\
+  database: drizzleAdapter(db, \{ provider: "pg", schema \}),\
+  emailAndPassword: \{ enabled: true \},\
+  plugins: [username()],\
+  trustedOrigins: ["http://localhost:3000", "http://127.0.0.1:3000"],\
+  user: \{ additionalFields: \{ tenantId: \{ type: "string", nullable: true, defaultValue: null \} \} \},\
+\})\
+```\
+\
+### `src/lib/auth-client.ts`\
+```typescript\
+createAuthClient(\{ baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL, plugins: [usernameClient()] \})\
+```\
+\
+### `src/lib/api/auth.ts` \'97 Core Auth Helpers\
+\
+```typescript\
+// Returns \{ userId \} \'97 no tenant. For super-admin ops only.\
+async function requireAuth(): Promise<BasicAuthContext>\
+\
+// Looks up session \uc0\u8594  user.tenantId \u8594  getMemberByUserId(tenantId, userId) live.\
+// Role changes take effect immediately (no re-login needed).\
+async function requireRole(...allowedRoles: TenantRole[]): Promise<AuthContext>\
+\
+async function requireOperator(): Promise<AuthContext>  // operator | admin | master\
+async function requireTenant():  Promise<AuthContext>   // alias for requireOperator()\
+async function requireAdmin():   Promise<AuthContext>   // admin | master\
+async function requireMaster():  Promise<AuthContext>   // master only\
+\
+// External API: reads x-tenant-id header. TODO: replace with API keys.\
+function getTenantFromHeader(request: Request): string\
+```\
+\
+**Context types:**\
+```typescript\
+interface BasicAuthContext \{ userId: string \}\
+interface AuthContext \{ userId: string; tenantId: string; role: TenantRole; memberId: string \}\
+```\
+\
+**Tenant resolution**: `session.user.tenantId` (set on the Better Auth `user` row). Not in the session token \'97 fetched from the `user` object on every request.\
+\
+**Role resolution**: `getMemberByUserId(tenantId, userId)` \'97 live DB lookup, not cached.\
+\
+---\
+\
+## API LAYER\
+\
+### `src/lib/api/errors.ts`\
+```typescript\
+class AppError extends Error \{ constructor(message, code, httpStatus = 500) \}\
+class AuthenticationError extends AppError  // 401, code: "UNAUTHENTICATED"\
+class AuthorizationError extends AppError   // 403, code: "UNAUTHORIZED"\
+class UnprocessableError extends AppError   // 422, code: "UNPROCESSABLE"\
+\
+type ActionResult<T> =\
+  | \{ success: true; data: T \}\
+  | \{ success: false; error: string; code?: string; fieldErrors?: Record<string, string[]> \}\
+```\
+\
+### `src/lib/api/response.ts`\
+```typescript\
+// Server Action wrapper \'97 catches ZodError \uc0\u8594  fieldErrors, AppError \u8594  \{error,code\},\
+// DAL errors \uc0\u8594  mapped, unknown \u8594  INTERNAL_ERROR\
+async function actionHandler<T>(fn: () => Promise<T>): Promise<ActionResult<T>>\
+\
+// Route Handler wrapper \'97 maps errors to HTTP status codes (401/403/404/409/422/500)\
+async function routeHandler(fn: () => Promise<NextResponse>): Promise<NextResponse>\
+\
+function apiSuccess<T>(data: T, status = 200): NextResponse<\{ success: true; data: T \}>\
+function apiError(message, status, code?): NextResponse<\{ success: false; error: string; code? \}>\
+```\
+\
+---\
+\
+## DAL\
+\
+### `src/lib/dal/errors.ts`\
+```typescript\
+class DalError extends Error \{ code: string \}\
+class NotFoundError extends DalError      // code: "NOT_FOUND"\
+class ValidationError extends DalError   // code: "VALIDATION_ERROR"\
+class ForbiddenOperationError extends DalError  // code: "FORBIDDEN_OPERATION"\
+class DuplicateCodeError extends DalError       // code: "DUPLICATE_CODE"\
+```\
+\
+### `src/lib/dal/types.ts` \'97 Key Types\
+```typescript\
+// Drizzle row types (InferSelectModel):\
+type Tenant, CardType, FieldDefinition, Card, FieldValue,\
+     ActionDefinition, ActionLog, TenantMember, ScanValidation\
+\
+// Derived types:\
+type TenantRole = "operator" | "admin" | "master"\
+type FieldType  = "text" | "number" | "boolean" | "date" | "photo" | "select"\
+type ActionType = "increment" | "decrement" | "check" | "uncheck"\
+type ScanMode   = "camera" | "external_reader" | "both"\
+type ScanValidationSeverity = "error" | "warning"\
+\
+// Enriched output types:\
+interface EnrichedFieldValue \{ fieldDefinitionId, name, label, fieldType, isRequired, value, raw: FieldValue \}\
+interface CardWithFields extends Card \{ fields: EnrichedFieldValue[] \}\
+interface CardTypeWithFields extends CardType \{ fieldDefinitions: FieldDefinition[] \}\
+interface CardTypeWithFullSchema extends CardTypeWithFields \{\
+  actionDefinitions: ActionDefinitionWithField[]\
+  scanValidations: ScanValidationWithField[]\
+\}\
+interface ActionDefinitionWithField extends ActionDefinition \{\
+  targetFieldName, targetFieldLabel, targetFieldType: FieldType\
+\}\
+interface ScanValidationWithField extends ScanValidation \{\
+  fieldName, fieldLabel, fieldType: FieldType\
+\}\
+interface MemberWithUser extends TenantMember \{ userName, userEmail: string \}\
+interface ActionExecutionResult \{\
+  log: ActionLog; previousValue, newValue: unknown; targetFieldName, targetFieldLabel: string\
+\}\
+interface PaginatedResult<T> \{ data: T[]; total, limit, offset: number \}\
+```\
+\
+### DAL Functions (all throw DAL errors, never return null)\
+\
+**`card-types.ts`**\
+```typescript\
+createCardType(tenantId: string, data: CreateCardTypeInput): Promise<CardTypeWithFields>\
+getCardTypeById(id, tenantId): Promise<CardTypeWithFields>           // active fields only\
+getCardTypeWithFullSchema(id, tenantId): Promise<CardTypeWithFullSchema>  // active only\
+updateCardType(id, tenantId, data: UpdateCardTypeInput): Promise<CardType>\
+deactivateCardType(id, tenantId): Promise<CardType>                  // sets isActive=false\
+listCardTypes(tenantId): Promise<CardType[]>                         // active only\
+```\
+\
+**`cards.ts`**\
+```typescript\
+createCard(cardTypeId, tenantId, code, values: FieldValueMap): Promise<CardWithFields>\
+  // validates via validateCard(), throws ValidationError; throws DuplicateCodeError on conflict\
+getCardByCode(code, tenantId): Promise<CardWithFields>   // throws NotFoundError\
+getCardById(id, tenantId): Promise<CardWithFields>\
+updateCard(code, tenantId, values): Promise<CardWithFields>  // upserts field values\
+updateCardCode(id, tenantId, newCode): Promise<Card>     // throws DuplicateCodeError\
+deleteCard(code, tenantId): Promise<Card>                // sets status='inactive'\
+listCards(cardTypeId, tenantId, options?: PaginationOptions): Promise<PaginatedResult<CardWithFields>>\
+searchCards(cardTypeId, tenantId, input: SearchCardsInput, options?): Promise<PaginatedResult<CardWithFields>>\
+  // SearchCardsInput: \{ codeContains?, filters?: [...\{fieldName, operator, value\}] \}\
+```\
+\
+**`field-definitions.ts`**\
+```typescript\
+getFieldDefinitionsByCardType(cardTypeId): Promise<FieldDefinition[]>\
+addFieldDefinition(cardTypeId, data: CreateFieldDefinitionInput): Promise<FieldDefinition>\
+updateFieldDefinition(id, data: UpdateFieldDefinitionInput): Promise<FieldDefinition>\
+  // fieldType changes blocked when hasExistingValues(id) === true\
+deactivateFieldDefinition(id): Promise<FieldDefinition>\
+reorderFieldDefinitions(cardTypeId, orderedIds: string[]): Promise<void>\
+hasExistingValues(fieldDefinitionId): Promise<boolean>\
+```\
+\
+**`field-values.ts`**\
+```typescript\
+mapValueToColumn(fieldType, value): TypedColumnPayload  // value \uc0\u8594  correct typed column\
+extractValue(row: FieldValue, fieldType): unknown       // typed column \uc0\u8594  value\
+setFieldValue(cardId, fieldDefinitionId, value): Promise<FieldValue>  // upsert\
+getFieldValues(cardId): Promise<FieldValue[]>\
+deleteFieldValues(cardId): Promise<void>\
+fieldValueExists(cardId, fieldDefinitionId): Promise<boolean>\
+```\
+\
+**`actions.ts`**\
+```typescript\
+createActionDefinition(cardTypeId, input: CreateActionDefinitionInput): Promise<ActionDefinitionWithField>\
+updateActionDefinition(id, input: UpdateActionDefinitionInput): Promise<ActionDefinitionWithField>\
+deactivateActionDefinition(id): Promise<void>\
+getActionsForCardType(cardTypeId): Promise<ActionDefinitionWithField[]>\
+getCompatibleFieldsForAction(cardTypeId, actionType): Promise<FieldDefinition[]>\
+  // increment/decrement \uc0\u8594  number fields; check/uncheck \u8594  boolean fields\
+\
+executeAction(input: ExecuteActionInput): Promise<ActionExecutionResult>\
+  // Atomic DB transaction: read current value \uc0\u8594  compute new value \u8594  setFieldValue \u8594  insert action_log\
+  // metadata includes \{ action_type, target_field, before_value, after_value \}\
+  // ExecuteActionInput: \{ cardId, actionDefinitionId, executedBy?: string \}\
+\
+getActionLogs(cardId, options?): Promise<PaginatedResult<ActionLog>>\
+getRecentActions(tenantId, limit?): Promise<ActionLog[]>\
+```\
+\
+**`scan-validations.ts`**\
+```typescript\
+createScanValidation(cardTypeId, input: CreateScanValidationInput): Promise<ScanValidationWithField>\
+updateScanValidation(id, input: UpdateScanValidationInput): Promise<ScanValidationWithField>\
+deactivateScanValidation(id): Promise<void>\
+reorderScanValidations(cardTypeId, orderedIds): Promise<void>\
+getScanValidationsByCardType(cardTypeId): Promise<ScanValidationWithField[]>\
+getRawScanValidationsByCardType(cardTypeId): Promise<ScanValidation[]>\
+```\
+\
+**`members.ts`**\
+```typescript\
+isMemberOfTenant(userId, tenantId): Promise<boolean>\
+getMemberByUserId(tenantId, userId): Promise<TenantMember>  // throws NotFoundError if inactive\
+getMemberById(tenantId, memberId): Promise<TenantMember>\
+listMembers(tenantId): Promise<MemberWithUser[]>\
+countActiveMasters(tenantId): Promise<number>\
+addMember(tenantId, userId, input: AddMemberInput): Promise<TenantMember>\
+  // reactivates if previously inactive; unique constraint on (tenantId, userId)\
+updateMemberRole(tenantId, memberId, newRole): Promise<TenantMember>\
+  // throws ForbiddenOperationError if downgrading last active master\
+deactivateMember(tenantId, memberId, requesterId): Promise<void>\
+  // throws ForbiddenOperationError on self-deactivation or last master removal\
+```\
+\
+**`tenants.ts`**\
+```typescript\
+createTenant(data): Promise<Tenant>\
+getTenantById(id): Promise<Tenant>           // throws NotFoundError\
+updateTenant(id, data): Promise<Tenant>\
+updateTenantSettings(id, data: UpdateTenantSettingsInput): Promise<Tenant>\
+listTenants(): Promise<Tenant[]>\
+deleteTenant(id): Promise<void>              // cascades all related data\
+```\
+\
+---\
+\
+## VALIDATION ENGINE\
+\
+### `src/lib/validation/types.ts`\
+```typescript\
+interface FieldDefinitionShape \{ id, name, label, fieldType: FieldType, isRequired, validationRules: ValidationRules|null \}\
+interface ValidationRule \{ rule: string; value: unknown; message?: string \}\
+interface ValidationRules \{ rules: ValidationRule[] \}\
+interface FieldValidationContext \{ fieldDefinition: FieldDefinitionShape; value: unknown; allValues? \}\
+interface ValidationError \{ fieldId, fieldLabel, rule, message: string \}\
+interface ValidationResult \{ valid: boolean; errors: ValidationError[] \}\
+type ValidatorFn = (value, ruleValue, context: FieldValidationContext) => boolean\
+interface RuleDefinition \{ rule, description, paramType: "number"|"string"|"boolean"|"string[]"|"iso-date", example? \}\
+```\
+\
+### `src/lib/validation/engine.ts`\
+```typescript\
+validateField(context: FieldValidationContext): ValidationResult\
+validateCard(fieldDefinitions: FieldDefinitionShape[], values: Record<string, unknown>): ValidationResult\
+getApplicableRules(fieldType: FieldType): RuleDefinition[]\
+```\
+Used by `useCardForm` (frontend) and `createCard`/`updateCard` in DAL (backend).\
+\
+### `src/lib/validation/scan-validator.ts`\
+```typescript\
+// Pure TS, no DB, never throws. Unknown rules \uc0\u8594  failed check.\
+function validateScan(\
+  fieldValues: EnrichedFieldValue[],\
+  scanValidations: ScanValidationWithField[]\
+): ScanValidationResult\
+\
+interface ScanValidationCheck \{\
+  scanValidationId, fieldDefinitionId, fieldLabel, rule: string\
+  passed: boolean\
+  severity: "error" | "warning"\
+  message: string  // empty string when passed\
+\}\
+interface ScanValidationResult \{ passed: boolean; results: ScanValidationCheck[] \}\
+```\
+\
+**`SCAN_RULE_EVALUATORS`** map (exact implementations):\
+- `boolean_is_true`: `v === true`\
+- `boolean_is_false`: `v === false`\
+- `number_eq/gt/lt/gte/lte`: compare `v` to `(rv as \{target:number\}).target`\
+- `number_between`: `v >= rv.min && v <= rv.max`\
+- `date_before/after/equals`: midnight-normalized Date comparison; `\{relative:"today"\}` resolves dynamically\
+\
+**Scan rule JSONB value shapes**:\
+```\
+boolean_*       \uc0\u8594  null\
+number_eq/gt/\'85  \uc0\u8594  \{ target: number \}\
+number_between  \uc0\u8594  \{ min: number, max: number \}\
+date_*          \uc0\u8594  \{ target: "YYYY-MM-DD" \}  OR  \{ relative: "today" \}\
+```\
+\
+---\
+\
+## SERVER ACTIONS\
+\
+All exported from `src/lib/actions/`. All wrapped with `actionHandler()` \uc0\u8594  return `ActionResult<T>`. All validate input with Zod before DAL calls.\
+\
+### `card-types.ts`\
+| Action | Role | DAL call |\
+|---|---|---|\
+| `getCardTypeAction(id)` | OPERATOR | `getCardTypeWithFullSchema` |\
+| `listCardTypesAction()` | OPERATOR | `listCardTypes` |\
+| `createCardTypeAction(input)` | MASTER | `createCardType` |\
+| `updateCardTypeAction(id, input)` | MASTER | `updateCardType` |\
+| `deactivateCardTypeAction(id)` | MASTER | `deactivateCardType` |\
+| `addFieldDefinitionAction(cardTypeId, input)` | MASTER | `addFieldDefinition` |\
+| `updateFieldDefinitionAction(fieldDefId, input)` | MASTER | `updateFieldDefinition` |\
+| `deactivateFieldDefinitionAction(fieldDefId)` | MASTER | `deactivateFieldDefinition` |\
+| `reorderFieldDefinitionsAction(cardTypeId, orderedIds)` | MASTER | `reorderFieldDefinitions` |\
+\
+### `cards.ts`\
+| Action | Role | Notes |\
+|---|---|---|\
+| `getCardByCodeAction(code)` | OPERATOR | Returns `\{card, scanResult\}` \'97 runs `validateScan` |\
+| `getCardByIdAction(id)` | OPERATOR | |\
+| `listCardsAction(input)` | OPERATOR | |\
+| `searchCardsAction(input)` | OPERATOR | |\
+| `createCardAction(input)` | ADMIN | |\
+| `updateCardAction(code, input)` | ADMIN | |\
+| `updateCardCodeAction(id, input)` | ADMIN | |\
+| `deleteCardAction(code)` | ADMIN | |\
+\
+### `actions.ts`\
+| Action | Role | Notes |\
+|---|---|---|\
+| `getActionsForCardTypeAction(cardTypeId)` | OPERATOR | |\
+| `getCompatibleFieldsForActionAction(cardTypeId, type)` | MASTER | |\
+| `executeActionAction(input)` | OPERATOR | Auto-captures `executedBy` from session userId |\
+| `getActionLogsAction(cardId, input)` | OPERATOR | |\
+| `getRecentActionsAction(limit?)` | OPERATOR | |\
+| `createActionDefinitionAction(cardTypeId, input)` | MASTER | |\
+| `updateActionDefinitionAction(id, input)` | MASTER | |\
+| `deactivateActionDefinitionAction(id)` | MASTER | |\
+\
+### `scan-validations.ts`\
+| Action | Role |\
+|---|---|\
+| `getScanValidationsByCardTypeAction(cardTypeId)` | OPERATOR |\
+| `createScanValidationAction(cardTypeId, input)` | MASTER |\
+| `updateScanValidationAction(id, input)` | MASTER |\
+| `deactivateScanValidationAction(id)` | MASTER |\
+| `reorderScanValidationsAction(cardTypeId, input)` | MASTER |\
+\
+### `members.ts`\
+| Action | Role | Notes |\
+|---|---|---|\
+| `inviteMemberAction(input)` | MASTER | Finds user by email (must already be registered) |\
+| `updateMemberRoleAction(memberId, input)` | MASTER | |\
+| `deactivateMemberAction(memberId)` | MASTER | |\
+| `listMembersAction()` | MASTER | |\
+| `getMemberAction(memberId)` | MASTER | |\
+\
+### `tenants.ts`\
+| Action | Role |\
+|---|---|\
+| `createTenantAction(input)` | `requireAuth()` only |\
+| `getTenantAction(id)` | `requireAuth()` |\
+| `listTenantsAction()` | `requireAuth()` |\
+| `updateTenantAction(id, input)` | `requireAuth()` |\
+| `updateTenantSettingsAction(input)` | MASTER |\
+| `deleteTenantAction(id)` | `requireAuth()` |\
+\
+---\
+\
+## API ROUTES\
+\
+| Method | Path | Auth | What it does |\
+|---|---|---|---|\
+| GET+POST | `/api/auth/[...all]` | Better Auth | All auth endpoints |\
+| GET | `/api/cards/[code]` | `x-tenant-id` header | `getCardByCode` + `validateScan` |\
+| POST | `/api/cards/[code]/actions/[actionDefinitionId]/execute` | `x-tenant-id` header | `executeAction` |\
+\
+> **Note**: External API currently uses `x-tenant-id` header with no key validation. TODO comment: `API_AUTH \'97 implement API key lookup`.\
+\
+---\
+\
+## HOOKS\
+\
+### `useCardTypeWizard(initialData?: WizardInitialData): UseCardTypeWizardReturn`\
+\
+**State**: `step (0\'964)`, `basicInfo`, `fields: FieldDefinitionDraft[]`, `actions: ActionDefinitionDraft[]`, `scanValidations: ScanValidationDraft[]`, `removedFieldIds[]`, `removedActionIds[]`, `removedScanValidationIds[]`, `isSubmitting`, `submitError`.\
+\
+**canAdvance**: step 0 requires `basicInfo.name.trim().length >= 1`; steps 1\'964 always true.\
+\
+**tempId convention (CRITICAL)**:\
+- Create mode: `tempId = crypto.randomUUID()` (never in DB)\
+- Edit mode: `tempId === field.id` (DB UUID) \'97 allows `targetFieldTempId`/`fieldTempId` to directly reference existing DB IDs without resolution\
+- `fieldIdMap: Map<tempId, realId>` built during submit to resolve references\
+\
+**Submit flow (CREATE)**:\
+1. `createCardTypeAction(\{name, description\})` \uc0\u8594  get `resolvedCardTypeId`\
+2. For each field: `addFieldDefinitionAction` \uc0\u8594  `fieldIdMap.set(tempId, realId)`\
+3. For each action: resolve `targetFieldTempId` \uc0\u8594  `targetFieldDefinitionId`, `createActionDefinitionAction`\
+4. For each scanValidation: resolve `fieldTempId` \uc0\u8594  `fieldDefinitionId`, `createScanValidationAction`\
+\
+**Submit flow (EDIT)**:\
+1. Pre-seed `fieldIdMap` with existing fields (tempId===id)\
+2. `updateCardTypeAction`\
+3. Deactivate `removedFieldIds` \uc0\u8594  process fields (add new / update existing) \u8594  `reorderFieldDefinitionsAction`\
+4. Deactivate `removedActionIds` \uc0\u8594  process actions (add new / update existing; actionType immutable)\
+5. Deactivate `removedScanValidationIds` \uc0\u8594  process scan validations (add new / update existing)\
+\
+**All calls are sequential** (not parallel) \'97 no Promise.all in submit.\
+\
+### `useCardForm(fields: FieldDefinitionShape[], initialValues?: Record<string, unknown>)`\
+Returns: `\{ values, errors: Record<string,string>, setValue(fieldId, value), validate(): boolean, isLoading, setIsLoading, setValues \}`\
+- `validate()` calls `validateCard(fields, values)`, populates per-field errors\
+- `setValue` clears the field's error on change\
+\
+### `useCardColumns(cardTypeId: string, fieldIds: string[])`\
+Returns: `\{ visibleColumns: string[], toggleColumn(fieldId), resetColumns() \}`\
+- Persists to `localStorage[columns_$\{cardTypeId\}]`\
+- Default: first 5 field IDs\
+- Guards against removing last visible column\
+\
+### `useScanMode(scanMode: ScanMode)`\
+Returns: `\{ scanMode, showCamera: boolean, showExternalReader: boolean \}` \'97 pure derivation, no state.\
+\
+### `useExternalScanner(\{ onScan, enabled? \})`\
+Listens to `document keydown`. Detects HID barcode readers by timing:\
+- `THRESHOLD_MS = 50ms` between chars \uc0\u8594  scanner\
+- `MIN_LENGTH = 4` chars minimum\
+- `Enter` key flushes buffer and calls `onScan(code)`\
+- Human input resets buffer\
+\
+### `useQRScanner(\{ onScan, enabled? \})`\
+Returns: `\{ isScanning, error: string|null, start(elementId), stop() \}`\
+- Dynamic imports `html5-qrcode` (avoids SSR)\
+- `facingMode: "environment"`, `fps: 10`, `qrbox: 250\'d7250`\
+\
+---\
+\
+## COMPONENTS\
+\
+### `DashboardShell` (`"use client"`)\
+Props: `\{ children, title: string, role?: TenantRole, userName?: string \}`\
+- Sidebar nav filtered by `canSee(role, minRole)` using `ROLE_ORDER: \{operator:1, admin:2, master:3\}`\
+- Nav items: `/dashboard`, `/card-types` (operator+), `/cards` (operator+), `/members` (master)\
+- Settings link always shown; Logout: `authClient.signOut()` \uc0\u8594  `window.location.href = "/login"`\
+- Active detection: `/dashboard` exact match; others `pathname.startsWith(href)`\
+\
+### `CardTypeWizard` (`"use client"`)\
+Wraps `useCardTypeWizard(initialData?)`. On `submit()` success \uc0\u8594  `router.push(/card-types/$\{cardTypeId\})`.\
+\
+### `FieldTypeSelector` (`"use client"`)\
+Props: `\{ value: FieldType|null, onChange?: (type: FieldType)=>void, readOnly?: boolean \}`\
+- `onChange` is **optional** \'97 safe to render from Server Components without passing it\
+- `readOnly=true` \uc0\u8594  buttons disabled, onClick is no-op\
+\
+### `CardActions` (`"use client"`)\
+Props: `\{ cardId: string, actions: ActionDefinitionWithField[], onActionExecuted?: ()=>void \}`\
+- Calls `executeActionAction(\{cardId, actionDefinitionId\})`\
+- Shows before\uc0\u8594 after via `feedback.result.previousValue`/`newValue`\
+- One action loading at a time (`loadingId` state)\
+\
+### `DynamicFieldRenderer` (`"use client"`)\
+Props: `\{ fieldType: FieldType, value: unknown, label?: string \}`\
+Switch \uc0\u8594  `TextRenderer|NumberRenderer|BooleanRenderer|DateRenderer|PhotoRenderer|SelectRenderer`\
+\
+### `DynamicFieldInput` (`"use client"`)\
+Props: `\{ field: FieldDefinitionShape, value: unknown, onChange: (v)=>void, error?, disabled?, tenantId? \}`\
+Switch \uc0\u8594  `TextInput|NumberInput|BooleanInput|DateInput|PhotoInput|SelectInput`\
+- `PhotoInput` receives `tenantId` for upload\
+- `SelectInput` receives `validationRules` to extract options\
+\
+### `ScanClient` (`"use client"`)\
+Reads `scanMode` prop from server. `QRScanner` loaded with `dynamic(..., \{ssr:false\})`. Both hooks active simultaneously when mode is `"both"`. On scan \uc0\u8594  `router.push(/cards/$\{encodeURIComponent(code.trim())\})`.\
+\
+---\
+\
+## PAGES & ROUTING\
+\
+| Route | File | Auth | Data fetching |\
+|---|---|---|---|\
+| `/` | `app/page.tsx` | \'97 | redirect /login |\
+| `/login` | `(auth)/login/page.tsx` | \'97 | Client form, `authClient.signIn.email` |\
+| `/dashboard` | `(dashboard)/dashboard/page.tsx` | session only | `auth.api.getSession` \uc0\u8594  `page_prototype` |\
+| `/card-types` | `.../card-types/page.tsx` | OPERATOR | `listCardTypes` + `getCardTypeWithFullSchema` per type |\
+| `/card-types/new` | `.../new/page.tsx` | MASTER | No data fetch, renders `CardTypeWizard` |\
+| `/card-types/[id]` | `.../[id]/page.tsx` | OPERATOR | `getCardTypeWithFullSchema` |\
+| `/card-types/[id]/edit` | `.../[id]/edit/page.tsx` | MASTER | `getCardTypeWithFullSchema` \uc0\u8594  maps to `WizardInitialData` |\
+| `/cards` | `.../cards/page.tsx` | OPERATOR | `listCardTypes`+`getTenantById`+`searchCards` (searchParams: `?cardTypeId&q`) |\
+| `/cards/new` | `.../new/page.tsx` | ADMIN | `getCardTypeWithFullSchema` (searchParams: `?cardTypeId`) |\
+| `/cards/[code]` | `.../[code]/page.tsx` | OPERATOR | `getCardByCode`+`getActionsForCardType`+`getScanValidationsByCardType`+`validateScan` |\
+| `/cards/[code]/edit` | `.../[code]/edit/page.tsx` | ADMIN | `getCardByCode`+schema |\
+| `/cards/scan` | `.../scan/page.tsx` | OPERATOR | `getTenantById` for scanMode |\
+| `/settings` | `.../settings/page.tsx` | MASTER | `getTenantById` |\
+\
+**Edit mode tempId convention** (card-types/[id]/edit/page.tsx):\
+```typescript\
+// Fields: tempId = field.id (DB UUID) \'97 so actions/scanValidations reference DB IDs directly\
+fieldDrafts[i].tempId = field.id\
+fieldDrafts[i].id     = field.id\
+\
+// Actions: targetFieldTempId = targetFieldDefinitionId (DB UUID = field tempId)\
+actionDrafts[i].targetFieldTempId = action.targetFieldDefinitionId\
+\
+// ScanValidations: fieldTempId = fieldDefinitionId (DB UUID = field tempId)\
+scanValidationDrafts[i].fieldTempId = sv.fieldDefinitionId\
+```\
+\
+---\
+\
+## DATABASE CONNECTION\
+\
+```typescript\
+// src/lib/db/index.ts \'97 lazy Proxy, init on first use (avoids build-time DB calls)\
+const db = new Proxy(\{\} as NeonHttpDatabase<typeof schema>, \{\
+  get(_, prop) \{ return Reflect.get(getDb(), prop) \}\
+\})\
+// getDb() \uc0\u8594  drizzle(neon(process.env.DATABASE_URL!), \{ schema \})\
+```\
+\
+---\
+\
+## DEPENDENCIES\
+\
+| Package | Version | Purpose |\
+|---|---|---|\
+| `next` | 16.1.6 | Framework |\
+| `react` / `react-dom` | 19.2.3 | UI |\
+| `better-auth` | 1.5.0 | Auth (email+password+username) |\
+| `drizzle-orm` | 0.45.1 | ORM |\
+| `@neondatabase/serverless` | 1.0.2 | Neon HTTP driver |\
+| `zod` | 4.3.6 | Input validation in Server Actions |\
+| `html5-qrcode` | 2.3.8 | Camera QR scanning |\
+| `@dnd-kit/core` + `/sortable` + `/utilities` | 6.3.1 / 10.0.0 / 3.2.2 | Drag-drop field reordering |\
+| `lucide-react` | 0.577.0 | Icons |\
+| `drizzle-kit` | 0.31.9 | Migrations |\
+| `vitest` | 4.0.18 | Tests |\
+| `tsx` | 4.21.0 | Scripts (seed.ts) |\
+\
+No shadcn/ui installed. All UI is custom inline styles.\
+\
+---\
+\
+## ENVIRONMENT VARIABLES\
+\
+```\
+DATABASE_URL=postgresql://...          # Neon connection string\
+BETTER_AUTH_SECRET=...                 # openssl rand -hex 32\
+BETTER_AUTH_URL=http://localhost:3000\
+NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000\
+```\
+\
+## CONFIGURATION FILES\
+\
+**`next.config.ts`**: `allowedDevOrigins: ["127.0.0.1", "192.168.1.140"]`\
+\
+**`drizzle.config.ts`**: `schema: "./src/lib/db/schema/index.ts"`, `out: "./drizzle"`, `dialect: "postgresql"`\
+\
+**Scripts**: `pnpm dev|build|start|lint`, `pnpm db:generate|db:migrate|db:studio`, `pnpm db:seed`, `pnpm test|test:watch`\
+\
+---\
+\
+## PATTERNS & CONVENTIONS\
+\
+**Imports**: `@/` alias for `src/`. Barrel exports in `src/lib/api/index.ts` and `src/lib/dal/index.ts`.\
+\
+**Error handling (Server Actions)**:\
+```typescript\
+// Pattern used in every page:\
+try \{ context = await requireMaster() \}\
+catch (e) \{\
+  if (e instanceof AuthenticationError) redirect("/login")\
+  if (e instanceof AuthorizationError) redirect("/dashboard") // or /card-types/[id]\
+  redirect("/login")\
+\}\
+```\
+\
+**Server Components**: All pages are `async` server components with `export const dynamic = "force-dynamic"`. No ISR.\
+\
+**Client boundary split**: Heavy pages use `page.tsx` (server, auth+data) + `*Client.tsx` (client, UI state). Example: `cards/new/page.tsx` + `CardNewClient.tsx`.\
+\
+**Soft deletes**: `isActive = false` everywhere. DAL functions filter `isActive = true` by default.\
+\
+**Field value storage**: Type-specific columns (`value_text|number|boolean|date|json`). `mapValueToColumn` / `extractValue` in `field-values.ts` handle the mapping.\
+\
+**Form validation timing**: `useCardForm.validate()` called on submit only; per-field errors cleared on `setValue`.\
+\
+**Clock hydration**: `page_prototype.jsx` uses `useState(new Date())` + `suppressHydrationWarning` on date/time `<span>` elements to suppress SSR mismatch.\
+\
+---\
+\
+## KNOWN ISSUES & TODOS\
+\
+1. **`TODO: API_AUTH`** in `src/lib/api/auth.ts:177` \'97 `getTenantFromHeader` uses raw `x-tenant-id` header with no authentication. Comment: "implement API key lookup where each key carries a pre-configured role."\
+\
+2. **`page_prototype.jsx`** \'97 Dashboard main view is a `.jsx` prototype file with its own layout (doesn't use `DashboardShell`). The proper `page.tsx` just does session check and renders it.\
+\
+3. **Member invitation** (`inviteMemberAction`) \'97 requires user to already exist in DB (no email invite flow). Throws if user not found by email.\
+\
+4. **No middleware** \'97 `src/middleware.ts` does not exist. Auth protection is handled at the page level via `requireOperator/Admin/Master()` throws, not via Next.js middleware.\
+\
+5. **`/members` page** \'97 `DashboardShell` has nav item `/members` (master only) but no corresponding page file was found in the glob results. May be missing or not yet implemented.\
+\
+6. **`fieldShapes` unused** in `cards/page.tsx:93` \'97 `void fieldShapes` comment acknowledges it's computed but not passed to `CardList` (passed as `fieldDefs` instead).\
+\
+7. **`selectInput` options** \'97 `select` field type options are stored inside `validationRules.rules` (no dedicated `options` column). `SelectInput` reads them from `validationRules`.\
+}
