@@ -311,20 +311,26 @@ async function seed() {
     .insert(schema.actionLogs)
     .values([
       {
+        tenantId: tenant1.id,
         cardId: vis1.id,
         actionDefinitionId: actionDefs[0].id,
+        logType: "action" as const,
         executedAt: new Date("2026-03-05T09:30:00"),
         metadata: { gate: "Entrada principal" },
       },
       {
+        tenantId: tenant1.id,
         cardId: vis1.id,
         actionDefinitionId: actionDefs[1].id,
+        logType: "action" as const,
         executedAt: new Date("2026-03-05T11:45:00"),
         metadata: { gate: "Entrada principal" },
       },
       {
+        tenantId: tenant1.id,
         cardId: vis2.id,
         actionDefinitionId: actionDefs[0].id,
+        logType: "action" as const,
         executedAt: new Date("2026-03-05T14:00:00"),
         metadata: { gate: "Entrada lateral" },
       },

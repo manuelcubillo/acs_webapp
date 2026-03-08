@@ -88,6 +88,13 @@ export const scanModeEnum = pgEnum("scan_mode", [
   "both",
 ]);
 
+/**
+ * Type of entry in the action_logs table.
+ * - scan:   A card was scanned (no field mutation). Logged for activity feed.
+ * - action: An action was executed on a card (field mutation occurred).
+ */
+export const logTypeEnum = pgEnum("log_type", ["scan", "action"]);
+
 // ─── Tenants ─────────────────────────────────────────────────────────────────
 
 /** Organization or client that owns card types and cards */
@@ -256,6 +263,10 @@ export const fieldValues = pgTable(
  * - check / uncheck:       operate on boolean fields (config: null)
  *
  * action_logs records the before/after values whenever an action is executed.
+ *
+ * isAutoExecute: when true, this action is automatically executed on every
+ * operational card scan (via executeScanWithAutoActions). Useful for entry/exit
+ * logging patterns where scanning implies an action (e.g. "mark attended").
  */
 export const actionDefinitions = pgTable(
   "action_definitions",
@@ -287,6 +298,11 @@ export const actionDefinitions = pgTable(
     color: text("color"),
     /** Display order among action buttons for this card type */
     position: integer("position").notNull().default(0),
+    /**
+     * When true, this action is triggered automatically on every operational scan.
+     * Only one auto-execute action per card type is recommended to avoid conflicts.
+     */
+    isAutoExecute: boolean("is_auto_execute").notNull().default(false),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -359,17 +375,37 @@ export const scanValidations = pgTable(
 
 // ─── Action Logs ─────────────────────────────────────────────────────────────
 
-/** Immutable audit log of actions performed on cards */
+/**
+ * Immutable audit log of actions performed on cards and operational card scans.
+ *
+ * Two entry types distinguished by log_type:
+ *   - "scan":   An operational card scan (no field mutation). actionDefinitionId is null.
+ *   - "action": An action was executed (field mutation). actionDefinitionId references the definition.
+ *
+ * tenant_id is denormalized here for efficient tenant-scoped feed queries
+ * without requiring a JOIN through cards.
+ */
 export const actionLogs = pgTable(
   "action_logs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    /** The tenant this log entry belongs to (denormalized for query efficiency). */
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
     cardId: uuid("card_id")
       .notNull()
       .references(() => cards.id, { onDelete: "cascade" }),
-    actionDefinitionId: uuid("action_definition_id")
-      .notNull()
-      .references(() => actionDefinitions.id, { onDelete: "restrict" }),
+    /**
+     * References the action definition that was executed.
+     * Null for log_type = "scan" (no action was executed, only a scan).
+     */
+    actionDefinitionId: uuid("action_definition_id").references(
+      () => actionDefinitions.id,
+      { onDelete: "restrict" },
+    ),
+    /** Distinguishes scan-only entries from action execution entries. */
+    logType: logTypeEnum("log_type").notNull().default("action"),
     executedAt: timestamp("executed_at").notNull().defaultNow(),
     /** User who performed the action (references auth user table) */
     executedBy: text("executed_by").references(() => user.id, {
@@ -379,9 +415,15 @@ export const actionLogs = pgTable(
     metadata: jsonb("metadata"),
   },
   (table) => [
+    index("action_logs_tenant_id_idx").on(table.tenantId),
     index("action_logs_card_id_idx").on(table.cardId),
     index("action_logs_action_definition_id_idx").on(table.actionDefinitionId),
     index("action_logs_executed_at_idx").on(table.executedAt),
+    index("action_logs_tenant_log_type_idx").on(table.tenantId, table.logType),
+    index("action_logs_tenant_executed_at_idx").on(
+      table.tenantId,
+      table.executedAt,
+    ),
   ],
 );
 
@@ -419,5 +461,70 @@ export const tenantMembers = pgTable(
     unique("tenant_members_tenant_user_unique").on(table.tenantId, table.userId),
     index("tenant_members_tenant_id_idx").on(table.tenantId),
     index("tenant_members_user_id_idx").on(table.userId),
+  ],
+);
+
+// ─── Dashboard Settings ───────────────────────────────────────────────────────
+
+/**
+ * Per-tenant dashboard configuration.
+ * One row per tenant (upserted on save).
+ * Controls what is displayed on the operational dashboard:
+ *   - feedLimit:          number of recent activity entries shown.
+ *   - showScanEntries:    include scan-only log entries in the feed.
+ *   - showActionEntries:  include action execution entries in the feed.
+ */
+export const dashboardSettings = pgTable("dashboard_settings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .unique()
+    .references(() => tenants.id, { onDelete: "cascade" }),
+  /** Maximum number of entries shown in the activity feed. */
+  feedLimit: integer("feed_limit").notNull().default(20),
+  /** Whether scan-only entries appear in the feed. */
+  showScanEntries: boolean("show_scan_entries").notNull().default(true),
+  /** Whether action entries appear in the feed. */
+  showActionEntries: boolean("show_action_entries").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ─── Card Type Summary Fields ──────────────────────────────────────────────────
+
+/**
+ * Configures which field values are shown in the dashboard activity feed
+ * summary for cards of each type.
+ *
+ * Masters can choose up to N fields (typically 2-3) from a card type's
+ * active field definitions. Those values will be surfaced inline on
+ * each activity feed entry so operators can identify the card at a glance.
+ *
+ * The (card_type_id, field_definition_id) pair is unique to prevent duplicates.
+ */
+export const cardTypeSummaryFields = pgTable(
+  "card_type_summary_fields",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    cardTypeId: uuid("card_type_id")
+      .notNull()
+      .references(() => cardTypes.id, { onDelete: "cascade" }),
+    fieldDefinitionId: uuid("field_definition_id")
+      .notNull()
+      .references(() => fieldDefinitions.id, { onDelete: "cascade" }),
+    /** Display order within the summary row. */
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    unique("card_type_summary_fields_unique").on(
+      table.cardTypeId,
+      table.fieldDefinitionId,
+    ),
+    index("card_type_summary_fields_tenant_id_idx").on(table.tenantId),
+    index("card_type_summary_fields_card_type_id_idx").on(table.cardTypeId),
   ],
 );

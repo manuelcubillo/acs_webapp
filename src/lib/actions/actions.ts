@@ -53,6 +53,8 @@ const CreateActionDefinitionSchema = z.object({
   /** Tailwind / hex color key (optional) */
   color: z.string().max(50).nullable().optional(),
   position: z.number().int().min(0).optional(),
+  /** When true, this action is triggered automatically on every operational scan. */
+  isAutoExecute: z.boolean().optional(),
 });
 
 const UpdateActionDefinitionSchema = z.object({
@@ -62,6 +64,7 @@ const UpdateActionDefinitionSchema = z.object({
   color: z.string().max(50).nullable().optional(),
   position: z.number().int().min(0).optional(),
   isActive: z.boolean().optional(),
+  isAutoExecute: z.boolean().optional(),
 });
 
 const ExecuteActionSchema = z.object({
@@ -107,7 +110,7 @@ export async function getCompatibleFieldsForActionAction(
 
 /**
  * Execute an action on a card.
- * The `executedBy` field is automatically set to the current user's ID.
+ * The `executedBy` and `tenantId` fields are set server-side from the session.
  * Returns before/after field values alongside the log entry.
  * @role operator | admin | master
  */
@@ -115,11 +118,12 @@ export async function executeActionAction(
   input: unknown,
 ): Promise<ActionResult<ActionExecutionResult>> {
   return actionHandler(async () => {
-    const { userId } = await requireOperator();
+    const { userId, tenantId } = await requireOperator();
     const data = ExecuteActionSchema.parse(input);
     return executeAction({
       cardId: data.cardId,
       actionDefinitionId: data.actionDefinitionId,
+      tenantId,
       executedBy: userId,
     });
   });
@@ -174,6 +178,7 @@ export async function createActionDefinitionAction(
       icon: data.icon,
       color: data.color,
       position: data.position,
+      isAutoExecute: data.isAutoExecute,
     });
   });
 }

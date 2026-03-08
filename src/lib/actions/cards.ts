@@ -5,7 +5,7 @@
  * All tenant-scoped; tenantId is always taken from the session.
  *
  * Role matrix:
- *   OPERATOR: read cards, search, list
+ *   OPERATOR: read cards, search, list, execute operational scans
  *   ADMIN:    above + create, update values, update code, delete
  *   MASTER:   all (inherits admin)
  */
@@ -29,11 +29,16 @@ import {
   listCards,
   searchCards,
   getScanValidationsByCardType,
+  getAutoExecuteActions,
+  logScanEntry,
+  executeAction,
 } from "@/lib/dal";
 import type {
   CardWithFields,
   PaginatedResult,
   SearchCardsInput,
+  ScanWithAutoActionsResult,
+  AutoActionResult,
 } from "@/lib/dal";
 import {
   validateScan,
@@ -93,6 +98,7 @@ const SearchCardsSchema = z.object({
 /**
  * Get a card by its tenant-scoped code.
  * Also runs all active scan validations and returns results alongside the card.
+ * This is the INFORMATIONAL lookup — it does NOT log a scan entry or run auto-actions.
  * @role operator | admin | master
  */
 export async function getCardByCodeAction(
@@ -107,6 +113,75 @@ export async function getCardByCodeAction(
     const scanResult = validateScan(card.fields, svRules);
 
     return { card, scanResult };
+  });
+}
+
+/**
+ * Operational card scan: logs a scan entry, runs auto-execute actions, and
+ * returns validation results.
+ *
+ * This is the OPERATIONAL path used when an operator actually scans a card
+ * (via camera, barcode reader, or manual code input after confirmation).
+ * It differs from getCardByCodeAction in that it:
+ *   1. Inserts a log entry with log_type = "scan".
+ *   2. Finds and executes all is_auto_execute = true action definitions.
+ *   3. Returns the full result including auto-action outcomes.
+ *
+ * Auto-action failures are non-blocking — all auto-actions are attempted
+ * even if one fails; errors are reported per-action in the result.
+ *
+ * @role operator | admin | master
+ */
+export async function executeScanWithAutoActionsAction(
+  code: string,
+): Promise<ActionResult<ScanWithAutoActionsResult>> {
+  return actionHandler(async () => {
+    const { userId, tenantId } = await requireOperator();
+
+    // 1. Load card (throws NotFoundError if not found)
+    const card = await getCardByCode(code, tenantId);
+
+    // 2. Run scan validations (informational — never blocks)
+    const svRules = await getScanValidationsByCardType(card.cardTypeId);
+    const scanResult = validateScan(card.fields, svRules);
+
+    // 3. Log the scan entry (log_type = "scan")
+    await logScanEntry({
+      cardId: card.id,
+      tenantId,
+      executedBy: userId,
+      metadata: { method: "operational_scan", cardCode: code },
+    });
+
+    // 4. Get and execute all auto-execute actions (non-blocking per action)
+    const autoActionDefs = await getAutoExecuteActions(card.cardTypeId);
+    const autoActions: AutoActionResult[] = await Promise.all(
+      autoActionDefs.map(async (def): Promise<AutoActionResult> => {
+        try {
+          const result = await executeAction({
+            cardId: card.id,
+            actionDefinitionId: def.id,
+            tenantId,
+            executedBy: userId,
+          });
+          return {
+            actionDefinitionId: def.id,
+            actionName: def.name,
+            success: true,
+            result,
+          };
+        } catch (err) {
+          return {
+            actionDefinitionId: def.id,
+            actionName: def.name,
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          };
+        }
+      }),
+    );
+
+    return { card, scanResult, autoActions };
   });
 }
 

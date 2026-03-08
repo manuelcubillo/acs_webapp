@@ -67,6 +67,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const log = await executeAction({
       cardId: card.id,
       actionDefinitionId,
+      tenantId,
       executedBy: body?.executedBy,
     });
 

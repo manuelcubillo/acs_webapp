@@ -17,3 +17,5 @@ export * from "./cards";
 export * from "./actions";
 export * from "./members";
 export * from "./scan-validations";
+export * from "./dashboard-settings";
+export * from "./activity-feed";

@@ -14,6 +14,7 @@ import { z } from "zod";
 import {
   actionHandler,
   requireAuth,
+  requireAdmin,
   requireMaster,
   type ActionResult,
 } from "@/lib/api";
@@ -103,6 +104,20 @@ export async function updateTenantSettingsAction(
     const { tenantId } = await requireMaster();
     const data = UpdateTenantSettingsSchema.parse(input);
     return updateTenantSettings(tenantId, data);
+  });
+}
+
+/**
+ * Update the name of the authenticated user's own tenant.
+ * Requires admin or master role.
+ */
+export async function updateCurrentTenantNameAction(
+  input: unknown,
+): Promise<ActionResult<Tenant>> {
+  return actionHandler(async () => {
+    const { tenantId } = await requireAdmin();
+    const data = z.object({ name: z.string().min(1, "Name is required").max(200) }).parse(input);
+    return updateTenant(tenantId, { name: data.name });
   });
 }
 

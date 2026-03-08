@@ -9,6 +9,10 @@
  *
  * executeAction runs the full sequence atomically inside a DB transaction:
  *   read current field value → compute new value → write new value → write log
+ *
+ * Auto-execute actions (is_auto_execute = true) are run automatically on every
+ * operational scan. Use getAutoExecuteActions to retrieve them, and call
+ * executeAction for each inside executeScanWithAutoActions.
  */
 
 import { eq, and, desc, count, asc } from "drizzle-orm";
@@ -28,6 +32,7 @@ import type {
   CreateActionDefinitionInput,
   UpdateActionDefinitionInput,
   ExecuteActionInput,
+  LogScanEntryInput,
   ActionLog,
   PaginationOptions,
   PaginatedResult,
@@ -149,6 +154,7 @@ export async function createActionDefinition(
       icon: input.icon ?? null,
       color: input.color ?? null,
       position,
+      isAutoExecute: input.isAutoExecute ?? false,
     })
     .returning();
 
@@ -211,6 +217,7 @@ export async function updateActionDefinition(
       ...(input.color !== undefined && { color: input.color }),
       ...(input.position !== undefined && { position: input.position }),
       ...(input.isActive !== undefined && { isActive: input.isActive }),
+      ...(input.isAutoExecute !== undefined && { isAutoExecute: input.isAutoExecute }),
       updatedAt: new Date(),
     })
     .where(eq(actionDefinitions.id, id))
@@ -264,6 +271,7 @@ export async function getActionsForCardType(
       icon: actionDefinitions.icon,
       color: actionDefinitions.color,
       position: actionDefinitions.position,
+      isAutoExecute: actionDefinitions.isAutoExecute,
       isActive: actionDefinitions.isActive,
       createdAt: actionDefinitions.createdAt,
       updatedAt: actionDefinitions.updatedAt,
@@ -280,6 +288,50 @@ export async function getActionsForCardType(
       and(
         eq(actionDefinitions.cardTypeId, cardTypeId),
         eq(actionDefinitions.isActive, true),
+      ),
+    )
+    .orderBy(asc(actionDefinitions.position));
+}
+
+/**
+ * Get all active auto-execute action definitions for a card type.
+ * Used during operational scans to determine which actions to run automatically.
+ *
+ * @param cardTypeId - The card type UUID.
+ * @returns Active auto-execute action definitions ordered by position.
+ */
+export async function getAutoExecuteActions(
+  cardTypeId: string,
+): Promise<ActionDefinitionWithField[]> {
+  return db
+    .select({
+      id: actionDefinitions.id,
+      cardTypeId: actionDefinitions.cardTypeId,
+      name: actionDefinitions.name,
+      actionType: actionDefinitions.actionType,
+      targetFieldDefinitionId: actionDefinitions.targetFieldDefinitionId,
+      config: actionDefinitions.config,
+      icon: actionDefinitions.icon,
+      color: actionDefinitions.color,
+      position: actionDefinitions.position,
+      isAutoExecute: actionDefinitions.isAutoExecute,
+      isActive: actionDefinitions.isActive,
+      createdAt: actionDefinitions.createdAt,
+      updatedAt: actionDefinitions.updatedAt,
+      targetFieldName: fieldDefinitions.name,
+      targetFieldLabel: fieldDefinitions.label,
+      targetFieldType: fieldDefinitions.fieldType,
+    })
+    .from(actionDefinitions)
+    .innerJoin(
+      fieldDefinitions,
+      eq(actionDefinitions.targetFieldDefinitionId, fieldDefinitions.id),
+    )
+    .where(
+      and(
+        eq(actionDefinitions.cardTypeId, cardTypeId),
+        eq(actionDefinitions.isActive, true),
+        eq(actionDefinitions.isAutoExecute, true),
       ),
     )
     .orderBy(asc(actionDefinitions.position));
@@ -327,7 +379,7 @@ export async function getCompatibleFieldsForAction(
  *   4. Upsert field value with new value
  *   5. Insert action log with rich metadata { action_type, target_field, before_value, after_value }
  *
- * @param input - Execution payload.
+ * @param input - Execution payload (includes tenantId for log denormalization).
  * @returns Audit log + before/after values.
  */
 export async function executeAction(
@@ -401,12 +453,14 @@ export async function executeAction(
         set: { ...typedPayload, updatedAt: new Date() },
       });
 
-    // 5. Write audit log
+    // 5. Write audit log (log_type defaults to "action")
     const [log] = await tx
       .insert(actionLogs)
       .values({
+        tenantId: input.tenantId,
         cardId: input.cardId,
         actionDefinitionId: input.actionDefinitionId,
+        logType: "action",
         executedBy: input.executedBy ?? null,
         metadata: {
           action_type: actionDef.actionType,
@@ -425,6 +479,29 @@ export async function executeAction(
       targetFieldLabel: actionDef.fieldLabel,
     };
   });
+}
+
+/**
+ * Insert a scan-only log entry (log_type = "scan").
+ * Called during operational scans before auto-actions run.
+ *
+ * @param input - Scan log payload.
+ * @returns The inserted log row.
+ */
+export async function logScanEntry(input: LogScanEntryInput): Promise<ActionLog> {
+  const [log] = await db
+    .insert(actionLogs)
+    .values({
+      tenantId: input.tenantId,
+      cardId: input.cardId,
+      actionDefinitionId: null,
+      logType: "scan",
+      executedBy: input.executedBy ?? null,
+      metadata: input.metadata ?? null,
+    })
+    .returning();
+
+  return log;
 }
 
 // ─── Action Logs ─────────────────────────────────────────────────────────────
@@ -461,6 +538,7 @@ export async function getActionLogs(
 
 /**
  * Get the most recent actions executed across a tenant (for dashboard).
+ * Only returns log_type = "action" entries.
  *
  * @param tenantId - Tenant UUID.
  * @param limit    - Max number of logs to return (default 20).
@@ -471,17 +549,14 @@ export async function getRecentActions(
   limit = 20,
 ): Promise<ActionLog[]> {
   return db
-    .select({
-      id: actionLogs.id,
-      cardId: actionLogs.cardId,
-      actionDefinitionId: actionLogs.actionDefinitionId,
-      executedAt: actionLogs.executedAt,
-      executedBy: actionLogs.executedBy,
-      metadata: actionLogs.metadata,
-    })
+    .select()
     .from(actionLogs)
-    .innerJoin(cards, eq(actionLogs.cardId, cards.id))
-    .where(eq(cards.tenantId, tenantId))
+    .where(
+      and(
+        eq(actionLogs.tenantId, tenantId),
+        eq(actionLogs.logType, "action"),
+      ),
+    )
     .orderBy(desc(actionLogs.executedAt))
     .limit(limit);
 }

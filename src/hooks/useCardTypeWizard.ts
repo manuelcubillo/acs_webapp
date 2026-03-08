@@ -87,6 +87,11 @@ export interface ActionDefinitionDraft {
   icon?: string | null;
   color?: string | null;
   position: number;
+  /**
+   * When true, this action is automatically executed on every operational scan.
+   * Only one auto-execute action per card type is recommended.
+   */
+  isAutoExecute: boolean;
 }
 
 /**
@@ -383,6 +388,7 @@ export function useCardTypeWizard(
             icon: action.icon,
             color: action.color,
             position: action.position,
+            isAutoExecute: action.isAutoExecute,
           });
         }
 
@@ -477,6 +483,7 @@ export function useCardTypeWizard(
               icon: action.icon,
               color: action.color,
               position: action.position,
+              isAutoExecute: action.isAutoExecute,
             });
           } else {
             await updateActionDefinitionAction(action.id, {
@@ -485,6 +492,7 @@ export function useCardTypeWizard(
               icon: action.icon,
               color: action.color,
               position: action.position,
+              isAutoExecute: action.isAutoExecute,
             });
           }
         }

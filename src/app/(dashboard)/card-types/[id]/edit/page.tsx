@@ -91,6 +91,7 @@ export default async function EditCardTypePage({ params }: PageProps) {
       icon: a.icon ?? null,
       color: a.color ?? null,
       position: a.position,
+      isAutoExecute: a.isAutoExecute ?? false,
     }));
 
   // Map scan validation definitions. fieldTempId === fieldDefinitionId.

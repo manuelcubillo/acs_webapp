@@ -17,6 +17,8 @@ import type {
   actionLogs,
   tenantMembers,
   scanValidations,
+  dashboardSettings,
+  cardTypeSummaryFields,
 } from "@/lib/db/schema";
 
 // ─── Drizzle-derived row types ──────────────────────────────────────────────
@@ -30,6 +32,8 @@ export type ActionDefinition = InferSelectModel<typeof actionDefinitions>;
 export type ActionLog = InferSelectModel<typeof actionLogs>;
 export type TenantMember = InferSelectModel<typeof tenantMembers>;
 export type ScanValidation = InferSelectModel<typeof scanValidations>;
+export type DashboardSettings = InferSelectModel<typeof dashboardSettings>;
+export type CardTypeSummaryField = InferSelectModel<typeof cardTypeSummaryFields>;
 
 /** Role a user holds within a tenant. Hierarchical: master > admin > operator. */
 export type TenantRole = TenantMember["role"];
@@ -41,6 +45,10 @@ export type FieldType = FieldDefinition["fieldType"];
 // ─── Scan mode ───────────────────────────────────────────────────────────────
 
 export type ScanMode = Tenant["scanMode"];
+
+// ─── Log type ────────────────────────────────────────────────────────────────
+
+export type LogType = ActionLog["logType"];
 
 // ─── Tenant inputs ──────────────────────────────────────────────────────────
 
@@ -191,6 +199,11 @@ export interface CreateActionDefinitionInput {
   /** Button color key (optional) */
   color?: string | null;
   position?: number;
+  /**
+   * When true, this action is executed automatically on every operational scan.
+   * Only one per card type is recommended.
+   */
+  isAutoExecute?: boolean;
 }
 
 export interface UpdateActionDefinitionInput {
@@ -200,6 +213,7 @@ export interface UpdateActionDefinitionInput {
   color?: string | null;
   position?: number;
   isActive?: boolean;
+  isAutoExecute?: boolean;
 }
 
 /** Returned by executeAction — carries before/after field values */
@@ -214,10 +228,47 @@ export interface ActionExecutionResult {
 // ─── Action inputs ──────────────────────────────────────────────────────────
 
 export interface ExecuteActionInput {
+  /** Internal card UUID. */
   cardId: string;
   actionDefinitionId: string;
+  /** Tenant UUID — denormalized into the log row for efficient feed queries. */
+  tenantId: string;
   /** Auth user ID of the person executing the action. */
   executedBy?: string;
+}
+
+// ─── Scan log input ──────────────────────────────────────────────────────────
+
+/** Input for inserting a pure scan entry (log_type = "scan"). */
+export interface LogScanEntryInput {
+  cardId: string;
+  tenantId: string;
+  /** Auth user ID. */
+  executedBy?: string;
+  /** Additional context (e.g. { method: "qr" | "barcode" | "manual" }). */
+  metadata?: Record<string, unknown>;
+}
+
+// ─── Auto-action results ─────────────────────────────────────────────────────
+
+/** Result of a single auto-executed action within an operational scan. */
+export interface AutoActionResult {
+  actionDefinitionId: string;
+  actionName: string;
+  success: boolean;
+  result?: ActionExecutionResult;
+  /** Error message if the action failed (non-blocking — other actions still run). */
+  error?: string;
+}
+
+/** Full result of executeScanWithAutoActions. */
+export interface ScanWithAutoActionsResult {
+  /** The card that was scanned (enriched with field values). */
+  card: CardWithFields;
+  /** Scan validation results (alerts shown to operator). */
+  scanResult: import("@/lib/validation/scan-validator").ScanValidationResult;
+  /** Results of all is_auto_execute actions that were triggered. */
+  autoActions: AutoActionResult[];
 }
 
 // ─── Action Definition with target field info ────────────────────────────────
@@ -274,4 +325,63 @@ export interface UpdateMemberRoleInput {
 export interface MemberWithUser extends TenantMember {
   userName: string;
   userEmail: string;
+}
+
+// ─── Dashboard Settings inputs ───────────────────────────────────────────────
+
+export interface UpsertDashboardSettingsInput {
+  feedLimit?: number;
+  showScanEntries?: boolean;
+  showActionEntries?: boolean;
+}
+
+// ─── Card Type Summary Fields inputs ─────────────────────────────────────────
+
+export interface SetCardTypeSummaryFieldsInput {
+  /** Ordered list of fieldDefinitionIds to show in the activity feed summary. */
+  fieldDefinitionIds: string[];
+}
+
+// ─── Activity Feed ───────────────────────────────────────────────────────────
+
+/** A single entry in the operational dashboard activity feed. */
+export interface ActivityFeedEntry {
+  id: string;
+  logType: LogType;
+  cardId: string;
+  /** Public card code (for display and navigation). */
+  cardCode: string;
+  /** Card type name (for display). */
+  cardTypeName: string;
+  /** Card type UUID (for routing). */
+  cardTypeId: string;
+  /** Action definition UUID (null for scan entries). */
+  actionDefinitionId: string | null;
+  /** Action name (null for scan entries). */
+  actionName: string | null;
+  executedAt: Date;
+  executedBy: string | null;
+  metadata: unknown;
+  /**
+   * Selected field values for this card, configured per card type via
+   * card_type_summary_fields. Surfaced inline so operators can identify cards.
+   */
+  summaryFields: ActivityFeedSummaryField[];
+}
+
+/** A single field value shown inline on an activity feed entry. */
+export interface ActivityFeedSummaryField {
+  fieldDefinitionId: string;
+  label: string;
+  fieldType: FieldType;
+  value: unknown;
+}
+
+/** Options for the getActivityFeed DAL function. */
+export interface ActivityFeedOptions {
+  limit?: number;
+  /** Include scan-only entries. Default: true. */
+  includeScanEntries?: boolean;
+  /** Include action execution entries. Default: true. */
+  includeActionEntries?: boolean;
 }

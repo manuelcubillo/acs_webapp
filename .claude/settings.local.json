@@ -54,7 +54,11 @@
       "Bash(kill 63525)",
       "Bash(kill 92316)",
       "Bash(lsof -ti :3000)",
-      "Bash(xargs kill -9)"
+      "Bash(xargs kill -9)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm exec tsc --noEmit)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node /opt/homebrew/lib/node_modules/pnpm/bin/pnpm.cjs add date-fns)",
+      "Bash(find \"/Users/manuelcubillo/Projects/Veredillas/code/veredillas_web/src/app/\\(dashboard\\)\" -name \"settings\" -type d)",
+      "Bash(find \"/Users/manuelcubillo/Projects/Veredillas/code/veredillas_web/src/app/\\(dashboard\\)/settings\" -type f -name \"*.tsx\" -o -name \"*.ts\")"
     ]
   }
 }

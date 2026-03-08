@@ -6,10 +6,13 @@
  * Define action definitions for the card type.
  * Supports: increment, decrement, check, uncheck.
  * Each action targets a specific field compatible with its type.
+ *
+ * The "Auto-ejecutar al escanear" toggle marks an action as is_auto_execute,
+ * meaning it runs automatically every time an operator does an operational scan.
  */
 
 import { useState } from "react";
-import { Plus, Trash2, TrendingUp, TrendingDown, CheckSquare, Square } from "lucide-react";
+import { Plus, Trash2, TrendingUp, TrendingDown, CheckSquare, Square, Zap } from "lucide-react";
 import type {
   ActionDefinitionDraft,
   ActionType,
@@ -87,6 +90,7 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
   const [newType, setNewType] = useState<ActionType>("increment");
   const [newTargetTempId, setNewTargetTempId] = useState("");
   const [newAmount, setNewAmount] = useState<string>(EMPTY_AMOUNT);
+  const [newIsAutoExecute, setNewIsAutoExecute] = useState(false);
 
   const meta = ACTION_TYPE_META[newType];
 
@@ -109,6 +113,7 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
       config: meta.hasAmount ? { amount } : null,
       icon: null,
       color: null,
+      isAutoExecute: newIsAutoExecute,
     });
     resetForm();
   }
@@ -119,6 +124,7 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
     setNewType("increment");
     setNewTargetTempId("");
     setNewAmount(EMPTY_AMOUNT);
+    setNewIsAutoExecute(false);
   }
 
   const canAdd = newName.trim().length > 0 && newTargetTempId.length > 0;
@@ -174,8 +180,20 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
                   <Icon size={18} strokeWidth={1.8} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--color-dark)", fontFamily: "var(--font-heading)" }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--color-dark)", fontFamily: "var(--font-heading)", display: "flex", alignItems: "center", gap: 6 }}>
                     {action.name}
+                    {action.isAutoExecute && (
+                      <span title="Auto-ejecutar al escanear" style={{
+                        display: "inline-flex", alignItems: "center", gap: 3,
+                        fontSize: 10.5, fontWeight: 600,
+                        color: "#d97706", background: "#fffbeb",
+                        border: "1px solid #fcd34d", borderRadius: 5,
+                        padding: "1px 6px", lineHeight: 1.4,
+                      }}>
+                        <Zap size={10} strokeWidth={2} />
+                        Auto
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: 12, color: "var(--color-muted)", marginTop: 2 }}>
                     {m.label}{amountLabel}
@@ -341,6 +359,40 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
               style={{ marginTop: 6 }}
               autoFocus
             />
+          </div>
+
+          {/* Auto-execute toggle */}
+          <div style={{ marginBottom: 20 }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 12,
+                padding: "12px 14px",
+                background: newIsAutoExecute ? "#fffbeb" : "#f8f9fa",
+                border: `1.5px solid ${newIsAutoExecute ? "#fcd34d" : "var(--color-border)"}`,
+                borderRadius: 10,
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={newIsAutoExecute}
+                onChange={(e) => setNewIsAutoExecute(e.target.checked)}
+                style={{ marginTop: 2, accentColor: "#d97706", flexShrink: 0 }}
+              />
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
+                  <Zap size={14} strokeWidth={2} color={newIsAutoExecute ? "#d97706" : "#9ca3af"} />
+                  Auto-ejecutar al escanear
+                </div>
+                <div style={{ fontSize: 12, color: "var(--color-muted)", marginTop: 3, lineHeight: 1.4 }}>
+                  Esta acción se ejecutará automáticamente cada vez que un operador realice un escaneo operacional.
+                  Útil para registrar entradas/salidas o contadores de visitas.
+                </div>
+              </div>
+            </label>
           </div>
 
           <div style={{ display: "flex", gap: 10 }}>
