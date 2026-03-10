@@ -46,12 +46,39 @@ interface CardActionsProps {
   actions: ActionDefinitionWithField[];
   /** Called after a successful action execution — use to trigger refresh. */
   onActionExecuted?: () => void;
+  /**
+   * When true, all buttons are rendered but disabled (grayed out, not clickable).
+   * Use when scan validations detect blocking errors and override is NOT allowed.
+   * Backward compatible: omitting this prop leaves buttons enabled.
+   */
+  disabled?: boolean;
+  /**
+   * When true, buttons render with amber/warning styling. Clicking calls
+   * onActionClick(actionId, actionName) instead of executing directly.
+   * Used when override IS allowed — parent shows a confirmation modal.
+   * Ignored when disabled=true (disabled takes precedence).
+   */
+  warningMode?: boolean;
+  /**
+   * Called in warningMode when a button is clicked.
+   * Parent is responsible for showing the modal and executing the action.
+   */
+  onActionClick?: (actionId: string, actionName: string) => void;
+  /**
+   * When true, is_auto_execute actions are hidden from the button list.
+   * Auto-execute actions should not be clickable manually.
+   */
+  filterAutoExecute?: boolean;
 }
 
 export default function CardActions({
   cardId,
   actions,
   onActionExecuted,
+  disabled = false,
+  warningMode = false,
+  onActionClick,
+  filterAutoExecute = false,
 }: CardActionsProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
@@ -60,10 +87,24 @@ export default function CardActions({
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const activeActions = actions.filter((a) => a.isActive);
+  let activeActions = actions.filter((a) => a.isActive);
+  if (filterAutoExecute) {
+    activeActions = activeActions.filter((a) => !a.isAutoExecute);
+  }
   if (activeActions.length === 0) return null;
 
+  // In warningMode, clicking routes to parent modal rather than executing directly
+  function handleClick(action: ActionDefinitionWithField) {
+    if (disabled) return;
+    if (warningMode && onActionClick) {
+      onActionClick(action.id, action.name);
+      return;
+    }
+    execute(action);
+  }
+
   async function execute(action: ActionDefinitionWithField) {
+    if (disabled) return;
     setLoadingId(action.id);
     setFeedback(null);
     setErrorMsg(null);
@@ -98,11 +139,41 @@ export default function CardActions({
         Acciones
       </p>
 
+      {disabled && (
+        <div style={{
+          padding: "8px 12px",
+          background: "#fef2f2",
+          border: "1px solid #fca5a5",
+          borderRadius: 8,
+          fontSize: 12,
+          color: "#dc2626",
+          fontWeight: 600,
+        }}>
+          Acciones bloqueadas: se detectaron errores de validación.
+        </div>
+      )}
+
+      {!disabled && warningMode && (
+        <div style={{
+          padding: "8px 12px",
+          background: "#fffbeb",
+          border: "1px solid #fcd34d",
+          borderRadius: 8,
+          fontSize: 12,
+          color: "#92400e",
+          fontWeight: 600,
+        }}>
+          Errores de validación detectados. Las acciones requieren confirmación manual.
+        </div>
+      )}
+
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {activeActions.map((action) => {
           const style = ACTION_STYLE[action.actionType] ?? ACTION_STYLE.increment;
           const Icon = style.icon;
           const isLoading = loadingId === action.id;
+          const isDisabled = disabled || loadingId !== null;
+          const isWarning = !disabled && warningMode;
 
           // Preview text: what this action will do
           const actionConfig = action.config as { amount?: number } | null;
@@ -117,23 +188,29 @@ export default function CardActions({
           return (
             <button
               key={action.id}
-              onClick={() => execute(action)}
-              disabled={loadingId !== null}
-              title={previewLabel}
+              onClick={() => handleClick(action)}
+              disabled={isDisabled}
+              title={
+                disabled
+                  ? "Acciones bloqueadas por errores de validación"
+                  : isWarning
+                    ? "Requiere confirmación — hay errores de validación"
+                    : previewLabel
+              }
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 9,
                 padding: "10px 14px",
                 borderRadius: 10,
-                background: style.bg,
-                color: style.labelColor,
-                border: `1.5px solid ${style.border}`,
-                cursor: loadingId !== null ? "wait" : "pointer",
+                background: disabled ? "#f3f4f6" : isWarning ? "#fffbeb" : style.bg,
+                color: disabled ? "#9ca3af" : isWarning ? "#92400e" : style.labelColor,
+                border: `1.5px solid ${disabled ? "#e5e7eb" : isWarning ? "#fcd34d" : style.border}`,
+                cursor: isDisabled ? (disabled ? "not-allowed" : "wait") : "pointer",
                 fontSize: 13,
                 fontWeight: 600,
                 textAlign: "left",
-                opacity: isLoading ? 0.7 : 1,
+                opacity: isLoading ? 0.7 : disabled ? 0.5 : 1,
                 transition: "opacity 0.15s",
               }}
             >

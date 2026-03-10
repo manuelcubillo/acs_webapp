@@ -3,10 +3,12 @@
 /**
  * FeedSettingsSection
  *
- * Controls what appears in the operational activity feed:
- *   - feedLimit:          max number of entries shown
- *   - showScanEntries:    include scan-only log entries
- *   - showActionEntries:  include action execution entries
+ * Controls what appears in the operational activity feed and override behaviour:
+ *   - feedLimit:              max number of entries shown
+ *   - showScanEntries:        include scan-only log entries
+ *   - showActionEntries:      include action execution entries
+ *   - allowOverrideOnError:   operators may execute actions despite validation errors
+ *                             (requires confirmation modal — every override is audited)
  */
 
 import { useState, useTransition } from "react";
@@ -24,6 +26,7 @@ export default function FeedSettingsSection({ settings }: FeedSettingsSectionPro
   const [feedLimit, setFeedLimit] = useState(settings?.feedLimit ?? DEFAULT_FEED_LIMIT);
   const [showScan, setShowScan] = useState(settings?.showScanEntries ?? true);
   const [showAction, setShowAction] = useState(settings?.showActionEntries ?? true);
+  const [allowOverride, setAllowOverride] = useState(settings?.allowOverrideOnError ?? false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -36,6 +39,7 @@ export default function FeedSettingsSection({ settings }: FeedSettingsSectionPro
         feedLimit,
         showScanEntries: showScan,
         showActionEntries: showAction,
+        allowOverrideOnError: allowOverride,
       });
       if (result.success) {
         setSaved(true);
@@ -126,6 +130,32 @@ export default function FeedSettingsSection({ settings }: FeedSettingsSectionPro
             </div>
             <div style={{ fontSize: 12, color: "var(--color-muted)", marginTop: 2 }}>
               Incluir entradas cuando se ejecuta una acción (incremento, marcar, etc.).
+            </div>
+          </div>
+        </label>
+
+        {/* Allow override on error */}
+        <label style={{
+          display: "flex", alignItems: "flex-start", gap: 12,
+          padding: "12px 14px",
+          background: allowOverride ? "#fffbeb" : "#f8f9fa",
+          border: `1.5px solid ${allowOverride ? "#fcd34d" : "var(--color-border)"}`,
+          borderRadius: 10, cursor: "pointer", transition: "all 0.15s",
+        }}>
+          <input
+            type="checkbox"
+            checked={allowOverride}
+            onChange={(e) => setAllowOverride(e.target.checked)}
+            style={{ marginTop: 2, accentColor: "#d97706", flexShrink: 0 }}
+          />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
+              Permitir intervención del operador con errores de validación
+            </div>
+            <div style={{ fontSize: 12, color: "var(--color-muted)", marginTop: 2 }}>
+              Cuando está activo, los operadores pueden ejecutar acciones aunque haya errores
+              de validación — previa confirmación manual. Cada intervención queda registrada
+              en el historial de actividad.
             </div>
           </div>
         </label>

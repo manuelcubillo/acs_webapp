@@ -12,13 +12,12 @@ import { requireOperator, AuthenticationError, AuthorizationError } from "@/lib/
 import {
   getCardByCode,
   getActionsForCardType,
+  getDashboardSettings,
   getScanValidationsByCardType,
 } from "@/lib/dal";
-import { validateScan } from "@/lib/validation/scan-validator";
+import { validateScan, hasErrorLevelFailures } from "@/lib/validation/scan-validator";
 import DashboardShell from "@/components/layout/DashboardShell";
-import DynamicFieldRenderer from "@/components/cards/DynamicFieldRenderer";
-import CardActions from "@/components/cards/CardActions";
-import ScanAlerts from "@/components/cards/ScanAlerts";
+import CardDetailClient from "@/components/cards/CardDetailClient";
 
 export const dynamic = "force-dynamic";
 
@@ -50,10 +49,11 @@ export default async function CardDetailPage({ params }: CardDetailPageProps) {
     redirect("/cards");
   }
 
-  // Fetch actions and scan validations in parallel
-  const [actions, svRules] = await Promise.all([
+  // Fetch actions, scan validations, and dashboard settings in parallel
+  const [actions, svRules, settings] = await Promise.all([
     getActionsForCardType(card.cardTypeId).catch(() => []),
     getScanValidationsByCardType(card.cardTypeId).catch(() => []),
+    getDashboardSettings(tenantId).catch(() => null),
   ]);
 
   // Run scan validations (pure, never throws)
@@ -63,25 +63,19 @@ export default async function CardDetailPage({ params }: CardDetailPageProps) {
   return (
     <DashboardShell title="Detalle de carnet" role={role}>
       <div style={{ maxWidth: 720, margin: "0 auto" }}>
-        {/* Back + edit */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: 20,
-          }}
-        >
+        {/* Back + edit — static, no state needed */}
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 20,
+        }}>
           <Link
             href="/cards"
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              color: "var(--color-muted)",
-              textDecoration: "none",
-              fontSize: 13,
-              fontWeight: 500,
+              display: "flex", alignItems: "center", gap: 6,
+              color: "var(--color-muted)", textDecoration: "none",
+              fontSize: 13, fontWeight: 500,
             }}
           >
             <ArrowLeft size={15} />
@@ -92,16 +86,11 @@ export default async function CardDetailPage({ params }: CardDetailPageProps) {
             <Link
               href={`/cards/${encodeURIComponent(decodedCode)}/edit`}
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
-                borderRadius: 8,
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "8px 14px", borderRadius: 8,
                 border: "1.5px solid var(--color-border)",
-                background: "#fff",
-                textDecoration: "none",
-                fontSize: 13,
-                fontWeight: 600,
+                background: "#fff", textDecoration: "none",
+                fontSize: 13, fontWeight: 600,
                 color: "var(--color-dark)",
               }}
             >
@@ -111,125 +100,38 @@ export default async function CardDetailPage({ params }: CardDetailPageProps) {
           )}
         </div>
 
-        {/* Scan alerts — shown when any check fails */}
-        {!scanResult.passed && (
-          <ScanAlerts scanResult={scanResult} />
-        )}
+        {/*
+          CardDetailClient manages:
+          - card state (refreshed after each action)
+          - scanResult state (re-evaluated after each action)
+          - hasBlockingErrors (disables action buttons when true)
+          This page does NOT log a scan entry or run auto-actions.
+        */}
+        <CardDetailClient
+          initialCard={card}
+          actions={actions}
+          initialScanResult={scanResult}
+          initialHasBlockingErrors={hasErrorLevelFailures(scanResult)}
+          allowOverrideOnError={settings?.allowOverrideOnError ?? false}
+        />
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 20 }}>
-          {/* Card panel */}
-          <div
-            style={{
-              background: "#fff",
-              borderRadius: 14,
-              border: "1px solid var(--color-border)",
-              padding: 24,
-            }}
-          >
-            {/* Code header */}
-            <div style={{ marginBottom: 20 }}>
-              <span
-                style={{
-                  display: "inline-block",
-                  fontFamily: "monospace",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: "var(--color-muted)",
-                  background: "#f3f4f6",
-                  padding: "4px 10px",
-                  borderRadius: 6,
-                  marginBottom: 6,
-                }}
-              >
-                {card.code}
-              </span>
-            </div>
-
-            {/* Field values */}
-            {card.fields.length === 0 ? (
-              <p style={{ color: "var(--color-muted)", fontSize: 14 }}>
-                Este carnet no tiene campos.
-              </p>
-            ) : (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-                  gap: 18,
-                }}
-              >
-                {card.fields.map((fv) => (
-                  <div
-                    key={fv.fieldDefinitionId}
-                    style={{ display: "flex", flexDirection: "column", gap: 4 }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: "var(--color-muted)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
-                      }}
-                    >
-                      {fv.label}
-                    </span>
-                    <DynamicFieldRenderer
-                      fieldType={fv.fieldType}
-                      value={fv.value}
-                      label={fv.label}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Actions sidebar */}
-          {actions.length > 0 && (
-            <div
-              style={{
-                background: "#fff",
-                borderRadius: 14,
-                border: "1px solid var(--color-border)",
-                padding: 20,
-                minWidth: 180,
-                alignSelf: "start",
-              }}
-            >
-              <CardActions
-                cardId={card.id}
-                actions={actions}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Metadata footer */}
-        <div
-          style={{
-            marginTop: 16,
-            fontSize: 12,
-            color: "var(--color-muted)",
-            display: "flex",
-            gap: 20,
-          }}
-        >
+        {/* Metadata footer — static */}
+        <div style={{
+          marginTop: 16, fontSize: 12,
+          color: "var(--color-muted)",
+          display: "flex", gap: 20,
+        }}>
           <span>
             Creado:{" "}
             {new Date(card.createdAt).toLocaleDateString("es-ES", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "numeric",
+              day: "2-digit", month: "2-digit", year: "numeric",
             })}
           </span>
           {card.updatedAt && card.updatedAt !== card.createdAt && (
             <span>
               Modificado:{" "}
               {new Date(card.updatedAt).toLocaleDateString("es-ES", {
-                day: "2-digit",
-                month: "2-digit",
-                year: "numeric",
+                day: "2-digit", month: "2-digit", year: "numeric",
               })}
             </span>
           )}

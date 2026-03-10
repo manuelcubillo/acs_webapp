@@ -38,6 +38,7 @@ const UpsertDashboardSettingsSchema = z.object({
   feedLimit: z.number().int().min(5).max(100).optional(),
   showScanEntries: z.boolean().optional(),
   showActionEntries: z.boolean().optional(),
+  allowOverrideOnError: z.boolean().optional(),
 });
 
 const SetSummaryFieldsSchema = z.object({
@@ -110,7 +111,12 @@ export async function upsertDashboardSettingsAction(
   return actionHandler(async () => {
     const { tenantId } = await requireMaster();
     const data = UpsertDashboardSettingsSchema.parse(input);
-    return upsertDashboardSettings(tenantId, data);
+    return upsertDashboardSettings(tenantId, {
+      feedLimit: data.feedLimit,
+      showScanEntries: data.showScanEntries,
+      showActionEntries: data.showActionEntries,
+      allowOverrideOnError: data.allowOverrideOnError,
+    });
   });
 }
 

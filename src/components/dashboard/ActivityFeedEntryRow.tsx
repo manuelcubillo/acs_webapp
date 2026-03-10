@@ -14,7 +14,7 @@
 
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
-import { ScanLine, Zap, Clock } from "lucide-react";
+import { ScanLine, Zap, Clock, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import type { ActivityFeedEntry } from "@/lib/dal";
 
@@ -110,6 +110,23 @@ export default function ActivityFeedEntryRow({ entry }: ActivityFeedEntryRowProp
               border: "1px solid #c7d2fe",
             }}>
               {entry.actionName}
+            </span>
+          )}
+          {entry.operatorOverride && (
+            <span
+              title="Intervención manual del operador — ejecutado con errores de validación"
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 3,
+                fontSize: 10.5, fontWeight: 600,
+                color: "#d97706",
+                background: "#fffbeb",
+                padding: "1px 6px",
+                borderRadius: 5,
+                border: "1px solid #fde68a",
+              }}
+            >
+              <ShieldAlert size={11} strokeWidth={2} />
+              Override
             </span>
           )}
           {isScan && (

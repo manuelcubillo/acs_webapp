@@ -3,71 +3,79 @@
 /**
  * ActiveCardZone
  *
- * Displays the card that was most recently scanned in the operational dashboard.
+ * Displays the card most recently scanned in the operational dashboard.
  * Shows:
- *   - Card code + card type name
- *   - Scan validation alerts (errors / warnings) from the latest scan
+ *   - Card code + status + summary fields
+ *   - Current validation alerts (from finalValidationResult, not just initial scan)
  *   - Auto-action feedback (if any is_auto_execute actions were triggered)
- *   - Manual action buttons (non-auto-execute actions the operator can click)
+ *   - Manual action buttons — disabled when hasBlockingErrors is true
  *
- * This component orchestrates the operational scan flow:
- *   1. Parent calls onScan(code) → returns ScanWithAutoActionsResult
- *   2. Card + scan results + auto-action results are displayed here
- *   3. Manual action buttons call executeActionAction on demand
+ * Execution is delegated entirely to DashboardView via onManualAction.
+ * This component is display + dispatch only.
  */
 
-import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { ExternalLink, AlertCircle, AlertTriangle, CheckCircle2, Zap } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ExternalLink, AlertCircle, CheckCircle2, Zap, Loader2 } from "lucide-react";
 import Link from "next/link";
 import AutoActionFeedback from "./AutoActionFeedback";
-import { executeActionAction } from "@/lib/actions/actions";
-import type { ScanWithAutoActionsResult, AutoActionResult, ActionDefinitionWithField } from "@/lib/dal";
+import ScanAlerts from "@/components/cards/ScanAlerts";
+import type { AutoActionResult, ActionDefinitionWithField, CardWithFields } from "@/lib/dal";
+import type { ScanValidationResult } from "@/lib/validation/scan-validator";
 
 interface ActiveCardZoneProps {
-  result: ScanWithAutoActionsResult | null;
+  activeCard: CardWithFields | null;
+  autoActions: AutoActionResult[];
+  stoppedByValidation: boolean;
+  stoppedAtAction: string | null;
   manualActions: ActionDefinitionWithField[];
-  /** Called after a manual action executes so the parent can refresh the feed. */
-  onActionExecuted?: () => void;
+  /** True when finalValidationResult has error-level failures. */
+  hasBlockingErrors: boolean;
+  /**
+   * When true and hasBlockingErrors is true:
+   *   Buttons shown in amber "warning" state — clicking triggers modal via onManualAction.
+   * When false and hasBlockingErrors is true:
+   *   Buttons DISABLED — no interaction.
+   */
+  allowOverrideOnError: boolean;
+  /** Current validation state (updated after each manual action). */
+  finalValidationResult: ScanValidationResult | null;
+  /** Called when an action button is clicked — DashboardView handles validate + execute + refresh. */
+  onManualAction: (actionId: string) => void;
+  /** ID of the action currently being executed (set by DashboardView). */
+  isExecutingActionId: string | null;
+  /** Inline error message from the last failed execution attempt. */
+  actionError: string | null;
 }
 
-export default function ActiveCardZone({ result, manualActions, onActionExecuted }: ActiveCardZoneProps) {
-  const router = useRouter();
+export default function ActiveCardZone({
+  activeCard,
+  autoActions,
+  stoppedByValidation,
+  stoppedAtAction,
+  manualActions,
+  hasBlockingErrors,
+  allowOverrideOnError,
+  finalValidationResult,
+  onManualAction,
+  isExecutingActionId,
+  actionError,
+}: ActiveCardZoneProps) {
   const [autoFeedback, setAutoFeedback] = useState<AutoActionResult[] | null>(null);
-  const [executingActionId, setExecutingActionId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
 
-  // Show auto-action feedback whenever result changes
-  useState(() => {
-    if (result && result.autoActions.length > 0) {
-      setAutoFeedback(result.autoActions);
+  // Update auto-action feedback whenever autoActions changes (new scan)
+  useEffect(() => {
+    if (autoActions.length > 0) {
+      setAutoFeedback(autoActions);
+    } else {
+      setAutoFeedback(null);
     }
-  });
+  }, [autoActions]);
 
-  const handleAutoFeedbackDismiss = useCallback(() => {
-    setAutoFeedback(null);
-  }, []);
+  const handleAutoFeedbackDismiss = () => setAutoFeedback(null);
 
-  const handleManualAction = useCallback(async (actionId: string) => {
-    if (!result || executingActionId) return;
-    setExecutingActionId(actionId);
-    setActionError(null);
-    try {
-      const res = await executeActionAction({ cardId: result.card.id, actionDefinitionId: actionId });
-      if (!res.success) {
-        setActionError(res.error);
-      } else {
-        onActionExecuted?.();
-        router.refresh();
-      }
-    } catch {
-      setActionError("Error al ejecutar la acción");
-    } finally {
-      setExecutingActionId(null);
-    }
-  }, [result, executingActionId, onActionExecuted, router]);
+  // ── Empty state ────────────────────────────────────────────────────────────
 
-  if (!result) {
+  if (!activeCard) {
     return (
       <div style={{
         padding: "36px 24px",
@@ -87,43 +95,48 @@ export default function ActiveCardZone({ result, manualActions, onActionExecuted
     );
   }
 
-  const { card, scanResult, autoActions } = result;
-  // Failed checks are the "alerts" we surface to the operator
-  const failedChecks = scanResult.results.filter((r) => !r.passed);
+  // ── Derive visual state from finalValidationResult ─────────────────────────
+
+  const failedChecks = finalValidationResult
+    ? finalValidationResult.results.filter((r) => !r.passed)
+    : [];
   const hasAlerts = failedChecks.length > 0;
-  const hasErrors = failedChecks.some((r) => r.severity === "error");
+
+  // Border color: red if blocking errors, amber for warnings, green if clean
+  const borderColor = hasBlockingErrors ? "#fca5a5" : hasAlerts ? "#fcd34d" : "#bbf7d0";
+  const iconBg      = hasBlockingErrors ? "#fef2f2" : hasAlerts ? "#fffbeb" : "#f0fdf4";
+  const Icon        = hasBlockingErrors ? AlertCircle : hasAlerts ? AlertCircle : CheckCircle2;
+  const iconColor   = hasBlockingErrors ? "#dc2626" : hasAlerts ? "#d97706" : "#16a34a";
+
+  const anyActionRunning = !!isExecutingActionId;
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* Card info */}
+      {/* Card info panel */}
       <div style={{
         padding: "16px",
         background: "#fff",
-        border: `2px solid ${hasErrors ? "#fca5a5" : hasAlerts ? "#fcd34d" : "#bbf7d0"}`,
+        border: `2px solid ${borderColor}`,
         borderRadius: 14,
       }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
           <div style={{
-            width: 44,
-            height: 44,
-            borderRadius: 12,
-            background: hasErrors ? "#fef2f2" : hasAlerts ? "#fffbeb" : "#f0fdf4",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            width: 44, height: 44, borderRadius: 12,
+            background: iconBg,
+            display: "flex", alignItems: "center", justifyContent: "center",
             flexShrink: 0,
           }}>
-            {hasErrors
-              ? <AlertCircle size={22} color="#dc2626" strokeWidth={1.8} />
-              : hasAlerts
-                ? <AlertTriangle size={22} color="#d97706" strokeWidth={1.8} />
-                : <CheckCircle2 size={22} color="#16a34a" strokeWidth={1.8} />
-            }
+            <Icon size={22} color={iconColor} strokeWidth={1.8} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 20, fontWeight: 800, fontFamily: "var(--font-heading)", color: "var(--color-dark)" }}>
-                {card.code}
+              <span style={{
+                fontSize: 20, fontWeight: 800,
+                fontFamily: "var(--font-heading)", color: "var(--color-dark)",
+              }}>
+                {activeCard.code}
               </span>
               <span style={{
                 fontSize: 12, color: "var(--color-muted)",
@@ -131,15 +144,12 @@ export default function ActiveCardZone({ result, manualActions, onActionExecuted
                 padding: "2px 8px", borderRadius: 6,
                 border: "1px solid var(--color-border-soft)",
               }}>
-                {card.cardTypeId}
+                {activeCard.status}
               </span>
-            </div>
-            <div style={{ fontSize: 13, color: "var(--color-secondary)", marginTop: 4 }}>
-              Estado: <strong>{card.status}</strong>
             </div>
           </div>
           <Link
-            href={`/cards/${encodeURIComponent(card.code)}`}
+            href={`/cards/${encodeURIComponent(activeCard.code)}`}
             style={{
               display: "flex", alignItems: "center", gap: 4,
               fontSize: 12, fontWeight: 600,
@@ -153,13 +163,13 @@ export default function ActiveCardZone({ result, manualActions, onActionExecuted
         </div>
 
         {/* Field summary */}
-        {card.fields.length > 0 && (
+        {activeCard.fields.length > 0 && (
           <div style={{
             display: "flex", flexWrap: "wrap", gap: 12,
             marginTop: 14, paddingTop: 12,
             borderTop: "1px solid var(--color-border-soft)",
           }}>
-            {card.fields.slice(0, 6).map((f) => {
+            {activeCard.fields.slice(0, 6).map((f) => {
               const val = f.value === null || f.value === undefined
                 ? "—"
                 : f.fieldType === "boolean"
@@ -174,72 +184,103 @@ export default function ActiveCardZone({ result, manualActions, onActionExecuted
             })}
           </div>
         )}
-
-        {/* Scan alerts — only failed checks */}
-        {hasAlerts && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
-            {failedChecks.map((check, i) => (
-              <div
-                key={i}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 8,
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  background: check.severity === "error" ? "#fef2f2" : "#fffbeb",
-                  border: `1px solid ${check.severity === "error" ? "#fca5a5" : "#fcd34d"}`,
-                }}
-              >
-                {check.severity === "error"
-                  ? <AlertCircle size={14} color="#dc2626" strokeWidth={2} style={{ marginTop: 1, flexShrink: 0 }} />
-                  : <AlertTriangle size={14} color="#d97706" strokeWidth={2} style={{ marginTop: 1, flexShrink: 0 }} />
-                }
-                <span style={{ fontSize: 12.5, color: check.severity === "error" ? "#dc2626" : "#b45309" }}>
-                  {check.message}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
+      {/* Current validation alerts (from finalValidationResult — updated after each action) */}
+      {finalValidationResult && !finalValidationResult.passed && (
+        <ScanAlerts scanResult={finalValidationResult} />
+      )}
+
       {/* Auto-action feedback */}
-      {autoActions.length > 0 && (
+      {autoFeedback && autoFeedback.length > 0 && (
         <AutoActionFeedback
-          results={autoActions}
+          results={autoFeedback}
+          stoppedByValidation={stoppedByValidation}
+          stoppedAtAction={stoppedAtAction}
           onDismiss={handleAutoFeedbackDismiss}
         />
       )}
 
-      {/* Manual action buttons */}
+      {/* Manual action buttons — three visual states:
+          1. No errors: normal enabled buttons
+          2. Errors + no override: disabled (gray), blocked message
+          3. Errors + override allowed: warning styling (amber), click triggers modal
+      */}
       {manualActions.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {manualActions.map((action) => (
-            <button
-              key={action.id}
-              onClick={() => handleManualAction(action.id)}
-              disabled={!!executingActionId}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "9px 16px", borderRadius: 10,
-                border: "1.5px solid var(--color-border)",
-                background: executingActionId === action.id ? "var(--color-subtle-bg)" : "#fff",
-                cursor: executingActionId ? "not-allowed" : "pointer",
-                fontSize: 13, fontWeight: 600,
-                color: executingActionId === action.id ? "var(--color-muted)" : "var(--color-dark)",
-                opacity: executingActionId && executingActionId !== action.id ? 0.6 : 1,
-                transition: "all 0.15s",
-              }}
-            >
-              <Zap size={14} strokeWidth={2} />
-              {executingActionId === action.id ? "Ejecutando…" : action.name}
-            </button>
-          ))}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {hasBlockingErrors && !allowOverrideOnError && (
+            <div style={{
+              padding: "8px 12px",
+              background: "#fef2f2",
+              border: "1px solid #fca5a5",
+              borderRadius: 8,
+              fontSize: 12,
+              color: "#dc2626",
+              fontWeight: 600,
+            }}>
+              Acciones bloqueadas: se detectaron errores de validación.
+            </div>
+          )}
+          {hasBlockingErrors && allowOverrideOnError && (
+            <div style={{
+              padding: "8px 12px",
+              background: "#fffbeb",
+              border: "1px solid #fcd34d",
+              borderRadius: 8,
+              fontSize: 12,
+              color: "#92400e",
+              fontWeight: 600,
+            }}>
+              Errores de validación detectados. Las acciones requieren confirmación manual.
+            </div>
+          )}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {manualActions.map((action) => {
+              const isRunning = isExecutingActionId === action.id;
+              // State 2: errors + no override → disabled
+              const isHardDisabled = hasBlockingErrors && !allowOverrideOnError;
+              // State 3: errors + override → warning mode (still clickable, amber style)
+              const isWarning = hasBlockingErrors && allowOverrideOnError;
+              const isDisabled = isHardDisabled || anyActionRunning;
+
+              return (
+                <button
+                  key={action.id}
+                  onClick={() => !isHardDisabled && onManualAction(action.id)}
+                  disabled={isDisabled}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    padding: "9px 16px", borderRadius: 10,
+                    border: `1.5px solid ${
+                      isHardDisabled && !isRunning ? "#e5e7eb"
+                      : isWarning ? "#fcd34d"
+                      : "var(--color-border)"
+                    }`,
+                    background: isRunning
+                      ? "var(--color-subtle-bg)"
+                      : isHardDisabled ? "#f9fafb"
+                      : isWarning ? "#fffbeb"
+                      : "#fff",
+                    cursor: isHardDisabled ? "not-allowed" : anyActionRunning ? "wait" : "pointer",
+                    fontSize: 13, fontWeight: 600,
+                    color: isHardDisabled ? "#9ca3af" : isWarning ? "#92400e" : "var(--color-dark)",
+                    opacity: anyActionRunning && !isRunning ? 0.5 : isHardDisabled && !isRunning ? 0.5 : 1,
+                    transition: "all 0.15s",
+                  }}
+                >
+                  {isRunning
+                    ? <Loader2 size={14} strokeWidth={2} style={{ animation: "spin 0.8s linear infinite" }} />
+                    : <Zap size={14} strokeWidth={2} />
+                  }
+                  {isRunning ? "Ejecutando…" : action.name}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {/* Action error */}
+      {/* Execution error */}
       {actionError && (
         <div style={{
           padding: "10px 14px", background: "#fef2f2",
@@ -249,6 +290,10 @@ export default function ActiveCardZone({ result, manualActions, onActionExecuted
           {actionError}
         </div>
       )}
+
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   );
 }

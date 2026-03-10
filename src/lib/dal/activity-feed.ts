@@ -211,6 +211,8 @@ export async function getActivityFeed(
       executedAt: row.executedAt,
       executedBy: row.executedBy,
       metadata: row.metadata,
+      operatorOverride:
+        (row.metadata as Record<string, unknown> | null)?.operator_override === true,
       summaryFields,
     };
   });

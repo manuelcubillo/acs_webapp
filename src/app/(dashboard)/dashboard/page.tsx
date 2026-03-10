@@ -54,6 +54,7 @@ export default async function DashboardPage() {
       <DashboardView
         initialFeedEntries={initialFeedEntries}
         settings={settings}
+        allowOverrideOnError={settings?.allowOverrideOnError ?? false}
       />
     </DashboardShell>
   );

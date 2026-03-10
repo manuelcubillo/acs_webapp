@@ -70,6 +70,10 @@ const UpdateActionDefinitionSchema = z.object({
 const ExecuteActionSchema = z.object({
   cardId: z.string().uuid(),
   actionDefinitionId: z.string().uuid(),
+  /** When true, executes despite error-level validation failures (operator override). */
+  operatorOverride: z.boolean().optional(),
+  /** Validation error messages being overridden — stored in audit log metadata. */
+  overrideValidationErrors: z.array(z.string()).optional(),
 });
 
 const GetActionLogsSchema = z.object({
@@ -125,6 +129,8 @@ export async function executeActionAction(
       actionDefinitionId: data.actionDefinitionId,
       tenantId,
       executedBy: userId,
+      operatorOverride: data.operatorOverride,
+      overrideValidationErrors: data.overrideValidationErrors,
     });
   });
 }

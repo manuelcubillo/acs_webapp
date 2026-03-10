@@ -15,7 +15,7 @@
  */
 
 import { useEffect } from "react";
-import { CheckCircle2, XCircle, Zap, X } from "lucide-react";
+import { CheckCircle2, XCircle, Zap, X, ShieldAlert } from "lucide-react";
 import type { AutoActionResult } from "@/lib/dal";
 
 interface AutoActionFeedbackProps {
@@ -23,14 +23,23 @@ interface AutoActionFeedbackProps {
   onDismiss: () => void;
   /** Auto-dismiss timeout in ms (only when all succeeded). Default: 4000. */
   autoDismissMs?: number;
+  /**
+   * True when the auto-action loop was stopped mid-execution because
+   * re-validation after an action produced error-level failures.
+   */
+  stoppedByValidation?: boolean;
+  /** Name of the action at which the loop stopped. */
+  stoppedAtAction?: string | null;
 }
 
 export default function AutoActionFeedback({
   results,
   onDismiss,
   autoDismissMs = 4000,
+  stoppedByValidation = false,
+  stoppedAtAction = null,
 }: AutoActionFeedbackProps) {
-  const allSucceeded = results.every((r) => r.success);
+  const allSucceeded = results.every((r) => r.success) && !stoppedByValidation;
 
   // Auto-dismiss when all actions succeed
   useEffect(() => {
@@ -48,6 +57,23 @@ export default function AutoActionFeedback({
       border: `1.5px solid ${allSucceeded ? "#bbf7d0" : "#fcd34d"}`,
       borderRadius: 12,
     }}>
+      {/* Stopped-by-validation notice */}
+      {stoppedByValidation && (
+        <div style={{
+          display: "flex", alignItems: "flex-start", gap: 8,
+          padding: "8px 10px", marginBottom: 10,
+          background: "#fef2f2",
+          border: "1px solid #fca5a5",
+          borderRadius: 8,
+        }}>
+          <ShieldAlert size={14} color="#dc2626" strokeWidth={2} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span style={{ fontSize: 12, color: "#dc2626" }}>
+            Ejecución detenida tras <strong>{stoppedAtAction}</strong>: la validación detectó errores.
+            Las acciones restantes no se ejecutaron.
+          </span>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

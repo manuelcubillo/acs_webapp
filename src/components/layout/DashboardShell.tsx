@@ -23,6 +23,7 @@ import {
   Settings,
   Shield,
   LogOut,
+  History,
 } from "lucide-react";
 import type { TenantRole } from "@/lib/api";
 
@@ -40,6 +41,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Vista Principal", icon: LayoutGrid },
   { href: "/card-types", label: "Tipos de Tarjeta", icon: CreditCard, minRole: "operator" },
   { href: "/cards", label: "Carnets", icon: IdCard, minRole: "operator" },
+  { href: "/history", label: "Historial", icon: History, minRole: "operator" },
   { href: "/members", label: "Miembros", icon: Users, minRole: "master" },
 ];
 

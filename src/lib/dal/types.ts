@@ -235,6 +235,13 @@ export interface ExecuteActionInput {
   tenantId: string;
   /** Auth user ID of the person executing the action. */
   executedBy?: string;
+  /**
+   * When true, the action is executed despite error-level validation failures.
+   * Logged in action_log metadata as { operator_override: true }.
+   */
+  operatorOverride?: boolean;
+  /** Error messages being overridden — stored in metadata for audit trail. */
+  overrideValidationErrors?: string[];
 }
 
 // ─── Scan log input ──────────────────────────────────────────────────────────
@@ -263,12 +270,71 @@ export interface AutoActionResult {
 
 /** Full result of executeScanWithAutoActions. */
 export interface ScanWithAutoActionsResult {
-  /** The card that was scanned (enriched with field values). */
+  /** The card that was scanned (final state after all auto-actions). */
   card: CardWithFields;
-  /** Scan validation results (alerts shown to operator). */
+  /** Initial scan validation result at scan time, before any auto-actions ran. */
   scanResult: import("@/lib/validation/scan-validator").ScanValidationResult;
-  /** Results of all is_auto_execute actions that were triggered. */
+  /** Results of each auto-execute action that was attempted. */
   autoActions: AutoActionResult[];
+  /**
+   * True if the auto-action loop was stopped because re-validation after an
+   * action produced error-level failures. Also true if initial validation
+   * had blocking errors (in which case autoActions is empty).
+   */
+  stoppedByValidation: boolean;
+  /** Name of the action at which the loop stopped (validation or execution error). */
+  stoppedAtAction: string | null;
+  /**
+   * Validation state after the last executed auto-action.
+   * Equals scanResult when no auto-actions ran (e.g. initial blocking errors).
+   */
+  finalValidationResult: import("@/lib/validation/scan-validator").ScanValidationResult;
+  /**
+   * True if finalValidationResult contains error-level failures.
+   * When true, the dashboard disables manual action buttons (unless override is enabled).
+   */
+  hasBlockingErrors: boolean;
+
+  // ── Pause/resume fields ────────────────────────────────────────────────────
+
+  /**
+   * True when allow_override_on_error is enabled and the loop paused because
+   * of error-level failures. The client should show AutoActionConfirmModal.
+   * False when no pause was needed or override is disabled.
+   */
+  pausedForConfirmation: boolean;
+  /**
+   * IDs of action definitions not yet executed (to resume from).
+   * Null when pausedForConfirmation is false.
+   */
+  pendingAutoActionIds: string[] | null;
+  /**
+   * Human-readable names of pending actions (for modal display).
+   * Null when pausedForConfirmation is false.
+   */
+  pendingAutoActionNames: string[] | null;
+  /**
+   * Error-level checks that caused the pause (for modal display).
+   * Null when pausedForConfirmation is false.
+   */
+  pauseValidationErrors: import("@/lib/validation/scan-validator").ScanValidationCheck[] | null;
+}
+
+/** Result returned by validateBeforeActionAction. */
+export interface ValidateBeforeActionResult {
+  scanResult: import("@/lib/validation/scan-validator").ScanValidationResult;
+  /** True if any error-level validation fails on the card's current state. */
+  hasBlockingErrors: boolean;
+}
+
+/** Input for resumeAutoActionsAction — continues a paused auto-action flow. */
+export interface ResumeAutoActionsInput {
+  /** Card's public code (NOT uuid). */
+  cardCode: string;
+  /** action_definition IDs to execute in order (from pendingAutoActionIds). */
+  pendingActionIds: string[];
+  /** Error messages being overridden — stored in each action's metadata. */
+  overrideValidationErrors: string[];
 }
 
 // ─── Action Definition with target field info ────────────────────────────────
@@ -333,6 +399,8 @@ export interface UpsertDashboardSettingsInput {
   feedLimit?: number;
   showScanEntries?: boolean;
   showActionEntries?: boolean;
+  /** When true, operators can override error-level validation failures via modal confirmation. */
+  allowOverrideOnError?: boolean;
 }
 
 // ─── Card Type Summary Fields inputs ─────────────────────────────────────────
@@ -363,6 +431,11 @@ export interface ActivityFeedEntry {
   executedBy: string | null;
   metadata: unknown;
   /**
+   * True when the action was executed with error-level validation failures
+   * present (operator chose to override). Extracted from metadata.operator_override.
+   */
+  operatorOverride: boolean;
+  /**
    * Selected field values for this card, configured per card type via
    * card_type_summary_fields. Surfaced inline so operators can identify cards.
    */
@@ -384,4 +457,64 @@ export interface ActivityFeedOptions {
   includeScanEntries?: boolean;
   /** Include action execution entries. Default: true. */
   includeActionEntries?: boolean;
+}
+
+// ─── Action History ───────────────────────────────────────────────────────────
+
+export type FieldFilterOperator =
+  | 'contains' | 'starts_with' | 'equals_text'
+  | 'eq' | 'gt' | 'lt' | 'gte' | 'lte' | 'between'
+  | 'is_true' | 'is_false'
+  | 'date_eq' | 'date_before' | 'date_after' | 'date_between';
+
+export interface FieldFilter {
+  fieldDefinitionId: string;
+  operator: FieldFilterOperator;
+  /** Scalar for most operators. { min, max } for 'between' / 'date_between'. */
+  value: unknown;
+}
+
+export interface ActionHistoryFilters {
+  dateFrom?: Date;
+  dateTo?: Date;
+  logTypes?: ('scan' | 'action')[];
+  cardTypeId?: string;
+  actionDefinitionIds?: string[];
+  executedBy?: string;
+  cardCode?: string;
+  /** Requires cardTypeId to be set. Ignored otherwise. */
+  fieldFilters?: FieldFilter[];
+}
+
+export interface ActionHistoryEntry {
+  id: string;
+  logType: 'scan' | 'action';
+  cardId: string;
+  cardCode: string;
+  cardTypeId: string;
+  cardTypeName: string;
+  actionDefinitionId: string | null;
+  actionName: string | null;
+  actionColor: string | null;
+  actionIcon: string | null;
+  executedAt: Date;
+  executedBy: string | null;
+  executedByName: string | null;
+  metadata: Record<string, unknown> | null;
+  operatorOverride: boolean;
+  summaryFields: { label: string; value: unknown; fieldType: FieldType }[];
+}
+
+export interface HistoryFilterOptions {
+  cardTypes: { id: string; name: string }[];
+  actionDefinitions: { id: string; name: string; cardTypeId: string; cardTypeName: string }[];
+  users: { id: string; name: string }[];
+}
+
+export interface FilterableFieldDefinition {
+  id: string;
+  name: string;
+  label: string;
+  fieldType: FieldType;
+  validationRules: unknown | null;
 }

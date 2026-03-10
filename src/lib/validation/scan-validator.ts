@@ -216,3 +216,19 @@ export function validateScan(
     results,
   };
 }
+
+/**
+ * Returns true if the result contains at least one error-level (not warning)
+ * check that failed. Used to determine whether manual actions should be blocked.
+ */
+export function hasErrorLevelFailures(result: ScanValidationResult): boolean {
+  return result.results.some((r) => !r.passed && r.severity === "error");
+}
+
+/**
+ * Returns only the error-level failed checks from a validation result.
+ * Used to populate the validation error list in confirmation modals.
+ */
+export function getErrorLevelChecks(result: ScanValidationResult): ScanValidationCheck[] {
+  return result.results.filter((r) => !r.passed && r.severity === "error");
+}

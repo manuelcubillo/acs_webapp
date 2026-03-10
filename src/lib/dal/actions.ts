@@ -458,6 +458,19 @@ export async function executeAction(
     });
 
   // 5. Write audit log (log_type = "action")
+  const baseMetadata: Record<string, unknown> = {
+    action_type: actionDef.actionType,
+    target_field: actionDef.fieldName,
+    before_value: previousValue,
+    after_value: newValue,
+  };
+  if (input.operatorOverride) {
+    baseMetadata.operator_override = true;
+    if (input.overrideValidationErrors && input.overrideValidationErrors.length > 0) {
+      baseMetadata.override_validation_errors = input.overrideValidationErrors;
+    }
+  }
+
   const [log] = await db
     .insert(actionLogs)
     .values({
@@ -466,12 +479,7 @@ export async function executeAction(
       actionDefinitionId: input.actionDefinitionId,
       logType: "action",
       executedBy: input.executedBy ?? null,
-      metadata: {
-        action_type: actionDef.actionType,
-        target_field: actionDef.fieldName,
-        before_value: previousValue,
-        after_value: newValue,
-      },
+      metadata: baseMetadata,
     })
     .returning();
 

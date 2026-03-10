@@ -63,6 +63,7 @@ export async function upsertDashboardSettings(
       feedLimit: input.feedLimit ?? 20,
       showScanEntries: input.showScanEntries ?? true,
       showActionEntries: input.showActionEntries ?? true,
+      allowOverrideOnError: input.allowOverrideOnError ?? false,
       createdAt: now,
       updatedAt: now,
     })
@@ -72,6 +73,7 @@ export async function upsertDashboardSettings(
         ...(input.feedLimit !== undefined && { feedLimit: input.feedLimit }),
         ...(input.showScanEntries !== undefined && { showScanEntries: input.showScanEntries }),
         ...(input.showActionEntries !== undefined && { showActionEntries: input.showActionEntries }),
+        ...(input.allowOverrideOnError !== undefined && { allowOverrideOnError: input.allowOverrideOnError }),
         updatedAt: now,
       },
     })

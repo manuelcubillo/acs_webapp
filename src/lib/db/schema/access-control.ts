@@ -486,6 +486,12 @@ export const dashboardSettings = pgTable("dashboard_settings", {
   showScanEntries: boolean("show_scan_entries").notNull().default(true),
   /** Whether action entries appear in the feed. */
   showActionEntries: boolean("show_action_entries").notNull().default(true),
+  /**
+   * When true, operators may execute actions on cards that have error-level
+   * validation failures, after confirming via a modal. Each override is
+   * recorded in the action_log metadata as operator_override: true.
+   */
+  allowOverrideOnError: boolean("allow_override_on_error").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
