@@ -56,13 +56,24 @@ function escapeLike(value: string): string {
 /**
  * Build a correlated EXISTS subquery SQL fragment for a single field filter.
  * The outer table alias is `action_logs` (the actual DB table name).
+ *
+ * When fieldDefinitionIds has multiple values (multi-type filtering),
+ * the subquery matches ANY of those IDs using an IN clause.
  */
 function buildFieldFilterSQL(filter: FieldFilter): SQL | null {
-  const { fieldDefinitionId, operator, value } = filter;
-  if (!fieldDefinitionId) return null;
+  const { fieldDefinitionIds, operator, value } = filter;
+  if (!fieldDefinitionIds?.length) return null;
 
-  // Shared correlated sub-WHERE prefix (parameterised)
-  const base = sql`fv.card_id = action_logs.card_id AND fv.field_definition_id = ${fieldDefinitionId}::uuid`;
+  // Build field_definition_id match clause (single or IN for multiple)
+  const idMatch = fieldDefinitionIds.length === 1
+    ? sql`fv.field_definition_id = ${fieldDefinitionIds[0]}::uuid`
+    : sql`fv.field_definition_id IN (${sql.join(
+        fieldDefinitionIds.map((id) => sql`${id}::uuid`),
+        sql`, `,
+      )})`;
+
+  // Shared correlated sub-WHERE prefix
+  const base = sql`fv.card_id = action_logs.card_id AND ${idMatch}`;
 
   switch (operator) {
     case "contains": {
@@ -139,7 +150,13 @@ function buildWhere(tenantId: string, filters: ActionHistoryFilters) {
     conds.push(ltConds.length === 1 ? ltConds[0] : or(...ltConds));
   }
 
-  if (filters.cardTypeId) conds.push(eq(cards.cardTypeId, filters.cardTypeId));
+  if (filters.cardTypeIds?.length) {
+    if (filters.cardTypeIds.length === 1) {
+      conds.push(eq(cards.cardTypeId, filters.cardTypeIds[0]));
+    } else {
+      conds.push(inArray(cards.cardTypeId, filters.cardTypeIds));
+    }
+  }
 
   if (filters.actionDefinitionIds?.length) {
     conds.push(inArray(actionLogs.actionDefinitionId, filters.actionDefinitionIds));
@@ -151,7 +168,7 @@ function buildWhere(tenantId: string, filters: ActionHistoryFilters) {
     conds.push(ilike(cards.code, `%${escapeLike(filters.cardCode)}%`));
   }
 
-  if (filters.fieldFilters?.length && filters.cardTypeId) {
+  if (filters.fieldFilters?.length && filters.cardTypeIds?.length) {
     for (const ff of filters.fieldFilters) {
       const c = buildFieldFilterSQL(ff);
       if (c) conds.push(c);

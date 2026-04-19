@@ -61,7 +61,12 @@
       "Bash(find \"/Users/manuelcubillo/Projects/Veredillas/code/veredillas_web/src/app/\\(dashboard\\)/settings\" -type f -name \"*.tsx\" -o -name \"*.ts\")",
       "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node /opt/homebrew/lib/node_modules/pnpm/bin/pnpm.cjs db:migrate)",
       "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node /opt/homebrew/lib/node_modules/pnpm/bin/pnpm.cjs run build)",
-      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node -e \":*)"
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node -e \":*)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/lib/node_modules/pnpm/bin/pnpm.cjs tsc --noEmit)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/lib/node_modules/pnpm/bin/pnpm.cjs exec tsc --noEmit)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/lib/node_modules/pnpm/bin/pnpm.cjs build)",
+      "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" /opt/homebrew/opt/node@20/bin/node node_modules/typescript/bin/tsc --noEmit)",
+      "Bash(echo \"Exit: $?\")"
     ]
   }
 }

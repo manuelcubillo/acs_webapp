@@ -14,12 +14,11 @@ import {
   getCardTypeWithFullSchema,
   getTenantById,
   searchCards,
+  getSummaryFieldsForCardType,
 } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardList from "@/components/cards/CardList";
-import type { FieldDefinitionShape } from "@/lib/validation/types";
-import type { ValidationRules } from "@/lib/validation/types";
-import type { FieldDefinition } from "@/lib/dal/types";
+import type { FieldDefinition, PaginatedResult, CardWithFields } from "@/lib/dal/types";
 
 export const dynamic = "force-dynamic";
 
@@ -57,40 +56,28 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
     cardTypes.find((ct) => ct.id === rawCardTypeId) ?? cardTypes[0] ?? null;
 
   let fieldDefs: FieldDefinition[] = [];
-  let cards: Awaited<ReturnType<typeof searchCards>>["data"] = [];
-  let totalCards = 0;
+  let initialData: PaginatedResult<CardWithFields> = { data: [], total: 0, limit: 50, offset: 0 };
+  let summaryFieldIds: string[] = [];
 
   if (activeCardType) {
     try {
-      const schema = await getCardTypeWithFullSchema(
-        activeCardType.id,
-        tenantId,
-      );
+      const [schema, summaryFields, searchResult] = await Promise.all([
+        getCardTypeWithFullSchema(activeCardType.id, tenantId),
+        getSummaryFieldsForCardType(activeCardType.id).catch(() => []),
+        searchCards(
+          [activeCardType.id],
+          tenantId,
+          { codeContains: q || undefined },
+          { limit: 50 },
+        ),
+      ]);
       fieldDefs = schema.fieldDefinitions.filter((f) => f.isActive);
-
-      const result = await searchCards(
-        activeCardType.id,
-        tenantId,
-        { codeContains: q || undefined },
-        { limit: 100 },
-      );
-      cards = result.data;
-      totalCards = result.total;
+      summaryFieldIds = summaryFields.map((sf) => sf.fieldDefinitionId);
+      initialData = searchResult;
     } catch {
       // Non-fatal — show empty state.
     }
   }
-
-  // Cast field definitions to the shape expected by the validation engine.
-  const fieldShapes: FieldDefinitionShape[] = fieldDefs.map((f) => ({
-    id: f.id,
-    name: f.name,
-    label: f.label,
-    fieldType: f.fieldType,
-    isRequired: f.isRequired,
-    validationRules: f.validationRules as ValidationRules | null,
-  }));
-  void fieldShapes; // currently passed via fieldDefs to CardList
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -126,7 +113,7 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
                 marginTop: 4,
               }}
             >
-              {totalCards} carnet{totalCards !== 1 ? "s" : ""} ·{" "}
+              {initialData.total} carnet{initialData.total !== 1 ? "s" : ""} ·{" "}
               {activeCardType.name}
             </p>
           )}
@@ -166,41 +153,6 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
         </div>
       </div>
 
-      {/* Card type selector */}
-      {cardTypes.length > 1 && (
-        <div
-          style={{
-            display: "flex",
-            gap: 6,
-            marginBottom: 16,
-            flexWrap: "wrap",
-          }}
-        >
-          {cardTypes.map((ct) => {
-            const active = ct.id === activeCardType?.id;
-            return (
-              <Link
-                key={ct.id}
-                href={`/cards?cardTypeId=${ct.id}`}
-                style={{
-                  padding: "6px 14px",
-                  borderRadius: 20,
-                  border: `1.5px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`,
-                  background: active ? "#e0e7ff" : "#fff",
-                  color: active ? "var(--color-primary)" : "var(--color-dark)",
-                  fontSize: 13,
-                  fontWeight: active ? 700 : 500,
-                  textDecoration: "none",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {ct.name}
-              </Link>
-            );
-          })}
-        </div>
-      )}
-
       {/* No card types */}
       {cardTypes.length === 0 && (
         <div
@@ -221,14 +173,16 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
         </div>
       )}
 
-      {/* Card list */}
+      {/* Card list — card type multi-select is managed inside CardList */}
       {activeCardType && (
         <CardList
-          cards={cards}
+          initialData={initialData}
           fields={fieldDefs}
-          cardTypeId={activeCardType.id}
+          cardTypes={cardTypes}
+          initialCardTypeId={activeCardType.id}
           scanMode={scanMode}
           initialSearch={q}
+          summaryFieldIds={summaryFieldIds}
         />
       )}
     </DashboardShell>

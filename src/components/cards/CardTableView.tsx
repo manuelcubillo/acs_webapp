@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { ExternalLink } from "lucide-react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { CardWithFields, FieldDefinition } from "@/lib/dal/types";
 import DynamicFieldRenderer from "./DynamicFieldRenderer";
 
@@ -16,6 +16,9 @@ export default function CardTableView({
   fields,
   visibleColumns,
 }: CardTableViewProps) {
+  const router = useRouter();
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+
   const visible = fields.filter((f) => visibleColumns.includes(f.id));
 
   if (cards.length === 0) {
@@ -65,7 +68,6 @@ export default function CardTableView({
                 {f.label}
               </th>
             ))}
-            <th style={{ ...thStyle, width: 44 }} />
           </tr>
         </thead>
         <tbody>
@@ -74,10 +76,23 @@ export default function CardTableView({
             for (const fv of card.fields) {
               valueMap[fv.fieldDefinitionId] = fv.value;
             }
+            const isHovered = hoveredId === card.id;
             return (
               <tr
                 key={card.id}
-                style={{ borderBottom: "1px solid var(--color-border-soft)" }}
+                onClick={() =>
+                  router.push(
+                    `/cards/${encodeURIComponent(card.code)}?from=cards`,
+                  )
+                }
+                onMouseEnter={() => setHoveredId(card.id)}
+                onMouseLeave={() => setHoveredId(null)}
+                style={{
+                  borderBottom: "1px solid var(--color-border-soft)",
+                  cursor: "pointer",
+                  background: isHovered ? "#f5f7ff" : "transparent",
+                  transition: "background 0.1s",
+                }}
               >
                 <td
                   style={{
@@ -99,18 +114,6 @@ export default function CardTableView({
                     />
                   </td>
                 ))}
-                <td style={{ padding: "10px 12px" }}>
-                  <Link
-                    href={`/cards/${encodeURIComponent(card.code)}`}
-                    style={{
-                      color: "var(--color-primary)",
-                      display: "flex",
-                      alignItems: "center",
-                    }}
-                  >
-                    <ExternalLink size={14} />
-                  </Link>
-                </td>
               </tr>
             );
           })}

@@ -154,11 +154,12 @@ export interface CardTypeWithFullSchema extends CardTypeWithFields {
 
 // ─── Search / filter ────────────────────────────────────────────────────────
 
-export type SearchOperator = "eq" | "contains" | "gt" | "lt" | "gte" | "lte";
+/** @deprecated Use FieldFilterOperator — kept for Zod schema backwards compat */
+export type SearchOperator = FieldFilterOperator;
 
 export interface SearchFilter {
-  fieldDefinitionId: string;
-  operator: SearchOperator;
+  fieldDefinitionIds: string[];
+  operator: FieldFilterOperator;
   value: unknown;
 }
 
@@ -468,7 +469,7 @@ export type FieldFilterOperator =
   | 'date_eq' | 'date_before' | 'date_after' | 'date_between';
 
 export interface FieldFilter {
-  fieldDefinitionId: string;
+  fieldDefinitionIds: string[];
   operator: FieldFilterOperator;
   /** Scalar for most operators. { min, max } for 'between' / 'date_between'. */
   value: unknown;
@@ -478,11 +479,11 @@ export interface ActionHistoryFilters {
   dateFrom?: Date;
   dateTo?: Date;
   logTypes?: ('scan' | 'action')[];
-  cardTypeId?: string;
+  cardTypeIds?: string[];
   actionDefinitionIds?: string[];
   executedBy?: string;
   cardCode?: string;
-  /** Requires cardTypeId to be set. Ignored otherwise. */
+  /** Requires cardTypeIds to be set (non-empty). Ignored otherwise. */
   fieldFilters?: FieldFilter[];
 }
 
@@ -517,4 +518,20 @@ export interface FilterableFieldDefinition {
   label: string;
   fieldType: FieldType;
   validationRules: unknown | null;
+}
+
+/**
+ * A "common" field that appears (same name + fieldType) across one or more
+ * card types. Used by FieldFilterBuilder to support multi-type filtering.
+ *
+ * fieldDefinitionIds contains one UUID per card type that has this field,
+ * in the same order as the cardTypeIds input to getCommonFieldDefinitions().
+ */
+export interface CommonFieldDefinition {
+  name: string;
+  label: string;
+  fieldType: FieldType;
+  validationRules: unknown | null;
+  /** One field definition ID per card type that has this field. */
+  fieldDefinitionIds: string[];
 }

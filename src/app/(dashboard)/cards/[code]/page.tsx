@@ -23,9 +23,10 @@ export const dynamic = "force-dynamic";
 
 interface CardDetailPageProps {
   params: Promise<{ code: string }>;
+  searchParams: Promise<{ from?: string }>;
 }
 
-export default async function CardDetailPage({ params }: CardDetailPageProps) {
+export default async function CardDetailPage({ params, searchParams }: CardDetailPageProps) {
   // ── Auth ──────────────────────────────────────────────────────────────────
   let context;
   try {
@@ -37,8 +38,12 @@ export default async function CardDetailPage({ params }: CardDetailPageProps) {
   }
 
   const { tenantId, role } = context;
-  const { code } = await params;
+  const [{ code }, { from }] = await Promise.all([params, searchParams]);
   const decodedCode = decodeURIComponent(code);
+
+  // Dynamic back link based on where the user navigated from
+  const backHref = from === "cards" ? "/cards" : "/dashboard";
+  const backLabel = from === "cards" ? "Todos los carnets" : "Vista principal";
   const isAdmin = role === "admin" || role === "master";
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -71,7 +76,7 @@ export default async function CardDetailPage({ params }: CardDetailPageProps) {
           marginBottom: 20,
         }}>
           <Link
-            href="/cards"
+            href={backHref}
             style={{
               display: "flex", alignItems: "center", gap: 6,
               color: "var(--color-muted)", textDecoration: "none",
@@ -79,7 +84,7 @@ export default async function CardDetailPage({ params }: CardDetailPageProps) {
             }}
           >
             <ArrowLeft size={15} />
-            Todos los carnets
+            {backLabel}
           </Link>
 
           {isAdmin && (

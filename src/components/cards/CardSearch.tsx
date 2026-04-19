@@ -19,12 +19,18 @@ interface CardSearchProps {
   /** Initial value (from server-rendered URL param). */
   defaultValue?: string;
   placeholder?: string;
+  /**
+   * When provided, called with the search query instead of pushing to the URL.
+   * Used by CardList for client-side state management.
+   */
+  onSearch?: (q: string) => void;
 }
 
 export default function CardSearch({
   scanMode,
   defaultValue = "",
   placeholder = "Buscar por código...",
+  onSearch,
 }: CardSearchProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -37,8 +43,12 @@ export default function CardSearch({
   const cameraEnabled = scanMode === "camera" || scanMode === "both";
   const externalEnabled = scanMode === "external_reader" || scanMode === "both";
 
-  /** Push a new search to the URL; the server page will refetch. */
+  /** Push a new search to the URL or invoke the onSearch callback. */
   function navigate(q: string) {
+    if (onSearch) {
+      onSearch(q.trim());
+      return;
+    }
     const params = new URLSearchParams(searchParams.toString());
     if (q.trim()) {
       params.set("q", q.trim());

@@ -15,7 +15,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { ExternalLink, AlertCircle, CheckCircle2, Zap, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Zap, Loader2 } from "lucide-react";
 import Link from "next/link";
 import AutoActionFeedback from "./AutoActionFeedback";
 import ScanAlerts from "@/components/cards/ScanAlerts";
@@ -114,13 +114,28 @@ export default function ActiveCardZone({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* Card info panel */}
-      <div style={{
-        padding: "16px",
-        background: "#fff",
-        border: `2px solid ${borderColor}`,
-        borderRadius: 14,
-      }}>
+      {/* Card info panel — entire panel is a link to the card detail */}
+      <Link
+        href={`/cards/${encodeURIComponent(activeCard.code)}`}
+        style={{
+          display: "block",
+          padding: "16px",
+          background: "#fff",
+          border: `2px solid ${borderColor}`,
+          borderRadius: 14,
+          textDecoration: "none",
+          color: "inherit",
+          transition: "box-shadow 0.15s",
+          cursor: "pointer",
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLElement).style.boxShadow =
+            "0 2px 12px rgba(37,99,235,0.10)";
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLElement).style.boxShadow = "none";
+        }}
+      >
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
           <div style={{
             width: 44, height: 44, borderRadius: 12,
@@ -148,18 +163,6 @@ export default function ActiveCardZone({
               </span>
             </div>
           </div>
-          <Link
-            href={`/cards/${encodeURIComponent(activeCard.code)}`}
-            style={{
-              display: "flex", alignItems: "center", gap: 4,
-              fontSize: 12, fontWeight: 600,
-              color: "var(--color-primary)",
-              textDecoration: "none", flexShrink: 0,
-            }}
-          >
-            Ver detalle
-            <ExternalLink size={12} strokeWidth={2} />
-          </Link>
         </div>
 
         {/* Field summary */}
@@ -184,7 +187,7 @@ export default function ActiveCardZone({
             })}
           </div>
         )}
-      </div>
+      </Link>
 
       {/* Current validation alerts (from finalValidationResult — updated after each action) */}
       {finalValidationResult && !finalValidationResult.passed && (

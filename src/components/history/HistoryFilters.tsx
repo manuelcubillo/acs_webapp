@@ -28,7 +28,7 @@ function filtersToForm(filters: ActionHistoryFilters): FormState {
     dateTo: filters.dateTo
       ? filters.dateTo.toISOString().slice(0, 16)
       : "",
-    cardTypeId: filters.cardTypeId ?? "",
+    cardTypeIds: filters.cardTypeIds ?? [],
     actionDefinitionIds: filters.actionDefinitionIds ?? [],
     executedBy: filters.executedBy ?? "",
     cardCode: filters.cardCode ?? "",
@@ -39,7 +39,8 @@ function filtersToForm(filters: ActionHistoryFilters): FormState {
 interface FormState {
   dateFrom: string;
   dateTo: string;
-  cardTypeId: string;
+  /** Selected card type IDs — multi-select toggle buttons. */
+  cardTypeIds: string[];
   actionDefinitionIds: string[];
   executedBy: string;
   cardCode: string;
@@ -50,7 +51,7 @@ function emptyForm(): FormState {
   return {
     dateFrom: "",
     dateTo: "",
-    cardTypeId: "",
+    cardTypeIds: [],
     actionDefinitionIds: [],
     executedBy: "",
     cardCode: "",
@@ -71,16 +72,18 @@ export default function HistoryFilters({
     setForm(filtersToForm(appliedFilters));
   }, [appliedFilters]);
 
-  // Filtered action definitions based on selected card type
-  const visibleActions = form.cardTypeId
-    ? options.actionDefinitions.filter((a) => a.cardTypeId === form.cardTypeId)
+  // Filtered action definitions based on selected card types
+  const visibleActions = form.cardTypeIds.length > 0
+    ? options.actionDefinitions.filter((a) => form.cardTypeIds.includes(a.cardTypeId))
     : options.actionDefinitions;
 
-  // When card type changes, clear action selections and field filters that may be stale
-  const handleCardTypeChange = (cardTypeId: string) => {
+  // Toggle a card type in/out of the multi-select; clear stale action + field filters
+  const handleCardTypeToggle = (cardTypeId: string) => {
     setForm((f) => ({
       ...f,
-      cardTypeId,
+      cardTypeIds: f.cardTypeIds.includes(cardTypeId)
+        ? f.cardTypeIds.filter((id) => id !== cardTypeId)
+        : [...f.cardTypeIds, cardTypeId],
       actionDefinitionIds: [],
       fieldFilters: [],
     }));
@@ -99,7 +102,7 @@ export default function HistoryFilters({
     const filters: ActionHistoryFilters = {};
     if (form.dateFrom) filters.dateFrom = new Date(form.dateFrom);
     if (form.dateTo) filters.dateTo = new Date(form.dateTo);
-    if (form.cardTypeId) filters.cardTypeId = form.cardTypeId;
+    if (form.cardTypeIds.length > 0) filters.cardTypeIds = form.cardTypeIds;
     if (form.actionDefinitionIds.length > 0)
       filters.actionDefinitionIds = form.actionDefinitionIds;
     if (form.executedBy) filters.executedBy = form.executedBy;
@@ -117,7 +120,7 @@ export default function HistoryFilters({
   const activeCount = [
     appliedFilters.dateFrom,
     appliedFilters.dateTo,
-    appliedFilters.cardTypeId,
+    appliedFilters.cardTypeIds?.length,
     appliedFilters.actionDefinitionIds?.length,
     appliedFilters.executedBy,
     appliedFilters.cardCode,
@@ -231,20 +234,42 @@ export default function HistoryFilters({
               />
             </div>
 
-            {/* Card type */}
-            <div>
-              <label style={labelStyle}>Tipo de carnet</label>
-              <select
-                style={selectStyle}
-                value={form.cardTypeId}
-                onChange={(e) => handleCardTypeChange(e.target.value)}
-              >
-                <option value="">Todos los tipos</option>
-                {options.cardTypes.map((ct) => (
-                  <option key={ct.id} value={ct.id}>{ct.name}</option>
-                ))}
-              </select>
-            </div>
+            {/* Card type — multi-select toggle buttons */}
+            {options.cardTypes.length > 0 && (
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={labelStyle}>Tipo de carnet</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {options.cardTypes.map((ct) => {
+                    const selected = form.cardTypeIds.includes(ct.id);
+                    return (
+                      <button
+                        key={ct.id}
+                        type="button"
+                        onClick={() => handleCardTypeToggle(ct.id)}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          padding: "5px 13px",
+                          borderRadius: 20,
+                          border: selected
+                            ? "1.5px solid var(--color-primary, #2563eb)"
+                            : "1.5px solid var(--color-border)",
+                          background: selected ? "#e0e7ff" : "#fff",
+                          color: selected ? "var(--color-primary, #2563eb)" : "var(--color-dark)",
+                          fontSize: 13,
+                          fontWeight: selected ? 700 : 500,
+                          cursor: "pointer",
+                          transition: "all 0.12s",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {ct.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Executed by */}
             <div>
@@ -315,10 +340,10 @@ export default function HistoryFilters({
             </div>
           )}
 
-          {/* Field-level filters (only when card type selected) */}
-          {form.cardTypeId && (
+          {/* Field-level filters (only when at least one card type selected) */}
+          {form.cardTypeIds.length > 0 && (
             <HistoryFieldFilters
-              cardTypeId={form.cardTypeId}
+              cardTypeIds={form.cardTypeIds}
               value={form.fieldFilters}
               onChange={(ff) => setForm((f) => ({ ...f, fieldFilters: ff }))}
             />

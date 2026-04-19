@@ -61,10 +61,15 @@ export interface CardScanResult {
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
 
-const SearchOperatorSchema = z.enum(["eq", "contains", "gt", "lt", "gte", "lte"]);
+const SearchOperatorSchema = z.enum([
+  "contains", "starts_with", "equals_text",
+  "eq", "gt", "lt", "gte", "lte", "between",
+  "is_true", "is_false",
+  "date_eq", "date_before", "date_after", "date_between",
+]);
 
 const SearchFilterSchema = z.object({
-  fieldDefinitionId: z.string().uuid(),
+  fieldDefinitionIds: z.array(z.string().uuid()).min(1),
   operator: SearchOperatorSchema,
   value: z.unknown(),
 });
@@ -92,7 +97,7 @@ const ListCardsSchema = z.object({
 });
 
 const SearchCardsSchema = z.object({
-  cardTypeId: z.string().uuid(),
+  cardTypeIds: z.array(z.string().uuid()).min(1),
   codeContains: z.string().optional(),
   filters: z.array(SearchFilterSchema).optional(),
   limit: z.number().int().min(1).max(100).optional(),
@@ -482,7 +487,7 @@ export async function searchCardsAction(
       filters: data.filters,
     };
 
-    return searchCards(data.cardTypeId, tenantId, searchInput, {
+    return searchCards(data.cardTypeIds, tenantId, searchInput, {
       limit: data.limit,
       offset: data.offset,
     });

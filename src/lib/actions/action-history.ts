@@ -14,6 +14,7 @@ import {
   getActionHistoryForExport,
   getHistoryFilterOptions,
   getFilterableFieldDefinitions,
+  getCommonFieldDefinitions,
   buildCsvFromEntries,
 } from "@/lib/dal";
 import type {
@@ -21,6 +22,7 @@ import type {
   ActionHistoryEntry,
   HistoryFilterOptions,
   FilterableFieldDefinition,
+  CommonFieldDefinition,
   PaginatedResult,
 } from "@/lib/dal";
 
@@ -45,7 +47,7 @@ const FieldFilterOperatorSchema = z.enum([
 ]);
 
 const FieldFilterSchema = z.object({
-  fieldDefinitionId: z.string().uuid(),
+  fieldDefinitionIds: z.array(z.string().uuid()).min(1),
   operator: FieldFilterOperatorSchema,
   value: z.unknown(),
 });
@@ -54,7 +56,7 @@ const ActionHistoryFiltersSchema = z.object({
   dateFrom: z.coerce.date().optional(),
   dateTo: z.coerce.date().optional(),
   logTypes: z.array(z.enum(["scan", "action"])).optional(),
-  cardTypeId: z.string().uuid().optional(),
+  cardTypeIds: z.array(z.string().uuid()).optional(),
   actionDefinitionIds: z.array(z.string().uuid()).optional(),
   executedBy: z.string().optional(),
   cardCode: z.string().max(500).optional(),
@@ -124,6 +126,7 @@ export async function getHistoryFilterOptionsAction(): Promise<
  * Returns filterable field definitions for a card type.
  * Photo fields are excluded. Used by HistoryFieldFilters when a card type
  * is selected to populate the field filter builder.
+ * @deprecated Prefer getCommonFieldDefinitionsAction for new code.
  */
 export async function getFieldDefinitionsForFilterAction(
   cardTypeId: string,
@@ -132,5 +135,21 @@ export async function getFieldDefinitionsForFilterAction(
     await requireOperator();
     const parsed = z.string().uuid().parse(cardTypeId);
     return getFilterableFieldDefinitions(parsed);
+  });
+}
+
+/**
+ * Returns common field definitions across one or more card types.
+ * Photo fields are excluded. A field is "common" when it has the same
+ * name + fieldType in ALL selected card types.
+ * Used by FieldFilterBuilder for multi-type field-level filtering.
+ */
+export async function getCommonFieldDefinitionsAction(
+  cardTypeIds: string[],
+): Promise<ActionResult<CommonFieldDefinition[]>> {
+  return actionHandler(async () => {
+    await requireOperator();
+    const parsed = z.array(z.string().uuid()).min(1).parse(cardTypeIds);
+    return getCommonFieldDefinitions(parsed);
   });
 }

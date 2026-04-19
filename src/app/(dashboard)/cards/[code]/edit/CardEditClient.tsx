@@ -27,7 +27,6 @@ export default function CardEditClient({
     const res = await updateCardAction(cardCode, { values });
     if (!res.success) throw new Error(res.error);
     router.push(`/cards/${encodeURIComponent(cardCode)}`);
-    router.refresh();
   }
 
   return (

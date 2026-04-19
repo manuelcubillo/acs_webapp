@@ -18,6 +18,7 @@ import {
   lt,
   gte,
   lte,
+  inArray,
 } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { cards, fieldValues, fieldDefinitions } from "@/lib/db/schema";
@@ -452,17 +453,17 @@ export async function deleteCard(
 /**
  * Search cards by dynamic field values and/or partial code match.
  *
- * Builds a dynamic query with JOINs against field_values for each filter.
- * Each filter is applied as an additional WHERE condition via a subquery.
+ * Builds a dynamic query with EXISTS subqueries for each field filter.
+ * Supports searching across multiple card types simultaneously.
  *
- * @param cardTypeId - Card type UUID.
- * @param tenantId   - Tenant UUID.
- * @param input      - Search filters and optional code substring.
- * @param options    - Pagination options.
+ * @param cardTypeIds - One or more card type UUIDs.
+ * @param tenantId    - Tenant UUID.
+ * @param input       - Search filters and optional code substring.
+ * @param options     - Pagination options.
  * @returns Paginated result with enriched cards.
  */
 export async function searchCards(
-  cardTypeId: string,
+  cardTypeIds: string[],
   tenantId: string,
   input: SearchCardsInput,
   options: PaginationOptions = {},
@@ -470,11 +471,16 @@ export async function searchCards(
   const limit = options.limit ?? 50;
   const offset = options.offset ?? 0;
 
+  if (cardTypeIds.length === 0) {
+    return { data: [], total: 0, limit, offset };
+  }
+
   // Build base conditions.
-  const conditions = [
-    eq(cards.cardTypeId, cardTypeId),
-    eq(cards.tenantId, tenantId),
-  ];
+  const cardTypeCondition = cardTypeIds.length === 1
+    ? eq(cards.cardTypeId, cardTypeIds[0])
+    : inArray(cards.cardTypeId, cardTypeIds);
+
+  const conditions = [cardTypeCondition, eq(cards.tenantId, tenantId)];
 
   // Code partial match.
   if (input.codeContains) {
@@ -508,10 +514,19 @@ export async function searchCards(
     .limit(limit)
     .offset(offset);
 
-  // Enrich.
-  const defs = await getFieldDefinitionsByCardType(cardTypeId);
+  // Enrich: fetch defs per card type (parallel), then enrich each card.
+  const uniqueCardTypeIds = [...new Set(rows.map((c) => c.cardTypeId))];
+  const defsMap = new Map<string, FieldDefinition[]>();
+  await Promise.all(
+    uniqueCardTypeIds.map(async (ctId) => {
+      const defs = await getFieldDefinitionsByCardType(ctId);
+      defsMap.set(ctId, defs);
+    }),
+  );
+
   const data = await Promise.all(
     rows.map(async (card) => {
+      const defs = defsMap.get(card.cardTypeId) ?? [];
       const fields = await enrichFieldValues(card.id, defs);
       return { ...card, fields };
     }),
@@ -520,62 +535,77 @@ export async function searchCards(
   return { data, total, limit, offset };
 }
 
+/** Escape % and _ in ILIKE patterns. */
+function escapeLike(v: string): string {
+  return v.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 /**
  * Build an EXISTS subquery condition for a single field value filter.
- * Returns a SQL condition that checks for a matching field_values row.
+ * Supports all FieldFilterOperator values: text, number, boolean, date.
+ *
+ * When fieldDefinitionIds contains multiple IDs (multi-card-type filtering),
+ * the subquery matches ANY of those IDs using an IN clause.
  */
 function buildFieldFilterCondition(filter: SearchFilter) {
-  const { fieldDefinitionId, operator, value } = filter;
+  const { fieldDefinitionIds, operator, value } = filter;
+  if (!fieldDefinitionIds.length) return undefined;
 
-  // Determine which column to filter on by querying the value columns.
-  // We try text first, then number, then date — based on operator.
+  // Build the field_definition_id match clause (single or multiple IDs)
+  const idMatch = fieldDefinitionIds.length === 1
+    ? sql`fv.field_definition_id = ${fieldDefinitionIds[0]}::uuid`
+    : sql`fv.field_definition_id IN (${sql.join(
+        fieldDefinitionIds.map((id) => sql`${id}::uuid`),
+        sql`, `,
+      )})`;
+
   switch (operator) {
+    // ── Text ──────────────────────────────────────────────────────────────────
+    case "contains": {
+      const v = "%" + escapeLike(String(value ?? "")) + "%";
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_text ILIKE ${v})`;
+    }
+    case "starts_with": {
+      const v = escapeLike(String(value ?? "")) + "%";
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_text ILIKE ${v})`;
+    }
+    case "equals_text":
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_text = ${String(value ?? "")})`;
+
+    // ── Numeric ───────────────────────────────────────────────────────────────
     case "eq":
-      return sql`EXISTS (
-        SELECT 1 FROM field_values fv
-        WHERE fv.card_id = ${cards.id}
-          AND fv.field_definition_id = ${fieldDefinitionId}
-          AND (
-            fv.value_text = ${String(value)}
-            OR fv.value_number = ${Number(value)}
-            OR fv.value_boolean = ${Boolean(value)}
-          )
-      )`;
-    case "contains":
-      return sql`EXISTS (
-        SELECT 1 FROM field_values fv
-        WHERE fv.card_id = ${cards.id}
-          AND fv.field_definition_id = ${fieldDefinitionId}
-          AND fv.value_text ILIKE ${"%" + String(value) + "%"}
-      )`;
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_number = ${Number(value)})`;
     case "gt":
-      return sql`EXISTS (
-        SELECT 1 FROM field_values fv
-        WHERE fv.card_id = ${cards.id}
-          AND fv.field_definition_id = ${fieldDefinitionId}
-          AND fv.value_number > ${Number(value)}
-      )`;
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_number > ${Number(value)})`;
     case "lt":
-      return sql`EXISTS (
-        SELECT 1 FROM field_values fv
-        WHERE fv.card_id = ${cards.id}
-          AND fv.field_definition_id = ${fieldDefinitionId}
-          AND fv.value_number < ${Number(value)}
-      )`;
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_number < ${Number(value)})`;
     case "gte":
-      return sql`EXISTS (
-        SELECT 1 FROM field_values fv
-        WHERE fv.card_id = ${cards.id}
-          AND fv.field_definition_id = ${fieldDefinitionId}
-          AND fv.value_number >= ${Number(value)}
-      )`;
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_number >= ${Number(value)})`;
     case "lte":
-      return sql`EXISTS (
-        SELECT 1 FROM field_values fv
-        WHERE fv.card_id = ${cards.id}
-          AND fv.field_definition_id = ${fieldDefinitionId}
-          AND fv.value_number <= ${Number(value)}
-      )`;
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_number <= ${Number(value)})`;
+    case "between": {
+      const r = value as { min?: unknown; max?: unknown } | null ?? {};
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_number >= ${Number(r.min ?? 0)} AND fv.value_number <= ${Number(r.max ?? 0)})`;
+    }
+
+    // ── Boolean ───────────────────────────────────────────────────────────────
+    case "is_true":
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_boolean = true)`;
+    case "is_false":
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_boolean = false)`;
+
+    // ── Date ──────────────────────────────────────────────────────────────────
+    case "date_eq":
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_date::date = ${String(value ?? "")}::date)`;
+    case "date_before":
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_date < ${String(value ?? "")}::date)`;
+    case "date_after":
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_date > ${String(value ?? "")}::date)`;
+    case "date_between": {
+      const r = value as { min?: string; max?: string } | null ?? {};
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_date >= ${String(r.min ?? "")}::date AND fv.value_date <= ${String(r.max ?? "")}::date)`;
+    }
+
     default:
       return undefined;
   }

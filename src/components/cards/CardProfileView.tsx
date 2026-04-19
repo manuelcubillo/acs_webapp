@@ -1,16 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink } from "lucide-react";
 import type { CardWithFields, FieldDefinition } from "@/lib/dal/types";
 import DynamicFieldRenderer from "./DynamicFieldRenderer";
 
 interface CardProfileViewProps {
   cards: CardWithFields[];
   fields: FieldDefinition[];
+  /**
+   * Ordered field definition IDs from card_type_summary_fields.
+   * When non-empty, only these fields are shown (in order).
+   * Falls back to the first 3 fields when empty or not provided.
+   */
+  summaryFieldIds?: string[];
 }
 
-export default function CardProfileView({ cards, fields }: CardProfileViewProps) {
+export default function CardProfileView({ cards, fields, summaryFieldIds = [] }: CardProfileViewProps) {
   if (cards.length === 0) {
     return (
       <div
@@ -26,8 +31,13 @@ export default function CardProfileView({ cards, fields }: CardProfileViewProps)
     );
   }
 
-  // Show first 6 fields in profile cards.
-  const previewFields = fields.slice(0, 6);
+  // Use configured summary fields (in order), or fall back to first 3.
+  const previewFields: FieldDefinition[] =
+    summaryFieldIds.length > 0
+      ? summaryFieldIds
+          .map((id) => fields.find((f) => f.id === id))
+          .filter((f): f is FieldDefinition => f !== undefined)
+      : fields.slice(0, 3);
 
   return (
     <div
@@ -44,8 +54,9 @@ export default function CardProfileView({ cards, fields }: CardProfileViewProps)
         }
 
         return (
-          <div
+          <Link
             key={card.id}
+            href={`/cards/${encodeURIComponent(card.code)}?from=cards`}
             style={{
               background: "#fff",
               borderRadius: 12,
@@ -54,40 +65,37 @@ export default function CardProfileView({ cards, fields }: CardProfileViewProps)
               display: "flex",
               flexDirection: "column",
               gap: 12,
+              textDecoration: "none",
+              color: "inherit",
+              transition: "box-shadow 0.15s, border-color 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.boxShadow =
+                "0 2px 12px rgba(37,99,235,0.10)";
+              (e.currentTarget as HTMLElement).style.borderColor =
+                "var(--color-primary)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.boxShadow = "none";
+              (e.currentTarget as HTMLElement).style.borderColor =
+                "var(--color-border)";
             }}
           >
-            {/* Header */}
-            <div
+            {/* Code badge */}
+            <span
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
+                fontFamily: "monospace",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "var(--color-muted)",
+                background: "#f3f4f6",
+                padding: "2px 8px",
+                borderRadius: 6,
+                alignSelf: "flex-start",
               }}
             >
-              <span
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: "var(--color-muted)",
-                  background: "#f3f4f6",
-                  padding: "2px 8px",
-                  borderRadius: 6,
-                }}
-              >
-                {card.code}
-              </span>
-              <Link
-                href={`/cards/${encodeURIComponent(card.code)}`}
-                style={{
-                  color: "var(--color-primary)",
-                  display: "flex",
-                  alignItems: "center",
-                }}
-              >
-                <ExternalLink size={14} />
-              </Link>
-            </div>
+              {card.code}
+            </span>
 
             {/* Fields */}
             <div
@@ -117,7 +125,7 @@ export default function CardProfileView({ cards, fields }: CardProfileViewProps)
                 </div>
               ))}
             </div>
-          </div>
+          </Link>
         );
       })}
     </div>
