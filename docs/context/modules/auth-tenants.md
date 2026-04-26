@@ -1,6 +1,6 @@
 # Module: auth-tenants
 
-**Last updated**: 2026-04-25 · **Last feature**: public sign-up + tenant bootstrap (master account creation)
+**Last updated**: 2026-04-26 · **Last feature**: account deletion with departure feedback
 
 ## Responsibility
 
@@ -28,12 +28,18 @@ Authentication (Better Auth), tenant management, multi-tenancy boundary, members
 - `src/app/(auth)/reset-password/ResetPasswordClient.tsx` — New-password form; reads `?token` from URL; calls `authClient.resetPassword`.
 - `src/app/api/auth/[...all]/route.ts` — Better Auth handler.
 - `src/lib/db/schema/auth.ts` — Better Auth tables (`user`, `session`, `account`, `verification`).
-- `src/lib/db/schema/access-control.ts` — `tenants`, `tenant_members` definitions.
+- `src/lib/db/schema/access-control.ts` — `tenants`, `tenant_members`, `departure_feedback` definitions.
+- `src/lib/actions/account.ts` — `deleteAccountAction`, `submitDepartureFeedbackAction`.
+- `src/app/(auth)/goodbye/page.tsx` — Goodbye server page (no auth guard).
+- `src/app/(auth)/goodbye/GoodbyeClient.tsx` — Farewell UI + optional feedback form; reads `?fid` to link feedback to deletion event.
+- `src/components/settings/account/DeleteAccountModal.tsx` — Simple confirmation modal (non-last-master case).
+- `src/components/settings/account/DeleteTenantAccountModal.tsx` — Typed-phrase confirmation modal (last-master case; requires typing "confirmar borrado de datos").
 
 ## Data model (relevant subset)
 
 - `tenants(id, name, scan_mode, created_at, updated_at)` — `allow_override_on_error` is **not** here; it lives in `dashboard_settings`.
 - `tenant_members(id, tenant_id, user_id, role, is_active, ...)` — unique on `(tenant_id, user_id)`.
+- `departure_feedback(id, name, email, tenant_name, reason, comment, created_at)` — no FK constraints; row created during deletion before user/tenant is removed. `reason` and `comment` filled in later by `submitDepartureFeedbackAction` via `?fid` token.
 - Better Auth: `user`, `session`, `account`, `verification`.
 
 ## Main flows
@@ -68,6 +74,25 @@ Authentication (Better Auth), tenant management, multi-tenancy boundary, members
 2. On failure: `AuthenticationError` or `AuthorizationError` thrown.
 3. `actionHandler` wrapper converts to `{ success: false, code: 'UNAUTHENTICATED' | 'UNAUTHORIZED' }`.
 
+### Account deletion
+
+1. User clicks "Eliminar cuenta" in `/settings/account` (admin+ only route).
+2. Server page pre-fetches `masterCount = countActiveMasters(tenantId)` and passes it to `AccountSettings` client.
+3. Client shows the appropriate confirmation modal:
+   - **Non-last-master** (`role !== 'master'` or `masterCount > 1`): `DeleteAccountModal` — simple confirm.
+   - **Last master** (`role === 'master'` and `masterCount === 1`): `DeleteTenantAccountModal` — user must type "confirmar borrado de datos" to enable the confirm button.
+4. On confirm → `deleteAccountAction()`:
+   a. Collects `name`, `email`, `tenant.name` before any deletion.
+   b. Inserts `departure_feedback` row (captures PII that would otherwise be lost).
+   c. If last master: `deleteTenant(tenantId)` → cascades all tenant data.
+   d. `auth.api.signOut()` — invalidates session server-side.
+   e. `db.delete(user)` — cascades `session`, `account`, `tenant_members`.
+   f. Returns `{ feedbackId }`.
+5. Client does `window.location.href = /goodbye?fid=<feedbackId>` (full navigation to avoid dashboard layout auth checks on dead session).
+6. Goodbye page (`/goodbye`) — no auth guard. User optionally submits reason + comment → `submitDepartureFeedbackAction({ feedbackId, reason, comment })` updates the pre-created row.
+
+See ADR `2026-04-26-account-deletion-feedback-token.md`.
+
 ### Role demotion safeguard
 
 1. `updateMemberRoleAction(memberId, newRole)` calls DAL.
@@ -83,7 +108,7 @@ Authentication (Better Auth), tenant management, multi-tenancy boundary, members
 ## Module interactions
 
 - Consumed by: every Server Action (guards), every DAL function (tenant scoping).
-- Writes to: `tenants`, `tenant_members`, Better Auth tables.
+- Writes to: `tenants`, `tenant_members`, `departure_feedback`, Better Auth tables.
 - Does not log to `action_logs`.
 
 ## Open TODOs
@@ -97,6 +122,7 @@ Authentication (Better Auth), tenant management, multi-tenancy boundary, members
 
 ## Recent changes
 
+- 2026-04-26 — Added account deletion flow. New `deleteAccountAction` (pre-creates `departure_feedback` row to capture PII), `DeleteAccountModal` / `DeleteTenantAccountModal` (last-master requires typed phrase), `/goodbye` page with optional feedback form via `?fid` token. ADR `2026-04-26-account-deletion-feedback-token.md`.
 - 2026-04-25 — Added public sign-up + tenant bootstrap. New `/sign-up` and `/onboarding/create-tenant` pages, `createTenantWithMasterAction` in `src/lib/actions/tenants.ts`, pass-through `(dashboard)/layout.tsx` gate, "create account" link on login. ADR `2026-04-25-tenant-bootstrap-best-effort.md` captures the best-effort sequential write strategy.
 - 2026-04-25 — Added password recovery flow: `/forgot-password` + `/reset-password` pages, Resend email transport in `auth.ts`, "forgot password" link on login page. Corrected Login flow (username, not email).
 - 2026-04-19 — Initial extraction from technical handoff.

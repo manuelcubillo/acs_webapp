@@ -1,6 +1,6 @@
 # Module: infrastructure
 
-**Last updated**: 2026-04-25 · **Last feature**: Resend transactional email for password recovery
+**Last updated**: 2026-04-26 · **Last feature**: departure_feedback table (account deletion)
 
 ## Responsibility
 
@@ -99,6 +99,7 @@ RESEND_FROM_EMAIL=noreply@yourdomain   # Must be a Resend-verified domain
 
 ## Recent changes
 
+- 2026-04-26 — Added `departure_feedback` table (migrations 0011, 0012). Note: snapshot files for 0008–0010 were missing; 0011 SQL was hand-trimmed to only the new table to avoid duplicate DDL errors.
 - 2026-04-25 — Added Resend (v6.12.2) for transactional email; documented `RESEND_APIKEY` and `RESEND_FROM_EMAIL` env vars.
 - 2026-04-19 — Initial extraction from technical handoff.
 - 2026-04-19 — Synchronized documentation against source code: removed stale `TODO: API_KEYS` (no code tag found); moved `TODO: STORAGE` to Future considerations (no code tag).

@@ -1,6 +1,6 @@
 # 01 · Architecture
 
-**Last updated**: 2026-04-19 · **Last sync**: documentation sync against source code
+**Last updated**: 2026-04-26 · **Last sync**: added departure_feedback table
 
 ## 1. Data model — hybrid SQL + dynamic fields
 
@@ -21,6 +21,7 @@ Fixed columns for system fields (`id`, `tenant_id`, `status`, timestamps) plus d
 | `scan_validations`            | Rules evaluated at scan time. Per-field, with severity (`error` \| `warning`).                      |
 | `dashboard_settings`          | Per-tenant dashboard configuration: feed limits, entry visibility, `allow_override_on_error`.       |
 | `card_type_summary_fields`    | Per card type: which fields surface in the activity feed and summaries.                             |
+| `departure_feedback`          | Anonymous deletion feedback. `name`, `email`, `tenant_name` captured before deletion; `reason`/`comment` updated post-redirect via `?fid` token. No FK constraints. |
 | Better Auth tables            | `user`, `session`, `account`, `verification`.                                                       |
 
 ### Key enums

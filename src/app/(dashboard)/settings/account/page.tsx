@@ -20,7 +20,7 @@ import {
   AuthenticationError,
   AuthorizationError,
 } from "@/lib/api";
-import { getTenantById } from "@/lib/dal";
+import { getTenantById, countActiveMasters } from "@/lib/dal";
 import AccountSettings from "@/components/settings/account/AccountSettings";
 
 export const dynamic = "force-dynamic";
@@ -39,9 +39,10 @@ export default async function AccountSettingsPage() {
   const { tenantId, role } = context;
 
   // ── Data fetching ────────────────────────────────────────────────────────────
-  const [tenant, session] = await Promise.all([
+  const [tenant, session, masterCount] = await Promise.all([
     getTenantById(tenantId).catch(() => null),
     auth.api.getSession({ headers: await headers() }),
+    countActiveMasters(tenantId),
   ]);
 
   if (!tenant) redirect("/dashboard");
@@ -61,6 +62,7 @@ export default async function AccountSettingsPage() {
       }}
       user={user}
       role={role}
+      masterCount={masterCount}
     />
   );
 }

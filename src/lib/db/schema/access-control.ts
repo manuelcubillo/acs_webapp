@@ -534,3 +534,20 @@ export const cardTypeSummaryFields = pgTable(
     index("card_type_summary_fields_card_type_id_idx").on(table.cardTypeId),
   ],
 );
+
+// ─── Departure Feedback ───────────────────────────────────────────────────────
+
+/**
+ * Optional feedback collected from users who delete their account.
+ * No userId FK — the user is already deleted when this row is inserted.
+ * No auth required to insert (goodbye page is unauthenticated).
+ */
+export const departureFeedback = pgTable("departure_feedback", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name"),
+  email: text("email"),
+  tenantName: text("tenant_name"),
+  reason: text("reason"),
+  comment: text("comment"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});

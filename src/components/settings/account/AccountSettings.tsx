@@ -17,10 +17,27 @@
 import { useState, useTransition } from "react";
 import { Save, Copy, Check } from "lucide-react";
 import { updateCurrentTenantNameAction } from "@/lib/actions/tenants";
+import { deleteAccountAction } from "@/lib/actions/account";
 import { authClient } from "@/lib/auth-client";
 import SettingsSection from "@/components/settings/SettingsSection";
 import SettingsCard from "@/components/settings/SettingsCard";
+import DeleteAccountModal from "./DeleteAccountModal";
+import DeleteTenantAccountModal from "./DeleteTenantAccountModal";
 import type { TenantRole } from "@/lib/api";
+
+// ─── Danger zone copy ─────────────────────────────────────────────────────────
+
+const DANGER_ZONE = {
+  cardTitle: "Zona de peligro",
+  cardDescription: "Acciones irreversibles sobre tu cuenta.",
+  warningLastMaster:
+    "Eres el único master activo de este tenant. Eliminar tu cuenta eliminará permanentemente toda la organización y sus datos.",
+  warningNotLastMaster:
+    "Al eliminar tu cuenta perderás el acceso a este tenant. Los datos de la organización no se verán afectados.",
+  deleteButton: "Eliminar cuenta",
+  deletingButton: "Eliminando…",
+  errorFallback: "Error al eliminar la cuenta",
+} as const;
 
 // ─── Role badge ───────────────────────────────────────────────────────────────
 
@@ -122,11 +139,13 @@ interface AccountSettingsProps {
   user: { name: string | null; email: string };
   /** Current user's role in this tenant. */
   role: TenantRole;
+  /** Number of active master members in this tenant. */
+  masterCount: number;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function AccountSettings({ tenant, user, role }: AccountSettingsProps) {
+export default function AccountSettings({ tenant, user, role, masterCount }: AccountSettingsProps) {
   // ── Tenant name form ──────────────────────────────────────────────────────
   const [tenantName, setTenantName] = useState(tenant.name);
   const [isTenantPending, startTenantTransition] = useTransition();
@@ -163,6 +182,27 @@ export default function AccountSettings({ tenant, user, role }: AccountSettingsP
       } else {
         setUserSaved(true);
         setTimeout(() => setUserSaved(false), 3000);
+      }
+    });
+  }
+
+  // ── Delete account ────────────────────────────────────────────────────────
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, startDeleteTransition] = useTransition();
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const isLastMaster = role === "master" && masterCount === 1;
+
+  function handleDeleteConfirm() {
+    setDeleteError(null);
+    startDeleteTransition(async () => {
+      const result = await deleteAccountAction();
+      if (result.success) {
+        // Full navigation — session is invalidated server-side,
+        // router.push would trigger dashboard layout auth checks with dead session.
+        window.location.href = `/goodbye?fid=${result.data.feedbackId}`;
+      } else {
+        setShowDeleteModal(false);
+        setDeleteError(result.error ?? DANGER_ZONE.errorFallback);
       }
     });
   }
@@ -287,6 +327,57 @@ export default function AccountSettings({ tenant, user, role }: AccountSettingsP
           </div>
         </div>
       </SettingsCard>
+      {/* ── Danger zone ──────────────────────────────────────────────────── */}
+      <SettingsCard
+        title={DANGER_ZONE.cardTitle}
+        description={DANGER_ZONE.cardDescription}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <p style={{ margin: 0, fontSize: 13, color: "var(--color-secondary)", lineHeight: 1.6 }}>
+            {isLastMaster ? DANGER_ZONE.warningLastMaster : DANGER_ZONE.warningNotLastMaster}
+          </p>
+          {deleteError && (
+            <p style={{ margin: 0, fontSize: 12.5, color: "#dc2626" }}>{deleteError}</p>
+          )}
+          <div>
+            <button
+              type="button"
+              onClick={() => { setDeleteError(null); setShowDeleteModal(true); }}
+              disabled={isDeleting}
+              style={{
+                padding: "9px 18px",
+                borderRadius: 9,
+                border: "1.5px solid #dc2626",
+                background: "#fff",
+                color: "#dc2626",
+                cursor: isDeleting ? "not-allowed" : "pointer",
+                fontSize: 13,
+                fontWeight: 600,
+                opacity: isDeleting ? 0.6 : 1,
+              }}
+            >
+              {isDeleting ? DANGER_ZONE.deletingButton : DANGER_ZONE.deleteButton}
+            </button>
+          </div>
+        </div>
+      </SettingsCard>
+
+      {isLastMaster ? (
+        <DeleteTenantAccountModal
+          isOpen={showDeleteModal}
+          isLoading={isDeleting}
+          tenantName={tenant.name}
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setShowDeleteModal(false)}
+        />
+      ) : (
+        <DeleteAccountModal
+          isOpen={showDeleteModal}
+          isLoading={isDeleting}
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setShowDeleteModal(false)}
+        />
+      )}
     </SettingsSection>
   );
 }
