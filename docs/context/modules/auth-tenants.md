@@ -1,6 +1,6 @@
 # Module: auth-tenants
 
-**Last updated**: 2026-04-26 · **Last feature**: account deletion with departure feedback
+**Last updated**: 2026-04-26 · **Last feature**: create-and-add member (new user tab in InviteMemberModal)
 
 ## Responsibility
 
@@ -12,11 +12,18 @@ Authentication (Better Auth), tenant management, multi-tenancy boundary, members
 - `src/lib/auth-client.ts` — Better Auth browser client.
 - `src/lib/api/auth.ts` — `getCurrentTenant`, `requireAuth`, `requireRole`, `requireOperator`, `requireAdmin`, `requireMaster`, `getTenantFromHeader` (external API only).
 - `src/lib/dal/tenants.ts` — Tenant CRUD, scan mode, override setting.
-- `src/lib/dal/members.ts` — Membership CRUD, role transitions, last-master invariant.
+- `src/lib/auth/role-hierarchy.ts` — `ROLE_ORDER`, `canManage`, `canAssignRole` helpers (single source of truth for permission checks).
+- `src/lib/email/send.ts` — Shared Resend client + `sendInvitationEmail`.
+- `src/lib/dal/members.ts` — Membership CRUD, role transitions, activate/deactivate/remove, profile update, last-master invariant. Filters `removedAt IS NULL` by default.
+- `src/lib/dal/invitations.ts` — `createInvitation`, `getInvitationByToken`, `listPendingInvitations`, `findPendingInvitation`, `revokeInvitation`, `acceptInvitation`.
 - `src/lib/actions/tenants.ts` — Tenant-level Server Actions.
-- `src/lib/actions/members.ts` — Invite/remove/change role Server Actions.
+- `src/lib/actions/members.ts` — Member management actions (createAndAddMember, addExistingUser, updateRole, setActive, remove, updateProfile, triggerPasswordReset, checkOwnMembershipStatus). All @role admin except checkOwnMembershipStatus (public).
+- `src/lib/actions/invitations.ts` — `inviteMemberByEmailAction`, `revokeInvitationAction`, `listPendingInvitationsAction`, `acceptInvitationAction` (public).
 - `src/app/(auth)/login/page.tsx` — Login server component.
-- `src/app/(auth)/login/LoginClient.tsx` — Login form (username + password, "forgot password" + "create account" links).
+- `src/app/(auth)/login/LoginClient.tsx` — Login form; calls `checkOwnMembershipStatusAction` after sign-in to bounce deactivated members.
+- `src/app/(auth)/invitations/[token]/page.tsx` — Public invitation accept page (no auth guard).
+- `src/app/(auth)/invitations/[token]/InvitationAcceptClient.tsx` — Registration / join form.
+- `src/app/(auth)/account-deactivated/page.tsx` — Shown when a member's access is revoked; signs out client-side.
 - `src/app/(auth)/sign-up/page.tsx` — Sign-up server component.
 - `src/app/(auth)/sign-up/SignUpClient.tsx` — Public sign-up form (name + email + username + password); calls `authClient.signUp.email` and pushes to `/onboarding/create-tenant`.
 - `src/app/(auth)/onboarding/create-tenant/page.tsx` — Server component; redirects to `/dashboard` if `user.tenantId` already set, else renders the form.
@@ -38,7 +45,8 @@ Authentication (Better Auth), tenant management, multi-tenancy boundary, members
 ## Data model (relevant subset)
 
 - `tenants(id, name, scan_mode, created_at, updated_at)` — `allow_override_on_error` is **not** here; it lives in `dashboard_settings`.
-- `tenant_members(id, tenant_id, user_id, role, is_active, ...)` — unique on `(tenant_id, user_id)`.
+- `tenant_members(id, tenant_id, user_id, role, is_active, removed_at, ...)` — unique on `(tenant_id, user_id)`. `removed_at IS NOT NULL` = soft-removed; hidden from all default queries.
+- `member_invitations(id, tenant_id, email, role, token, invited_by_user_id, expires_at, accepted_at, revoked_at, created_at)` — token is unique; pending = all three nullable timestamp columns are null AND expires_at > now().
 - `departure_feedback(id, name, email, tenant_name, reason, comment, created_at)` — no FK constraints; row created during deletion before user/tenant is removed. `reason` and `comment` filled in later by `submitDepartureFeedbackAction` via `?fid` token.
 - Better Auth: `user`, `session`, `account`, `verification`.
 
@@ -93,6 +101,42 @@ Authentication (Better Auth), tenant management, multi-tenancy boundary, members
 
 See ADR `2026-04-26-account-deletion-feedback-token.md`.
 
+### Member invitation by email
+
+1. Admin calls `inviteMemberByEmailAction({ email, role })`.
+2. Action validates no pending invitation exists and email isn't an active member.
+3. Inserts `member_invitations` row with `token = randomBytes(32).hex`, `expiresAt = now + 7d`.
+4. Sends email via Resend with link `${BETTER_AUTH_URL}/invitations/${token}`.
+5. Invitee opens link → `/invitations/[token]` page fetches invitation and renders form.
+6. On submit: `acceptInvitationAction({ token, name, username, password })`:
+   - If email has existing user: `addMember` + update `user.tenantId` if null + mark accepted.
+   - If new user: `auth.api.signUpEmail` → `addMember` → update `user.tenantId` → mark accepted.
+7. Client signs in (new users) or redirects to /dashboard (existing users).
+
+### Create and add a new member
+
+1. Admin opens the "Usuario nuevo" tab in `InviteMemberModal` and fills in email, name, username, password, role.
+2. `createAndAddMemberAction({ email, name, username, password, role })`:
+   - Rejects if the email already exists in the `user` table (any tenant — one user per tenant invariant).
+   - `auth.api.signUpEmail` creates the Better Auth user with `tenantId: null`.
+   - `addMember(tenantId, newUserId, { role })` adds the membership.
+   - `db.update(user).set({ tenantId })` links the user to the tenant.
+3. User account is active immediately; no invitation email sent, no sign-in step required from the admin.
+
+### Member deactivate / reactivate
+
+- `setMemberActiveAction(memberId, isActive)` — requireAdmin + canManage check.
+- On deactivation: deletes all session rows for that user (immediate logout).
+- `(dashboard)/layout.tsx` checks membership on every request; redirects removed/deactivated members to `/account-deactivated`.
+- `LoginClient` calls `checkOwnMembershipStatusAction` after sign-in to bounce before reaching the layout.
+
+### Member removal (soft)
+
+- `removeMemberAction(memberId)` — requireAdmin + canManage + last-master guard.
+- Sets `removedAt = now()` + `isActive = false` + deletes sessions + clears `user.tenantId`.
+- Removed members are invisible to all default DAL queries (filter `removedAt IS NULL`).
+- Invitations to a removed member's email are allowed again.
+
 ### Role demotion safeguard
 
 1. `updateMemberRoleAction(memberId, newRole)` calls DAL.
@@ -114,7 +158,6 @@ See ADR `2026-04-26-account-deletion-feedback-token.md`.
 ## Open TODOs
 
 - [ ] `TODO: API_AUTH` (`src/lib/api/auth.ts` ~line 170) — `getTenantFromHeader` uses raw `x-tenant-id` with no authentication. Replace with API key lookup where each key carries a pre-configured role.
-- [ ] `TODO: INVITATIONS` (`src/lib/actions/members.ts`) — member invitation is immediate add (existing users only). Need pending-membership + acceptance-token flow.
 
 ## Future considerations
 
@@ -122,8 +165,8 @@ See ADR `2026-04-26-account-deletion-feedback-token.md`.
 
 ## Recent changes
 
+- 2026-04-26 — Replaced "Usuario existente" tab in `InviteMemberModal` with "Usuario nuevo" tab. Added `createAndAddMemberAction`: validates email uniqueness across all tenants, creates user via `auth.api.signUpEmail`, adds membership, links `user.tenantId`. `addExistingUserAction` retained for programmatic use only.
+- 2026-04-26 — Added full member management: email invitations (`member_invitations` table, token flow, Resend email), deactivate/reactivate with session invalidation, soft-remove (`removedAt`), profile edit, password-reset trigger, role changes via `canManage`/`canAssignRole`. `/members` page now requireAdmin. `/invitations/[token]` public accept page. `/account-deactivated` page. Dashboard layout blocks deactivated/removed members. ADR `2026-04-26-member-invitations.md`.
 - 2026-04-26 — Added account deletion flow. New `deleteAccountAction` (pre-creates `departure_feedback` row to capture PII), `DeleteAccountModal` / `DeleteTenantAccountModal` (last-master requires typed phrase), `/goodbye` page with optional feedback form via `?fid` token. ADR `2026-04-26-account-deletion-feedback-token.md`.
 - 2026-04-25 — Added public sign-up + tenant bootstrap. New `/sign-up` and `/onboarding/create-tenant` pages, `createTenantWithMasterAction` in `src/lib/actions/tenants.ts`, pass-through `(dashboard)/layout.tsx` gate, "create account" link on login. ADR `2026-04-25-tenant-bootstrap-best-effort.md` captures the best-effort sequential write strategy.
 - 2026-04-25 — Added password recovery flow: `/forgot-password` + `/reset-password` pages, Resend email transport in `auth.ts`, "forgot password" link on login page. Corrected Login flow (username, not email).
-- 2026-04-19 — Initial extraction from technical handoff.
-- 2026-04-19 — Synchronized documentation against source code: corrected `tenants` data model (removed `allow_override_on_error`), removed stale `TODO: ROLES` and `TODO: API_KEYS` (no code tags found), corrected `TODO: API_AUTH` line number.

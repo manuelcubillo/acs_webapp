@@ -1,6 +1,6 @@
 # 04 · Non-negotiable Constraints
 
-**Last updated**: 2026-04-19
+**Last updated**: 2026-04-26
 
 These rules are **non-negotiable**. Any proposed change to one of them requires an ADR in `decisions/` that explicitly supersedes this document.
 
@@ -29,7 +29,7 @@ These rules are **non-negotiable**. Any proposed change to one of them requires 
 ## UI and UX
 
 14. Responsive-first. Operators use tablets and phones. Test layouts at mobile widths before desktop.
-15. User-facing strings live in constants or message objects (i18n-ready). Do not inline strings in JSX where a key would do.
+15. **All text displayed on pages must live in constants or message objects.** No inline strings in JSX. ❌ `<p>Delete account</p>` → ✅ `<p>{TEXT.DELETE_ACCOUNT}</p>`. This enables i18n, testability, and consistency.
 16. No shadcn/ui. UI is custom Tailwind. Do not introduce a new component library without a preceding ADR.
 
 ## Code organization
@@ -45,4 +45,4 @@ These rules are **non-negotiable**. Any proposed change to one of them requires 
 
 ## Invitation flow
 
-22. Member addition via `inviteMemberAction` currently only associates **existing** users. No invitation emails or pending memberships. Marked `TODO: INVITATIONS`.
+22. Member invitations use a `member_invitations` table with a cryptographically random token. Emails are sent via Resend. Tokens expire in 7 days. The accept route (`/invitations/[token]`) is public — the token is the authentication. The `TODO: INVITATIONS` marker has been resolved.

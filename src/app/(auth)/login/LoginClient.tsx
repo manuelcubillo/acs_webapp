@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, LogIn, Loader2 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
+import { checkOwnMembershipStatusAction } from "@/lib/actions/members";
 
 const LABELS = {
   title: "Bienvenido",
@@ -42,6 +43,14 @@ export default function LoginClient() {
     if (error) {
       setError(error.message ?? LABELS.errorFallback);
       setLoading(false);
+      return;
+    }
+
+    // Check membership status immediately — bounce deactivated/removed members
+    // before they reach the dashboard layout.
+    const statusResult = await checkOwnMembershipStatusAction();
+    if (statusResult.success && statusResult.data.status === "deactivated") {
+      router.push("/account-deactivated");
       return;
     }
 

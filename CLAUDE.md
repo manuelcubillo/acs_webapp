@@ -29,6 +29,7 @@ Follow `docs/context/UPDATE-PROTOCOL.md` strictly. The protocol is deterministic
 - All code comments and JSDoc in English.
 - No middleware — `src/middleware.ts` does not exist. Auth is page-level via `requireOperator()` / `requireAdmin()` / `requireMaster()` guards.
 - Operational scans and informational consultations are distinct entry paths. Never blur them. See `docs/context/decisions/2026-03-20-operational-vs-informational.md`.
+- **All text displayed on pages must be in constants, not inline strings.** ❌ `<p>Delete account</p>` → ✅ `<p>{TEXT.DELETE_ACCOUNT}</p>`. This enables i18n and consistency.
 
 ## Code conventions (full list in `docs/context/foundation/02-conventions.md`)
 

@@ -16,6 +16,7 @@ import type {
   actionDefinitions,
   actionLogs,
   tenantMembers,
+  memberInvitations,
   scanValidations,
   dashboardSettings,
   cardTypeSummaryFields,
@@ -31,6 +32,7 @@ export type FieldValue = InferSelectModel<typeof fieldValues>;
 export type ActionDefinition = InferSelectModel<typeof actionDefinitions>;
 export type ActionLog = InferSelectModel<typeof actionLogs>;
 export type TenantMember = InferSelectModel<typeof tenantMembers>;
+export type MemberInvitation = InferSelectModel<typeof memberInvitations>;
 export type ScanValidation = InferSelectModel<typeof scanValidations>;
 export type DashboardSettings = InferSelectModel<typeof dashboardSettings>;
 export type CardTypeSummaryField = InferSelectModel<typeof cardTypeSummaryFields>;
@@ -392,6 +394,27 @@ export interface UpdateMemberRoleInput {
 export interface MemberWithUser extends TenantMember {
   userName: string;
   userEmail: string;
+  userUsername: string | null;
+}
+
+/** Invitation row enriched with the inviter's name. */
+export interface InvitationWithInviter extends MemberInvitation {
+  inviterName: string;
+}
+
+/** Input for updating a member's Better Auth user profile. */
+export interface UpdateMemberProfileInput {
+  name?: string;
+  email?: string;
+}
+
+/** Input for creating a member invitation. */
+export interface CreateInvitationInput {
+  email: string;
+  role: TenantRole;
+  invitedByUserId: string;
+  token: string;
+  expiresAt: Date;
 }
 
 // ─── Dashboard Settings inputs ───────────────────────────────────────────────

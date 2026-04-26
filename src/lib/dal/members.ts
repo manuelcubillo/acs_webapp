@@ -7,9 +7,11 @@
  * Business rules enforced here:
  * - A tenant must always have at least one active master.
  * - A user can only have one membership per tenant (enforced by DB unique constraint).
+ * - removedAt IS NOT NULL means the member was soft-removed and is hidden from all
+ *   default queries. Treat removed members the same as non-members for auth checks.
  */
 
-import { eq, and, count } from "drizzle-orm";
+import { eq, and, count, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { tenantMembers, user } from "@/lib/db/schema";
 import { NotFoundError, ValidationError } from "./errors";
@@ -18,15 +20,13 @@ import type {
   TenantRole,
   MemberWithUser,
   AddMemberInput,
+  UpdateMemberProfileInput,
 } from "./types";
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
 /**
- * Check whether a user is an active member of a tenant.
- *
- * @param userId   - Better Auth user ID.
- * @param tenantId - Tenant UUID.
+ * Check whether a user is an active, non-removed member of a tenant.
  */
 export async function isMemberOfTenant(
   userId: string,
@@ -40,6 +40,7 @@ export async function isMemberOfTenant(
         eq(tenantMembers.tenantId, tenantId),
         eq(tenantMembers.userId, userId),
         eq(tenantMembers.isActive, true),
+        isNull(tenantMembers.removedAt),
       ),
     )
     .limit(1);
@@ -48,10 +49,8 @@ export async function isMemberOfTenant(
 }
 
 /**
- * Get a member record by user ID within a tenant.
+ * Get an active, non-removed member record by user ID within a tenant.
  *
- * @param tenantId - Tenant UUID.
- * @param userId   - Better Auth user ID.
  * @throws {NotFoundError} If no active membership exists.
  */
 export async function getMemberByUserId(
@@ -66,6 +65,7 @@ export async function getMemberByUserId(
         eq(tenantMembers.tenantId, tenantId),
         eq(tenantMembers.userId, userId),
         eq(tenantMembers.isActive, true),
+        isNull(tenantMembers.removedAt),
       ),
     )
     .limit(1);
@@ -79,10 +79,9 @@ export async function getMemberByUserId(
 
 /**
  * Get a member record by its own ID within a tenant.
+ * Filters out removed members by default.
  *
- * @param tenantId - Tenant UUID (for isolation).
- * @param memberId - TenantMember UUID.
- * @throws {NotFoundError} If not found.
+ * @throws {NotFoundError} If not found or removed.
  */
 export async function getMemberById(
   tenantId: string,
@@ -95,6 +94,7 @@ export async function getMemberById(
       and(
         eq(tenantMembers.id, memberId),
         eq(tenantMembers.tenantId, tenantId),
+        isNull(tenantMembers.removedAt),
       ),
     )
     .limit(1);
@@ -107,10 +107,8 @@ export async function getMemberById(
 }
 
 /**
- * List all members (active and inactive) for a tenant, enriched with user info.
- *
- * @param tenantId - Tenant UUID.
- * @returns Members with user name and email, ordered by creation date.
+ * List all non-removed members for a tenant, enriched with user info.
+ * Includes both active and deactivated members (but never removed ones).
  */
 export async function listMembers(tenantId: string): Promise<MemberWithUser[]> {
   const rows = await db
@@ -120,24 +118,29 @@ export async function listMembers(tenantId: string): Promise<MemberWithUser[]> {
       userId: tenantMembers.userId,
       role: tenantMembers.role,
       isActive: tenantMembers.isActive,
+      removedAt: tenantMembers.removedAt,
       createdAt: tenantMembers.createdAt,
       updatedAt: tenantMembers.updatedAt,
       userName: user.name,
       userEmail: user.email,
+      userUsername: user.username,
     })
     .from(tenantMembers)
     .innerJoin(user, eq(tenantMembers.userId, user.id))
-    .where(eq(tenantMembers.tenantId, tenantId))
+    .where(
+      and(
+        eq(tenantMembers.tenantId, tenantId),
+        isNull(tenantMembers.removedAt),
+      ),
+    )
     .orderBy(tenantMembers.createdAt);
 
   return rows;
 }
 
 /**
- * Count active master members in a tenant.
+ * Count active, non-removed master members in a tenant.
  * Used to enforce the "at least one master" invariant.
- *
- * @param tenantId - Tenant UUID.
  */
 export async function countActiveMasters(tenantId: string): Promise<number> {
   const [{ total }] = await db
@@ -148,6 +151,7 @@ export async function countActiveMasters(tenantId: string): Promise<number> {
         eq(tenantMembers.tenantId, tenantId),
         eq(tenantMembers.role, "master"),
         eq(tenantMembers.isActive, true),
+        isNull(tenantMembers.removedAt),
       ),
     );
 
@@ -159,20 +163,15 @@ export async function countActiveMasters(tenantId: string): Promise<number> {
 /**
  * Add a user to a tenant with a given role.
  *
- * If a (deactivated) membership already exists, it is reactivated with the
- * new role instead of creating a duplicate.
- *
- * @param tenantId - Tenant UUID.
- * @param userId   - Better Auth user ID.
- * @param input    - Role to assign.
- * @returns The created or reactivated member record.
+ * If a (deactivated or removed) membership already exists, it is reactivated
+ * with the new role instead of creating a duplicate row.
  */
 export async function addMember(
   tenantId: string,
   userId: string,
   input: AddMemberInput,
 ): Promise<TenantMember> {
-  // Check for existing membership (active or inactive).
+  // Check for any existing membership (active, inactive, or removed).
   const [existing] = await db
     .select()
     .from(tenantMembers)
@@ -185,16 +184,21 @@ export async function addMember(
     .limit(1);
 
   if (existing) {
-    if (existing.isActive) {
+    if (existing.isActive && existing.removedAt === null) {
       throw new ValidationError(
         `User is already an active member of this tenant with role "${existing.role}".`,
       );
     }
 
-    // Reactivate with the new role.
+    // Reactivate (covers deactivated AND removed cases).
     const [reactivated] = await db
       .update(tenantMembers)
-      .set({ role: input.role, isActive: true, updatedAt: new Date() })
+      .set({
+        role: input.role,
+        isActive: true,
+        removedAt: null,
+        updatedAt: new Date(),
+      })
       .where(eq(tenantMembers.id, existing.id))
       .returning();
 
@@ -212,14 +216,6 @@ export async function addMember(
 /**
  * Change the role of a tenant member.
  *
- * Protections:
- * - If the member is currently a master and the role is being downgraded,
- *   ensures at least one other active master remains in the tenant.
- *
- * @param tenantId - Tenant UUID.
- * @param memberId - TenantMember UUID.
- * @param newRole  - The new role to assign.
- * @throws {NotFoundError}   If the member doesn't exist.
  * @throws {ValidationError} If downgrading the last active master.
  */
 export async function updateMemberRole(
@@ -229,7 +225,6 @@ export async function updateMemberRole(
 ): Promise<TenantMember> {
   const member = await getMemberById(tenantId, memberId);
 
-  // Guard: cannot downgrade the last active master.
   if (member.role === "master" && newRole !== "master") {
     const masterCount = await countActiveMasters(tenantId);
     if (masterCount <= 1) {
@@ -255,19 +250,9 @@ export async function updateMemberRole(
 }
 
 /**
- * Deactivate a tenant membership (soft delete).
+ * Deactivate a tenant membership (soft delete via isActive=false).
  *
- * Protections:
- * - A master cannot deactivate themselves if they are the last active master.
- *
- * @param tenantId      - Tenant UUID.
- * @param memberId      - TenantMember UUID.
- * @param requesterId   - The userId of the master performing this action
- *                        (to prevent self-deactivation of the last master).
- * @throws {NotFoundError}   If the member doesn't exist.
- * @throws {ValidationError} If this would leave the tenant without a master,
- *                            or if the requester is deactivating themselves
- *                            as the last master.
+ * @throws {ValidationError} If deactivating self or last active master.
  */
 export async function deactivateMember(
   tenantId: string,
@@ -277,18 +262,13 @@ export async function deactivateMember(
   const member = await getMemberById(tenantId, memberId);
 
   if (!member.isActive) {
-    // Already inactive — no-op.
     return;
   }
 
-  // Guard: cannot deactivate yourself.
   if (member.userId === requesterId) {
-    throw new ValidationError(
-      "You cannot deactivate your own membership.",
-    );
+    throw new ValidationError("You cannot deactivate your own membership.");
   }
 
-  // Guard: cannot remove the last active master.
   if (member.role === "master") {
     const masterCount = await countActiveMasters(tenantId);
     if (masterCount <= 1) {
@@ -308,4 +288,134 @@ export async function deactivateMember(
         eq(tenantMembers.tenantId, tenantId),
       ),
     );
+}
+
+/**
+ * Reactivate a previously deactivated tenant membership.
+ *
+ * @throws {NotFoundError} If the membership doesn't exist or is removed.
+ * @throws {ValidationError} If the member is already active.
+ */
+export async function activateMember(
+  tenantId: string,
+  memberId: string,
+): Promise<TenantMember> {
+  const member = await getMemberById(tenantId, memberId);
+
+  if (member.isActive) {
+    throw new ValidationError("Member is already active.");
+  }
+
+  const [updated] = await db
+    .update(tenantMembers)
+    .set({ isActive: true, updatedAt: new Date() })
+    .where(
+      and(
+        eq(tenantMembers.id, memberId),
+        eq(tenantMembers.tenantId, tenantId),
+      ),
+    )
+    .returning();
+
+  return updated;
+}
+
+/**
+ * Soft-remove a tenant membership (sets removedAt + isActive=false).
+ *
+ * Removed members are hidden from all default queries. This is distinct from
+ * deactivation: removed members cannot be reactivated from the UI.
+ *
+ * @throws {ValidationError} If removing self or last active master.
+ */
+export async function removeMember(
+  tenantId: string,
+  memberId: string,
+  requesterId: string,
+): Promise<{ userId: string }> {
+  // Include already-removed lookup to gracefully no-op.
+  const [row] = await db
+    .select()
+    .from(tenantMembers)
+    .where(
+      and(
+        eq(tenantMembers.id, memberId),
+        eq(tenantMembers.tenantId, tenantId),
+      ),
+    )
+    .limit(1);
+
+  if (!row) {
+    throw new ValidationError("Member not found.");
+  }
+
+  if (row.removedAt !== null) {
+    // Already removed — no-op.
+    return { userId: row.userId };
+  }
+
+  if (row.userId === requesterId) {
+    throw new ValidationError("You cannot remove yourself.");
+  }
+
+  if (row.role === "master" && row.isActive) {
+    const masterCount = await countActiveMasters(tenantId);
+    if (masterCount <= 1) {
+      throw new ValidationError(
+        "Cannot remove the last active master. " +
+          "Assign another master first.",
+      );
+    }
+  }
+
+  await db
+    .update(tenantMembers)
+    .set({ isActive: false, removedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(tenantMembers.id, memberId),
+        eq(tenantMembers.tenantId, tenantId),
+      ),
+    );
+
+  return { userId: row.userId };
+}
+
+/**
+ * Update the Better Auth user profile fields (name, email) for a tenant member.
+ *
+ * @throws {ValidationError} If the new email is already taken.
+ */
+export async function updateMemberProfile(
+  tenantId: string,
+  memberId: string,
+  input: UpdateMemberProfileInput,
+): Promise<TenantMember> {
+  const member = await getMemberById(tenantId, memberId);
+
+  if (input.email && input.email !== undefined) {
+    // Reject if email is already taken by another user.
+    const [conflict] = await db
+      .select({ id: user.id })
+      .from(user)
+      .where(eq(user.email, input.email.toLowerCase()))
+      .limit(1);
+
+    if (conflict && conflict.id !== member.userId) {
+      throw new ValidationError(
+        `The email "${input.email}" is already in use by another account.`,
+      );
+    }
+  }
+
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (input.name !== undefined) updates.name = input.name;
+  if (input.email !== undefined) updates.email = input.email.toLowerCase();
+
+  await db
+    .update(user)
+    .set(updates)
+    .where(eq(user.id, member.userId));
+
+  return getMemberById(tenantId, memberId);
 }

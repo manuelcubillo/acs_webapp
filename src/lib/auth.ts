@@ -1,14 +1,9 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { username } from "better-auth/plugins";
-import { Resend } from "resend";
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
-
-const resend = new Resend(process.env.RESEND_APIKEY);
-
-// Must be a domain verified in your Resend account
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "noreply@yourdomain.com";
+import { resend, FROM_EMAIL } from "@/lib/email/send";
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {

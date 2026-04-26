@@ -453,6 +453,8 @@ export const tenantMembers = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     role: tenantRoleEnum("role").notNull().default("operator"),
     isActive: boolean("is_active").notNull().default(true),
+    /** Soft-remove timestamp. When set, the member is hidden from all lists and treated as non-member. */
+    removedAt: timestamp("removed_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -461,6 +463,49 @@ export const tenantMembers = pgTable(
     unique("tenant_members_tenant_user_unique").on(table.tenantId, table.userId),
     index("tenant_members_tenant_id_idx").on(table.tenantId),
     index("tenant_members_user_id_idx").on(table.userId),
+  ],
+);
+
+// ─── Member Invitations ───────────────────────────────────────────────────────
+
+/**
+ * Pending email invitations for users who do not yet have an account.
+ *
+ * A token is generated per invitation and emailed as a link. The invitee
+ * follows the link to create their account and automatically join the tenant.
+ *
+ * Status semantics:
+ *   pending   → acceptedAt IS NULL AND revokedAt IS NULL AND expiresAt > now()
+ *   accepted  → acceptedAt IS NOT NULL
+ *   revoked   → revokedAt IS NOT NULL
+ *   expired   → expiresAt <= now() AND acceptedAt IS NULL AND revokedAt IS NULL
+ */
+export const memberInvitations = pgTable(
+  "member_invitations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: tenantRoleEnum("role").notNull(),
+    /** Cryptographically random token used in the accept URL. */
+    token: text("token").notNull(),
+    invitedByUserId: text("invited_by_user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** Invitation link expires after 7 days. */
+    expiresAt: timestamp("expires_at").notNull(),
+    /** Set when the invitee completes account creation / membership join. */
+    acceptedAt: timestamp("accepted_at"),
+    /** Set when an admin revokes the invitation before it is accepted. */
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("member_invitations_tenant_id_idx").on(t.tenantId),
+    index("member_invitations_email_idx").on(t.email),
+    unique("member_invitations_token_unique").on(t.token),
   ],
 );
 

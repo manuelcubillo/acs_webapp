@@ -42,7 +42,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/card-types", label: "Tipos de Tarjeta", icon: CreditCard, minRole: "operator" },
   { href: "/cards", label: "Carnets", icon: IdCard, minRole: "operator" },
   { href: "/history", label: "Historial", icon: History, minRole: "operator" },
-  { href: "/members", label: "Miembros", icon: Users, minRole: "master" },
+  { href: "/members", label: "Miembros", icon: Users, minRole: "admin" },
 ];
 
 const ROLE_ORDER: Record<TenantRole, number> = { operator: 1, admin: 2, master: 3 };

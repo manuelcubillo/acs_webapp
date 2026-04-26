@@ -1,6 +1,6 @@
 # 01 · Architecture
 
-**Last updated**: 2026-04-26 · **Last sync**: added departure_feedback table
+**Last updated**: 2026-04-26 · **Last sync**: added member_invitations table, removedAt on tenant_members
 
 ## 1. Data model — hybrid SQL + dynamic fields
 
@@ -11,7 +11,8 @@ Fixed columns for system fields (`id`, `tenant_id`, `status`, timestamps) plus d
 | Table                         | Purpose                                                                                             |
 | ----------------------------- | --------------------------------------------------------------------------------------------------- |
 | `tenants`                     | Organizations. Holds `scan_mode`. (`allow_override_on_error` lives in `dashboard_settings`.)        |
-| `tenant_members`              | User ↔ tenant join, carries `role` (`operator` \| `admin` \| `master`).                             |
+| `tenant_members`              | User ↔ tenant join, carries `role` and `is_active`. `removed_at` = soft-remove (hidden from all default queries). |
+| `member_invitations`          | Pending email invitations. `token` unique; `expires_at` = 7 days. Status: pending / accepted / revoked / expired. |
 | `card_types`                  | Badge templates per tenant. Name, description, `is_active`.                                         |
 | `field_definitions`           | Fields attached to a card type. `field_type`, `is_required`, `position`, `validation_rules` jsonb.  |
 | `cards`                       | Card instances. `code` is client-facing, unique per `(tenant_id, code)`. `status` enum.             |
