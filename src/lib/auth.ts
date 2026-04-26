@@ -1,8 +1,14 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { username } from "better-auth/plugins";
+import { Resend } from "resend";
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
+
+const resend = new Resend(process.env.RESEND_APIKEY);
+
+// Must be a domain verified in your Resend account
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "noreply@yourdomain.com";
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -11,6 +17,30 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
+    sendResetPassword: async ({ user, url }) => {
+      await resend.emails.send({
+        from: FROM_EMAIL,
+        to: user.email,
+        subject: "Restablecer contraseña — Veredillas",
+        html: `
+          <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px">
+            <h2 style="margin:0 0 8px;font-size:20px;color:#1a1d2e">Restablecer contraseña</h2>
+            <p style="margin:0 0 24px;color:#6b7094;font-size:14px">
+              Recibimos una solicitud para restablecer la contraseña de tu cuenta.
+              Haz clic en el botón de abajo para continuar.
+            </p>
+            <a href="${url}"
+               style="display:inline-block;padding:12px 24px;background:#4f5bff;color:#fff;
+                      text-decoration:none;border-radius:10px;font-size:14px;font-weight:600">
+              Restablecer contraseña
+            </a>
+            <p style="margin:24px 0 0;color:#8b8fa3;font-size:12px">
+              Este enlace expira en 1 hora. Si no solicitaste este cambio, puedes ignorar este correo.
+            </p>
+          </div>
+        `,
+      });
+    },
   },
   plugins: [username()],
   trustedOrigins: [

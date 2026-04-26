@@ -11,6 +11,8 @@
 "use server";
 
 import { z } from "zod";
+import { headers } from "next/headers";
+import { auth } from "@/lib/auth";
 import {
   actionHandler,
   requireAuth,
@@ -25,6 +27,9 @@ import {
   updateTenantSettings,
   listTenants,
   deleteTenant,
+  addMember,
+  upsertDashboardSettings,
+  ValidationError,
 } from "@/lib/dal";
 import type { Tenant } from "@/lib/dal";
 
@@ -32,6 +37,10 @@ import type { Tenant } from "@/lib/dal";
 
 const CreateTenantSchema = z.object({
   name: z.string().min(1).max(200),
+});
+
+const CreateTenantWithMasterSchema = z.object({
+  name: z.string().min(1, "El nombre de la organización es requerido").max(200),
 });
 
 const UpdateTenantSchema = z.object({
@@ -54,6 +63,62 @@ export async function createTenantAction(
     await requireAuth();
     const data = CreateTenantSchema.parse(input);
     return createTenant({ name: data.name });
+  });
+}
+
+/**
+ * Bootstrap a new tenant for the currently authenticated user.
+ *
+ * Used by the public sign-up flow: a freshly registered user (no tenant yet)
+ * creates their own organization and becomes its first `master`.
+ *
+ * Sequence (Neon HTTP — no interactive transactions, best-effort atomicity,
+ * see ADR `2026-04-25-tenant-bootstrap-best-effort.md`):
+ *   1. Create the tenant row.
+ *   2. Insert the caller as `master` in `tenant_members`.
+ *   3. Seed default `dashboard_settings`.
+ *   4. Update `user.tenantId` via Better Auth so the session reflects it
+ *      on the next request.
+ *
+ * If any step after (1) fails, the tenant is removed via compensating delete
+ * (cascades clear member + settings) so the caller can retry cleanly.
+ *
+ * Refuses if the caller already has a tenant — one tenant per user for now.
+ */
+export async function createTenantWithMasterAction(
+  input: unknown,
+): Promise<ActionResult<Tenant>> {
+  return actionHandler(async () => {
+    const { userId } = await requireAuth();
+    const data = CreateTenantWithMasterSchema.parse(input);
+
+    const reqHeaders = await headers();
+    const session = await auth.api.getSession({ headers: reqHeaders });
+    const currentTenantId = (session?.user as { tenantId?: string | null } | undefined)?.tenantId;
+    if (currentTenantId) {
+      throw new ValidationError(
+        "Esta cuenta ya está asociada a una organización.",
+      );
+    }
+
+    const tenant = await createTenant({ name: data.name });
+
+    try {
+      await addMember(tenant.id, userId, { role: "master" });
+      await upsertDashboardSettings(tenant.id, {});
+      await auth.api.updateUser({
+        body: { tenantId: tenant.id },
+        headers: reqHeaders,
+      });
+    } catch (err) {
+      // Compensating delete — cascades remove member + dashboard_settings.
+      await deleteTenant(tenant.id).catch(() => {
+        // Swallow secondary failure; the original error is more informative.
+      });
+      throw err;
+    }
+
+    return tenant;
   });
 }
 

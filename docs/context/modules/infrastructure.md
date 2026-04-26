@@ -1,6 +1,6 @@
 # Module: infrastructure
 
-**Last updated**: 2026-04-19 · **Last feature**: documentation sync against source code
+**Last updated**: 2026-04-25 · **Last feature**: Resend transactional email for password recovery
 
 ## Responsibility
 
@@ -31,6 +31,8 @@ DATABASE_URL=postgresql://...          # Neon connection string
 BETTER_AUTH_SECRET=...                 # openssl rand -hex 32
 BETTER_AUTH_URL=http://localhost:3000
 NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000
+RESEND_APIKEY=re_...                   # Resend API key (transactional email)
+RESEND_FROM_EMAIL=noreply@yourdomain   # Must be a Resend-verified domain
 ```
 
 ## Runtime constraints
@@ -51,6 +53,7 @@ NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000
 | zod                            | 4.3.6        | Server Action input validation              |
 | html5-qrcode                   | 2.3.8        | Camera QR scanning                          |
 | @dnd-kit/core + /sortable + /utilities | 6.3.1 / 10.0.0 / 3.2.2 | Field reordering                    |
+| resend                         | 6.12.2       | Transactional email (password reset)        |
 | lucide-react                   | 0.577.0      | Icons                                       |
 | date-fns                       | 4.1.0        | Date formatting                             |
 | dotenv                         | 17.3.1       | Scripts                                     |
@@ -96,5 +99,6 @@ NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000
 
 ## Recent changes
 
+- 2026-04-25 — Added Resend (v6.12.2) for transactional email; documented `RESEND_APIKEY` and `RESEND_FROM_EMAIL` env vars.
 - 2026-04-19 — Initial extraction from technical handoff.
 - 2026-04-19 — Synchronized documentation against source code: removed stale `TODO: API_KEYS` (no code tag found); moved `TODO: STORAGE` to Future considerations (no code tag).
