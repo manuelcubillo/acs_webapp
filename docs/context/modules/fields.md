@@ -1,6 +1,6 @@
 # Module: fields
 
-**Last updated**: 2026-04-19 · **Last feature**: documentation sync against source code
+**Last updated**: 2026-04-27 · **Last feature**: field binding consumed by card-designs editor
 
 ## Responsibility
 
@@ -90,7 +90,7 @@ Options live inside `validation_rules.rules` (no dedicated `options` column). `S
 ## Module interactions
 
 - Owned by: `card-types` (wizard orchestrates field CRUD), `cards` (renders fields).
-- Consumed by: `validations` (interprets `validation_rules`), `dashboard` (summary fields).
+- Consumed by: `validations` (interprets `validation_rules`), `dashboard` (summary fields), `card-designs` (field binding in editor — common field intersection across linked card types).
 
 ## Open TODOs
 
@@ -103,5 +103,6 @@ Options live inside `validation_rules.rules` (no dedicated `options` column). `S
 
 ## Recent changes
 
+- 2026-04-27 — `card-designs` now consumes field definitions for editor data binding; `getCommonFieldDefinitions` pattern extended client-side in `CardDesignEditor.computeCommonFields` (intersection by name+fieldType).
 - 2026-04-19 — Initial extraction from technical handoff.
 - 2026-04-19 — Synchronized documentation against source code: corrected `getCommonFieldDefinitions` file (`common-fields.ts`) and signature (no `tenantId`); moved `TODO: STORAGE` to Future considerations (no code tag).

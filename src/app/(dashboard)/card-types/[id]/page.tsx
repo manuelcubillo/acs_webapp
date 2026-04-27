@@ -13,7 +13,9 @@ import {
   AuthenticationError,
 } from "@/lib/api";
 import { getCardTypeWithFullSchema } from "@/lib/dal";
+import { listDesignsForCardType } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
+import CardTypeLinkedDesigns from "@/components/card-types/CardTypeLinkedDesigns";
 import FieldTypeSelector from "@/components/card-types/fields/FieldTypeSelector";
 import {
   ArrowLeft,
@@ -67,6 +69,8 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
   } catch {
     notFound();
   }
+
+  const linkedDesigns = await listDesignsForCardType(tenantId, id).catch(() => []);
 
   const activeFields = cardType.fieldDefinitions.filter((f) => f.isActive);
   const activeActions = (cardType.actionDefinitions as ActionDefinitionWithField[]).filter((a) => a.isActive);
@@ -298,6 +302,13 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
               </div>
             )}
           </div>
+
+          {/* Linked designs */}
+          <CardTypeLinkedDesigns
+            cardTypeId={cardType.id}
+            linkedDesigns={linkedDesigns}
+            isMaster={isMaster}
+          />
 
           {/* Scan Validations */}
           <div className="card animate-fadein" style={{ padding: "0", overflow: "hidden" }}>

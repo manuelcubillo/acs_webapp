@@ -22,3 +22,4 @@ export * from "./dashboard-settings";
 export * from "./activity-feed";
 export * from "./action-history";
 export * from "./common-fields";
+export * from "./card-designs";

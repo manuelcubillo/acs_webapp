@@ -20,6 +20,8 @@ import type {
   scanValidations,
   dashboardSettings,
   cardTypeSummaryFields,
+  cardDesigns,
+  cardTypeDesigns,
 } from "@/lib/db/schema";
 
 // ─── Drizzle-derived row types ──────────────────────────────────────────────
@@ -36,6 +38,8 @@ export type MemberInvitation = InferSelectModel<typeof memberInvitations>;
 export type ScanValidation = InferSelectModel<typeof scanValidations>;
 export type DashboardSettings = InferSelectModel<typeof dashboardSettings>;
 export type CardTypeSummaryField = InferSelectModel<typeof cardTypeSummaryFields>;
+export type CardDesign = InferSelectModel<typeof cardDesigns>;
+export type CardTypeDesign = InferSelectModel<typeof cardTypeDesigns>;
 
 /** Role a user holds within a tenant. Hierarchical: master > admin > operator. */
 export type TenantRole = TenantMember["role"];
@@ -415,6 +419,40 @@ export interface CreateInvitationInput {
   invitedByUserId: string;
   token: string;
   expiresAt: Date;
+}
+
+// ─── Card Design inputs ───────────────────────────────────────────────────────
+
+export type DesignKind = CardDesign["kind"];
+export type DimensionUnit = CardDesign["unit"];
+
+export interface CreateCardDesignInput {
+  name: string;
+  description?: string | null;
+  kind: DesignKind;
+  widthUnits: number;
+  heightUnits: number;
+  unit: DimensionUnit;
+}
+
+export interface UpdateCardDesignInput {
+  name?: string;
+  description?: string | null;
+  widthUnits?: number;
+  heightUnits?: number;
+  unit?: DimensionUnit;
+  layout?: Record<string, unknown>;
+}
+
+export interface ListCardDesignsOptions {
+  kind?: DesignKind;
+}
+
+/** Result of validateDesignAgainstCardType. */
+export interface CardDesignValidationResult {
+  ok: boolean;
+  /** Field definition IDs referenced in the layout that are missing or incompatible. */
+  missingFieldBindings: string[];
 }
 
 // ─── Dashboard Settings inputs ───────────────────────────────────────────────

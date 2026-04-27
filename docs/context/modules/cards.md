@@ -1,6 +1,6 @@
 # Module: cards
 
-**Last updated**: 2026-04-19 · **Last feature**: documentation sync against source code
+**Last updated**: 2026-04-27 · **Last feature**: design preview + PNG export from card detail
 
 ## Responsibility
 
@@ -49,6 +49,10 @@ Primary lookup: `code + tenantId`. UUID is internal only.
 1. Same loader pattern, pre-fills form values via `extractValue(fieldType, row)` per field.
 2. Submit writes the diff (insert / update per field value).
 
+### Design preview (card detail)
+
+If the card's card type has a linked `card` design, the detail page shows a "Ver diseño" button (`CardDesignPreviewButton`). Clicking opens `CardDesignPreviewModal` which calls `renderDesignToDataURL()` (Canvas API) with the card's live field values and offers a "Descargar PNG" download. No extra server fetch is needed; field values are serialised by the server component.
+
 ### Card detail (always informational)
 
 **Canonical invariant** (verbatim from `src/app/(dashboard)/cards/[code]/page.tsx` JSDoc):
@@ -68,7 +72,7 @@ The server component fetches the card + actions + scan validations and passes th
 
 ## Module interactions
 
-- Reads from: `card-types` (schema), `fields` (definitions + rendering), `validations` (scan validation results), `actions` (available actions for a card).
+- Reads from: `card-types` (schema), `fields` (definitions + rendering), `validations` (scan validation results), `actions` (available actions for a card), `card-designs` (linked design for preview).
 - Writes to: `cards`, `field_values`.
 - Owns `executeScanWithAutoActionsAction` and `resumeAutoActionsAction` — the operational scan pipeline. Cross-referenced by `actions` (auto-action execution), `scanning` (input surface), `dashboard` (result display).
 
@@ -78,5 +82,6 @@ The server component fetches the card + actions + scan validations and passes th
 
 ## Recent changes
 
+- 2026-04-27 — Added design preview + PNG export to card detail: `CardDesignPreviewButton`, `CardDesignPreviewModal`; `listDesignsForCardType` parallel-fetched on page load; field values serialised by server component.
 - 2026-04-19 — Initial extraction from technical handoff.
 - 2026-04-19 — Synchronized documentation against source code: corrected card detail page to always-informational; added `CardDetailClient`, `executeScanWithAutoActionsAction`, `resumeAutoActionsAction`, `validateBeforeActionAction`, `updateCardCodeAction`, `listCardsAction`; updated search to mention field-level filters; fixed module interactions.

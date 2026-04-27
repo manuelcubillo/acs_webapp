@@ -24,6 +24,7 @@ import {
   Shield,
   LogOut,
   History,
+  Palette,
 } from "lucide-react";
 import type { TenantRole } from "@/lib/api";
 
@@ -43,6 +44,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/cards", label: "Carnets", icon: IdCard, minRole: "operator" },
   { href: "/history", label: "Historial", icon: History, minRole: "operator" },
   { href: "/members", label: "Miembros", icon: Users, minRole: "admin" },
+  { href: "/card-designs", label: "Diseños de Tarjeta", icon: Palette, minRole: "master" },
 ];
 
 const ROLE_ORDER: Record<TenantRole, number> = { operator: 1, admin: 2, master: 3 };

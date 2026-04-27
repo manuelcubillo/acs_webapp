@@ -1,6 +1,6 @@
 # Module: infrastructure
 
-**Last updated**: 2026-04-26 · **Last feature**: departure_feedback table (account deletion)
+**Last updated**: 2026-04-27 · **Last feature**: card_designs + card_type_designs tables; Konva, qrcode, jsbarcode packages
 
 ## Responsibility
 
@@ -53,6 +53,10 @@ RESEND_FROM_EMAIL=noreply@yourdomain   # Must be a Resend-verified domain
 | zod                            | 4.3.6        | Server Action input validation              |
 | html5-qrcode                   | 2.3.8        | Camera QR scanning                          |
 | @dnd-kit/core + /sortable + /utilities | 6.3.1 / 10.0.0 / 3.2.2 | Field reordering                    |
+| konva                          | 10.2.5       | Canvas editor (card-designs)                |
+| react-konva                    | 19.2.3       | React bindings for Konva                    |
+| qrcode                         | 1.5.4        | QR code rasterisation (editor + export)     |
+| jsbarcode                      | 3.12.3       | Code 128 barcode rendering                  |
 | resend                         | 6.12.2       | Transactional email (password reset)        |
 | lucide-react                   | 0.577.0      | Icons                                       |
 | date-fns                       | 4.1.0        | Date formatting                             |
@@ -99,6 +103,7 @@ RESEND_FROM_EMAIL=noreply@yourdomain   # Must be a Resend-verified domain
 
 ## Recent changes
 
+- 2026-04-27 — Added `card_designs` + `card_type_designs` tables (migration 0014); added konva 10.2.5, react-konva 19.2.3, qrcode 1.5.4, jsbarcode 3.12.3 to dependencies.
 - 2026-04-26 — Added `departure_feedback` table (migrations 0011, 0012). Note: snapshot files for 0008–0010 were missing; 0011 SQL was hand-trimmed to only the new table to avoid duplicate DDL errors.
 - 2026-04-25 — Added Resend (v6.12.2) for transactional email; documented `RESEND_APIKEY` and `RESEND_FROM_EMAIL` env vars.
 - 2026-04-19 — Initial extraction from technical handoff.

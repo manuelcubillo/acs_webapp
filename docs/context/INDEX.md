@@ -6,6 +6,7 @@ Router for tasks. Read `foundation/` once per session. Then read only the module
 
 | Task keyword / intent                                | Modules to read                                 |
 | ---------------------------------------------------- | ----------------------------------------------- |
+| Card design, design editor, layout, Konva, PNG export, passbook | `card-designs`, `card-types`, `fields` |
 | Action definition, auto-action, execute action       | `actions`, `fields`, `card-types`               |
 | Action override flow, `allow_override_on_error`      | `actions`, `dashboard` (setting lives in `dashboard_settings`) |
 | Scan, scanner, reader, QR, external reader           | `scanning`, `actions`, `dashboard`              |

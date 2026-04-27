@@ -95,6 +95,12 @@ export const scanModeEnum = pgEnum("scan_mode", [
  */
 export const logTypeEnum = pgEnum("log_type", ["scan", "action"]);
 
+/** Kind of visual design template: badge-sized card or passbook-style pass. */
+export const designKindEnum = pgEnum("design_kind", ["card", "passbook"]);
+
+/** Unit of measurement for design canvas dimensions. */
+export const dimensionUnitEnum = pgEnum("dimension_unit", ["mm", "px"]);
+
 // ─── Tenants ─────────────────────────────────────────────────────────────────
 
 /** Organization or client that owns card types and cards */
@@ -577,6 +583,85 @@ export const cardTypeSummaryFields = pgTable(
     ),
     index("card_type_summary_fields_tenant_id_idx").on(table.tenantId),
     index("card_type_summary_fields_card_type_id_idx").on(table.cardTypeId),
+  ],
+);
+
+// ─── Card Designs ─────────────────────────────────────────────────────────────
+
+/**
+ * Visual design templates that can be linked to one or more card types.
+ *
+ * Two kinds:
+ *   - card:     Badge-sized (default CR80: 85.6 × 54 mm). Dimensions in mm.
+ *   - passbook: Pass-sized (default 340 × 440 px). Dimensions in px.
+ *
+ * Soft-deleted via is_active. The layout JSON follows CardDesignLayout from
+ * src/lib/card-designs/types.ts (version 1 schema).
+ */
+export const cardDesigns = pgTable(
+  "card_designs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    kind: designKindEnum("kind").notNull(),
+    /** Canvas width in the unit specified by the `unit` column. */
+    widthUnits: doublePrecision("width_units").notNull(),
+    /** Canvas height in the unit specified by the `unit` column. */
+    heightUnits: doublePrecision("height_units").notNull(),
+    unit: dimensionUnitEnum("unit").notNull(),
+    /** Full layout as CardDesignLayout JSON (version 1 schema). */
+    layout: jsonb("layout").notNull().default({}),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("card_designs_tenant_id_idx").on(table.tenantId),
+    index("card_designs_tenant_kind_idx").on(table.tenantId, table.kind),
+  ],
+);
+
+/**
+ * Join table: which card type has which design linked, per kind.
+ *
+ * Business rule: a card type can have at most ONE active design per kind.
+ * Enforced by UNIQUE(card_type_id, kind).
+ *
+ * Hard-delete semantics on unlink: rows are removed when the design is
+ * unlinked from a card type (see ADR 2026-04-26-card-design-konva.md).
+ * The design itself is soft-deleted via card_designs.is_active.
+ *
+ * tenant_id is denormalized for efficient tenant-scoped queries without JOINs.
+ */
+export const cardTypeDesigns = pgTable(
+  "card_type_designs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Denormalized tenant ID for efficient scoped queries. */
+    tenantId: uuid("tenant_id").notNull(),
+    cardTypeId: uuid("card_type_id")
+      .notNull()
+      .references(() => cardTypes.id, { onDelete: "cascade" }),
+    cardDesignId: uuid("card_design_id")
+      .notNull()
+      .references(() => cardDesigns.id, { onDelete: "cascade" }),
+    /** Mirrors card_designs.kind — stored here for query speed and integrity. */
+    kind: designKindEnum("kind").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    /** One design per kind per card type. */
+    unique("card_type_designs_type_kind_unique").on(
+      table.cardTypeId,
+      table.kind,
+    ),
+    index("card_type_designs_card_type_id_idx").on(table.cardTypeId),
+    index("card_type_designs_card_design_id_idx").on(table.cardDesignId),
+    index("card_type_designs_tenant_id_idx").on(table.tenantId),
   ],
 );
 

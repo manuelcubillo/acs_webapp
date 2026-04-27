@@ -1,6 +1,6 @@
 # Module: card-types
 
-**Last updated**: 2026-04-19 · **Last feature**: documentation sync against source code
+**Last updated**: 2026-04-27 · **Last feature**: linked designs section on card-type detail page
 
 ## Responsibility
 
@@ -26,6 +26,7 @@ Field definition, action definition, and scan validation details are owned by th
 - `src/hooks/useCardTypeWizard.ts` — 5-step state + sequential Server Action submit.
 - `src/lib/dal/card-types.ts` — `listCardTypes`, `getCardTypeWithFullSchema`, create/update/archive.
 - `src/lib/actions/card-types.ts` — Server Actions for create/update/archive.
+- `src/components/card-types/CardTypeLinkedDesigns.tsx` — Linked designs section on detail page; link/unlink per kind slot (MASTER interactive; OPERATOR read-only).
 
 ## Data model (relevant subset)
 
@@ -64,7 +65,7 @@ Depends on `field_definitions`, `action_definitions`, `scan_validations` (owned 
 ## Module interactions
 
 - Reads from / writes to: `fields` (field definitions), `actions` (action definitions), `validations` (scan validations).
-- Consumed by: `cards` (CardType drives the Card form dynamically).
+- Consumed by: `cards` (CardType drives the Card form dynamically), `card-designs` (link picker fetches card type list; detail page shows linked designs).
 
 ## Open TODOs
 
@@ -72,5 +73,6 @@ Depends on `field_definitions`, `action_definitions`, `scan_validations` (owned 
 
 ## Recent changes
 
+- 2026-04-27 — Added `CardTypeLinkedDesigns` section on detail page; updated module interactions to include `card-designs`.
 - 2026-04-19 — Initial extraction from technical handoff.
 - 2026-04-19 — Synchronized documentation against source code: no drift found; metadata updated.
