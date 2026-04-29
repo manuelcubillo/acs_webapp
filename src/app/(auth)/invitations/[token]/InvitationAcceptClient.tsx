@@ -23,7 +23,7 @@ import type { MemberInvitation } from "@/lib/dal";
 const LABELS = {
   title: "Aceptar invitación",
   subtitleNew: "Crea tu cuenta para unirte a la organización.",
-  subtitleExisting: "Tu email ya tiene una cuenta de Veredillas. Haz clic para unirte a la organización.",
+  subtitleExisting: "Tu email ya tiene una cuenta de ${tenantName}. Haz clic para unirte a la organización.",
   emailLabel: "Email (confirmación)",
   nameLabel: "Nombre completo",
   namePlaceholder: "Tu nombre",

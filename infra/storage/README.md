@@ -16,7 +16,7 @@ docker compose -f docker-compose.minio.yml up -d
 ```
 
 Console at <http://localhost:9001> (`minioadmin` / `minioadmin`). The init
-container creates the `veredillas-photos` bucket and applies
+container creates the `acs-photos` bucket and applies
 `infra/storage/minio-cors.json`. To stop:
 
 ```sh
@@ -31,7 +31,7 @@ To wipe local objects: add `-v` to the `down` command.
 STORAGE_DRIVER=minio
 S3_ENDPOINT=http://localhost:9000
 S3_REGION=us-east-1
-S3_BUCKET=veredillas-photos
+S3_BUCKET=acs-photos
 S3_ACCESS_KEY_ID=minioadmin
 S3_SECRET_ACCESS_KEY=minioadmin
 S3_FORCE_PATH_STYLE=true

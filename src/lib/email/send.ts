@@ -48,7 +48,7 @@ export async function sendInvitationEmail({
   await resend.emails.send({
     from: FROM_EMAIL,
     to,
-    subject: `Invitación a ${tenantName} — Veredillas`,
+    subject: `Invitación a ${tenantName}`,
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px">
         <h2 style="margin:0 0 8px;font-size:20px;color:#1a1d2e">

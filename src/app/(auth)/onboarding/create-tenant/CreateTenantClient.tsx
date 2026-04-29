@@ -11,7 +11,7 @@ const LABELS = {
   subtitle: (userName: string) =>
     `Bienvenido, ${userName}. Da un nombre a tu comunidad para empezar.`,
   nameLabel: "Nombre de la organización",
-  namePlaceholder: "Ej. Residencial Las Veredillas",
+  namePlaceholder: "Ej. Residencial Los Olivos",
   submit: "Crear organización",
   submitting: "Creando…",
   errorFallback: "No se pudo crear la organización. Inténtalo de nuevo.",

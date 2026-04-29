@@ -530,7 +530,7 @@ const passbookTemplate: DesignTemplate = {
         rotation: 0,
         zIndex: 10,
         locked: false,
-        content: { source: "static", staticValue: "veredillas.app" },
+        content: { source: "static", staticValue: "ACS.app" },
         style: {
           fontFamily: "Arial",
           fontSize: 10,

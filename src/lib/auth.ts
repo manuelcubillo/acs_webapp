@@ -16,7 +16,7 @@ export const auth = betterAuth({
       await resend.emails.send({
         from: FROM_EMAIL,
         to: user.email,
-        subject: "Restablecer contraseña — Veredillas",
+        subject: "Restablecer contraseña — ACS",
         html: `
           <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px 24px">
             <h2 style="margin:0 0 8px;font-size:20px;color:#1a1d2e">Restablecer contraseña</h2>

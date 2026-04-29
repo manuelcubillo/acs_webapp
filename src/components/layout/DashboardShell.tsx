@@ -153,7 +153,7 @@ export default function DashboardShell({
           )}
           <div>
             <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--color-dark)", lineHeight: 1.2 }}>
-              {tenantName ?? "Veredillas"}
+              {tenantName ?? "ACS"}
             </div>
             <div style={{ fontSize: 10.5, color: "var(--color-muted)", fontWeight: 500 }}>
               Control de Acceso

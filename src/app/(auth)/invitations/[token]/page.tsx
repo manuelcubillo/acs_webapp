@@ -5,7 +5,7 @@
  * Fetches the invitation by token and renders the appropriate UI:
  * - Error state if the token is invalid, expired, accepted, or revoked.
  * - Registration form if the email doesn't have an account yet.
- * - Single-click join if the email already has a Veredillas account.
+ * - Single-click join if the email already has a ACS account.
  */
 
 import { eq } from "drizzle-orm";
@@ -87,7 +87,7 @@ export default async function InvitationTokenPage({ params }: PageProps) {
   const tenant = await getTenantById(invitation.tenantId).catch(() => null);
   const tenantName = tenant?.name ?? "la organización";
 
-  // Check if this email already has a Veredillas account.
+  // Check if this email already has a ACS account.
   const [existingUser] = await db
     .select({ id: user.id })
     .from(user)
