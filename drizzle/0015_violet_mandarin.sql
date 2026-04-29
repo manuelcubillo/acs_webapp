@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "logo_object_key" text;

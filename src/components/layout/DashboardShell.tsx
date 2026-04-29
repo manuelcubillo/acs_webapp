@@ -64,6 +64,12 @@ interface DashboardShellProps {
   role?: TenantRole;
   /** User display name for the avatar. */
   userName?: string;
+  /** Pre-signed URL for the current user's avatar (falls back to initials). */
+  userAvatarUrl?: string | null;
+  /** Tenant display name (shown next to the brand). */
+  tenantName?: string | null;
+  /** Pre-signed URL for the tenant logo (replaces the default shield). */
+  tenantLogoUrl?: string | null;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -73,6 +79,9 @@ export default function DashboardShell({
   title,
   role = "operator",
   userName,
+  userAvatarUrl,
+  tenantName,
+  tenantLogoUrl,
 }: DashboardShellProps) {
   const pathname = usePathname();
 
@@ -115,21 +124,36 @@ export default function DashboardShell({
           borderBottom: "1px solid var(--color-border-soft)",
           marginBottom: 20,
         }}>
-          <div style={{
-            width: 34,
-            height: 34,
-            borderRadius: 10,
-            background: "linear-gradient(135deg, #4f5bff, #7c3aed)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#fff",
-          }}>
-            <Shield size={18} strokeWidth={1.8} />
-          </div>
+          {tenantLogoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={tenantLogoUrl}
+              alt={tenantName ?? "Logo"}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 10,
+                objectFit: "cover",
+                border: "1px solid var(--color-border)",
+              }}
+            />
+          ) : (
+            <div style={{
+              width: 34,
+              height: 34,
+              borderRadius: 10,
+              background: "linear-gradient(135deg, #4f5bff, #7c3aed)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#fff",
+            }}>
+              <Shield size={18} strokeWidth={1.8} />
+            </div>
+          )}
           <div>
             <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--color-dark)", lineHeight: 1.2 }}>
-              Veredillas
+              {tenantName ?? "Veredillas"}
             </div>
             <div style={{ fontSize: 10.5, color: "var(--color-muted)", fontWeight: 500 }}>
               Control de Acceso
@@ -199,21 +223,36 @@ export default function DashboardShell({
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>{userName}</div>
                 <div style={{ fontSize: 11, color: "var(--color-muted)", textTransform: "capitalize" }}>{role}</div>
               </div>
-              <div style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                background: "linear-gradient(135deg, #e0e7ff, #c7d2fe)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 700,
-                fontSize: 13,
-                color: "var(--color-primary)",
-                fontFamily: "var(--font-heading)",
-              }}>
-                {initials}
-              </div>
+              {userAvatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={userAvatarUrl}
+                  alt={userName}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    objectFit: "cover",
+                    border: "1px solid var(--color-border)",
+                  }}
+                />
+              ) : (
+                <div style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  background: "linear-gradient(135deg, #e0e7ff, #c7d2fe)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  color: "var(--color-primary)",
+                  fontFamily: "var(--font-heading)",
+                }}>
+                  {initials}
+                </div>
+              )}
             </div>
           )}
         </header>

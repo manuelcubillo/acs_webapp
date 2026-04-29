@@ -75,9 +75,14 @@ const HISTORY_CAPACITY = 10;
 interface Props {
   design: CardDesign;
   linkedCardTypes: CardTypeWithFields[];
+  initialStaticImageUrls: Record<string, string>;
 }
 
-export default function CardDesignEditor({ design, linkedCardTypes: initialLinkedCardTypes }: Props) {
+export default function CardDesignEditor({
+  design,
+  linkedCardTypes: initialLinkedCardTypes,
+  initialStaticImageUrls,
+}: Props) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement | null>(null) as MutableRefObject<HTMLDivElement | null>;
 
@@ -102,6 +107,21 @@ export default function CardDesignEditor({ design, linkedCardTypes: initialLinke
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+
+  // Object-key → signed read URL for static `image` nodes. Seeded from the
+  // server, extended on every successful upload from the properties panel.
+  const [staticImageUrls, setStaticImageUrls] = useState<Record<string, string>>(
+    initialStaticImageUrls,
+  );
+
+  const registerStaticImageUrl = useCallback(
+    (key: string, url: string) => {
+      setStaticImageUrls((prev) =>
+        prev[key] === url ? prev : { ...prev, [key]: url },
+      );
+    },
+    [],
+  );
 
   const layout = layoutHistory[historyIndex];
   const canUndo = historyIndex > 0;
@@ -601,6 +621,7 @@ export default function CardDesignEditor({ design, linkedCardTypes: initialLinke
           containerRef={containerRef}
           stageDimensions={stageDimensions}
           availableFields={availableFields}
+          staticImageUrls={staticImageUrls}
           onSelect={setSelectedNodeId}
           onNodeUpdate={updateNode}
           onDrop={handleDrop}
@@ -613,6 +634,8 @@ export default function CardDesignEditor({ design, linkedCardTypes: initialLinke
           availableFields={availableFields}
           linkedCardTypes={linkedCardTypes}
           designId={design.id}
+          staticImageUrls={staticImageUrls}
+          onRegisterStaticImageUrl={registerStaticImageUrl}
           onUpdateLayout={updateCanvasProps}
           onUpdateNode={updateNode}
           onDeleteNode={deleteNode}
@@ -631,6 +654,7 @@ export default function CardDesignEditor({ design, linkedCardTypes: initialLinke
             layout={layout}
             fieldValues={mock.fieldValues}
             photoValues={mock.photoValues}
+            staticImageUrls={staticImageUrls}
             cardCode={mock.cardCode}
             designName={`${design.name} (datos de muestra)`}
             onClose={() => setPreviewOpen(false)}

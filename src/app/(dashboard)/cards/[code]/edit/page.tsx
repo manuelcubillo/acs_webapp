@@ -10,6 +10,7 @@ import { requireAdmin, AuthenticationError, AuthorizationError } from "@/lib/api
 import {
   getCardByCode,
   getCardTypeWithFullSchema,
+  buildPhotoReadUrlMap,
 } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardEditClient from "./CardEditClient";
@@ -69,6 +70,9 @@ export default async function EditCardPage({ params }: EditCardPageProps) {
     initialValues[fv.fieldDefinitionId] = fv.value;
   }
 
+  // Pre-sign photo keys so the form can preview them without round-tripping.
+  const photoReadUrls = await buildPhotoReadUrlMap(card);
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <DashboardShell title="Editar carnet" role={role}>
@@ -107,10 +111,11 @@ export default async function EditCardPage({ params }: EditCardPageProps) {
         </p>
 
         <CardEditClient
+          cardId={card.id}
           cardCode={decodedCode}
           fields={fields}
           initialValues={initialValues}
-          tenantId={tenantId}
+          photoReadUrls={photoReadUrls}
         />
       </div>
     </DashboardShell>

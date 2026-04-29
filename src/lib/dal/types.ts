@@ -64,6 +64,8 @@ export interface CreateTenantInput {
 
 export interface UpdateTenantInput {
   name?: string;
+  /** Object key of the tenant logo in the photo storage bucket (or null to clear). */
+  logoObjectKey?: string | null;
 }
 
 /** Settings the master can configure for their tenant. */
@@ -399,6 +401,8 @@ export interface MemberWithUser extends TenantMember {
   userName: string;
   userEmail: string;
   userUsername: string | null;
+  /** Object key of the user's avatar (Better Auth `user.image` column). */
+  userImage: string | null;
 }
 
 /** Invitation row enriched with the inviter's name. */

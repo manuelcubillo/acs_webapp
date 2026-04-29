@@ -9,7 +9,10 @@ interface CardFormProps {
   fields: FieldDefinitionShape[];
   initialValues?: Record<string, unknown>;
   initialCode?: string;
-  tenantId: string;
+  /** Card UUID when editing an existing card; null when creating. */
+  cardId?: string | null;
+  /** Pre-signed read URLs for existing photo values, keyed by fieldDefinitionId. */
+  photoReadUrls?: Record<string, string>;
   onSubmit: (
     code: string,
     values: Record<string, unknown>,
@@ -24,7 +27,8 @@ export default function CardForm({
   fields,
   initialValues = {},
   initialCode = "",
-  tenantId,
+  cardId = null,
+  photoReadUrls = {},
   onSubmit,
   onCancel,
   submitLabel = "Guardar",
@@ -109,7 +113,8 @@ export default function CardForm({
           onChange={(v) => setValue(field.id, v)}
           error={errors[field.id]}
           disabled={isLoading}
-          tenantId={tenantId}
+          cardId={cardId}
+          photoReadUrl={photoReadUrls[field.id] ?? null}
         />
       ))}
 

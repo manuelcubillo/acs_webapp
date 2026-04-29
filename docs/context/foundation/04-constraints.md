@@ -41,7 +41,7 @@ These rules are **non-negotiable**. Any proposed change to one of them requires 
 
 ## Storage
 
-21. Photo uploads currently go to the local filesystem (`/public/uploads/[tenantId]/...`). Only the URL reference is stored in the DB. Marked `TODO: STORAGE` — migration to S3/R2 is planned.
+21. Photo I/O goes through the `CardPhotoStorage` interface in `src/lib/storage/`. Cloudflare R2 is the production driver, MinIO the self-hosted / local driver — both reached via the AWS S3 SDK. Uploads are presigned PUTs scoped per kind (`card-photo`, `card-design-image`, `member-avatar`, `tenant-logo`); reads return 15-minute signed GETs. The DB stores **object keys**, not URLs. Tenant prefix is the security primitive — every read/confirm refuses keys outside the caller's tenant. Optimization (resize, recompress, EXIF strip) runs client-side in `src/lib/images/` against per-kind profiles. See ADR `2026-04-27-photo-storage-r2-minio.md`.
 
 ## Invitation flow
 

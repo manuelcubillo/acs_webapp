@@ -1,6 +1,6 @@
 # Module: fields
 
-**Last updated**: 2026-04-27 · **Last feature**: field binding consumed by card-designs editor
+**Last updated**: 2026-04-28 · **Last feature**: photo field stores object keys; uploads via presigned PUT through shared `PhotoUploader`
 
 ## Responsibility
 
@@ -20,8 +20,7 @@ Validation rules per field type are stored here (in `validation_rules` jsonb) bu
 - `src/components/cards/DynamicFieldRenderer.tsx` — `switch(fieldType) → *Renderer`.
 - `src/components/cards/DynamicFieldInput.tsx` — `switch(fieldType) → *Input`.
 - `src/components/cards/renderers/` — `TextRenderer`, `NumberRenderer`, `BooleanRenderer`, `DateRenderer`, `PhotoRenderer`, `SelectRenderer`.
-- `src/components/cards/inputs/` — `TextInput`, `NumberInput`, `BooleanInput`, `DateInput`, `PhotoInput` (uploads to `/api/upload`), `SelectInput` (reads options from `validationRules`).
-- `src/app/api/upload/route.ts` — Photo upload endpoint.
+- `src/components/cards/inputs/` — `TextInput`, `NumberInput`, `BooleanInput`, `DateInput`, `PhotoInput` (wraps `PhotoUploader` with kind `card-photo`), `SelectInput` (reads options from `validationRules`).
 
 ## Data model (relevant subset)
 
@@ -50,7 +49,7 @@ Typed columns: `value_text`, `value_number`, `value_boolean`, `value_date`, `val
 | `number`   | `value_number`  |                                                |
 | `boolean`  | `value_boolean` |                                                |
 | `date`     | `value_date`    |                                                |
-| `photo`    | `value_text`    | URL reference to local filesystem (for now)    |
+| `photo`    | `value_text`    | Object key in the photo storage bucket — never a URL. Server signs to URLs at render via `signCardPhotos` / `buildPhotoReadUrlMap`. |
 | `select`   | `value_json`    | Array for multi-select, string for single      |
 
 ## Main flows
@@ -65,9 +64,13 @@ Typed columns: `value_text`, `value_number`, `value_boolean`, `value_date`, `val
 
 ### Photo upload
 
-1. `PhotoInput` receives `tenantId` prop.
-2. Uploads file to `POST /api/upload`.
-3. Response returns URL; `PhotoInput` writes URL as the field value (stored in `value_text`).
+1. `PhotoInput` mounts `PhotoUploader` (kind: `card-photo`, owner: card UUID for edit mode, draft UUID for create).
+2. `PhotoUploader` runs `optimizeImage(file, CARD_PHOTO_PROFILE)` (canvas-based resize → WebP, ≤ 180 KB, EXIF stripped).
+3. `requestPhotoUploadUrlAction` returns a 60-second presigned PUT and a `<tenantId>/cards/<owner>/<random>.webp` key.
+4. Browser PUTs the optimized blob directly to R2/MinIO.
+5. `confirmPhotoUploadAction` HEADs the object, validates size + content-type, and returns the signed read URL.
+6. `PhotoInput` stores the **object key** in form state; the parent persists it via the standard card update.
+7. On render (server component), `signCardPhotos` / `buildPhotoReadUrlMap` mints fresh 15-minute signed URLs before passing to client renderers.
 
 ### Select options
 
@@ -98,11 +101,11 @@ Options live inside `validation_rules.rules` (no dedicated `options` column). `S
 
 ## Future considerations
 
-- Photo storage migration to S3/R2 (no code tag; tracked at project level as `TODO: STORAGE` but not tagged in source).
 - Select options live inside `validation_rules`. Consider a dedicated `options` jsonb column if the pattern becomes more common.
 
 ## Recent changes
 
+- 2026-04-28 — Photo field migrated to bucket-backed storage (R2/MinIO). `value_text` now stores object keys; `PhotoInput` wraps the shared `PhotoUploader` with `CARD_PHOTO_PROFILE`. Server components must call `signCardPhotos` / `buildPhotoReadUrlMap` before passing photo values down. ADR `2026-04-27-photo-storage-r2-minio.md`.
 - 2026-04-27 — `card-designs` now consumes field definitions for editor data binding; `getCommonFieldDefinitions` pattern extended client-side in `CardDesignEditor.computeCommonFields` (intersection by name+fieldType).
 - 2026-04-19 — Initial extraction from technical handoff.
 - 2026-04-19 — Synchronized documentation against source code: corrected `getCommonFieldDefinitions` file (`common-fields.ts`) and signature (no `tenantId`); moved `TODO: STORAGE` to Future considerations (no code tag).

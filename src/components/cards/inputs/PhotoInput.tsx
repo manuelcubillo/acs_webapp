@@ -1,7 +1,21 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Upload, X } from "lucide-react";
+/**
+ * PhotoInput — photo field input for the card form.
+ *
+ * `value` is the persisted object key (or null). `initialReadUrl` is the
+ * signed read URL the parent supplies for existing photos so we can render
+ * a preview without round-tripping through storage. After a successful
+ * upload, we remember the new signed URL locally for the lifetime of this
+ * form so the user keeps seeing their picture.
+ *
+ * Card-photo uploads need an `ownerId` (the card UUID) for key layout.
+ * For new cards we generate a stable draft UUID — the server validates
+ * tenant prefix + kind path, not the owner segment.
+ */
+
+import { useRef, useState } from "react";
+import PhotoUploader from "@/components/shared/PhotoUploader";
 
 interface PhotoInputProps {
   fieldId: string;
@@ -11,7 +25,10 @@ interface PhotoInputProps {
   isRequired?: boolean;
   error?: string;
   disabled?: boolean;
-  tenantId?: string;
+  /** Card UUID when editing an existing card; null/undefined when creating. */
+  cardId?: string | null;
+  /** Pre-signed URL for the current value (only when editing existing card). */
+  initialReadUrl?: string | null;
 }
 
 export default function PhotoInput({
@@ -21,30 +38,19 @@ export default function PhotoInput({
   isRequired,
   error,
   disabled,
+  cardId,
+  initialReadUrl,
 }: PhotoInputProps) {
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const currentUrl = value ? String(value) : null;
+  // Stable owner id for the lifetime of this form.
+  const draftOwnerRef = useRef<string>(
+    cardId ?? (typeof crypto !== "undefined" ? crypto.randomUUID() : "draft"),
+  );
 
-  async function handleFile(file: File) {
-    setUploading(true);
-    setUploadError(null);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      const json = (await res.json()) as { url?: string; error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Error al subir");
-      if (json.url) onChange(json.url);
-    } catch (e) {
-      setUploadError(
-        e instanceof Error ? e.message : "Error al subir la foto",
-      );
-    } finally {
-      setUploading(false);
-    }
-  }
+  const [readUrl, setReadUrl] = useState<string | null>(
+    initialReadUrl ?? null,
+  );
+
+  const objectKey = typeof value === "string" && value.length > 0 ? value : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -57,88 +63,26 @@ export default function PhotoInput({
         )}
       </label>
 
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: "none" }}
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) handleFile(f);
-          // Reset so the same file can be re-selected.
-          e.target.value = "";
+      <PhotoUploader
+        kind="card-photo"
+        ownerId={draftOwnerRef.current}
+        currentObjectKey={objectKey}
+        currentReadUrl={readUrl}
+        disabled={disabled}
+        alt={label}
+        onChange={(v) => {
+          if (v === null) {
+            setReadUrl(null);
+            onChange(null);
+          } else {
+            setReadUrl(v.readUrl);
+            onChange(v.objectKey);
+          }
         }}
       />
 
-      {currentUrl ? (
-        <div style={{ position: "relative", display: "inline-block" }}>
-          <img
-            src={currentUrl}
-            alt={label}
-            style={{
-              width: 120,
-              height: 120,
-              objectFit: "cover",
-              borderRadius: 10,
-              border: "1px solid var(--color-border)",
-              display: "block",
-            }}
-          />
-          {!disabled && (
-            <button
-              type="button"
-              onClick={() => onChange(null)}
-              style={{
-                position: "absolute",
-                top: -8,
-                right: -8,
-                width: 24,
-                height: 24,
-                borderRadius: "50%",
-                background: "#ef4444",
-                color: "#fff",
-                border: "none",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <X size={13} />
-            </button>
-          )}
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => !disabled && inputRef.current?.click()}
-          disabled={disabled || uploading}
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-            width: 120,
-            height: 120,
-            borderRadius: 10,
-            border: `2px dashed ${error ? "#ef4444" : "var(--color-border)"}`,
-            background: "var(--color-page-bg)",
-            cursor: disabled || uploading ? "default" : "pointer",
-            color: "var(--color-muted)",
-            fontSize: 12,
-            fontWeight: 500,
-          }}
-        >
-          <Upload size={20} />
-          {uploading ? "Subiendo..." : "Subir foto"}
-        </button>
-      )}
-
-      {(error || uploadError) && (
-        <span style={{ fontSize: 12, color: "#ef4444" }}>
-          {uploadError ?? error}
-        </span>
+      {error && (
+        <span style={{ fontSize: 12, color: "#ef4444" }}>{error}</span>
       )}
     </div>
   );

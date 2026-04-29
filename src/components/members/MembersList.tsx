@@ -14,6 +14,8 @@ const LABELS = {
 
 interface Props {
   members: MemberWithUser[];
+  /** Signed avatar URLs keyed by member id. */
+  memberAvatarReadUrls: Record<string, string>;
   currentUserId: string;
   actorRole: TenantRole;
   onEdit: (member: MemberWithUser) => void;
@@ -23,6 +25,7 @@ interface Props {
 
 export default function MembersList({
   members,
+  memberAvatarReadUrls,
   currentUserId,
   actorRole,
   onEdit,
@@ -43,6 +46,7 @@ export default function MembersList({
         <MemberRow
           key={m.id}
           member={m}
+          avatarReadUrl={memberAvatarReadUrls[m.id] ?? null}
           isSelf={m.userId === currentUserId}
           actorRole={actorRole}
           onEdit={onEdit}

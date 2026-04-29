@@ -35,6 +35,7 @@ import {
   updateMemberProfile,
   listMembers,
   countActiveMasters,
+  setUserAvatar,
 } from "@/lib/dal";
 import { ValidationError, ForbiddenOperationError } from "@/lib/dal/errors";
 import { canManage, canAssignRole } from "@/lib/auth/role-hierarchy";
@@ -483,5 +484,32 @@ export async function getMemberAction(
   return actionHandler(async () => {
     const { tenantId } = await requireAdmin();
     return getMemberById(tenantId, memberId);
+  });
+}
+
+const SetMyAvatarSchema = z.object({
+  key: z.string().min(1).nullable(),
+});
+
+/**
+ * Set or clear the calling user's own avatar object key.
+ *
+ * The actual upload + key validation happens in `confirmPhotoUploadAction`
+ * (kind = `member-avatar`). This action only persists the validated key
+ * into the Better Auth `user.image` column.
+ *
+ * Open to any active tenant member (operator+).
+ */
+export async function setMyAvatarAction(
+  input: unknown,
+): Promise<ActionResult<void>> {
+  return actionHandler(async () => {
+    const { userId } = await requireAdmin().catch(async () => {
+      // Operator+ self-edit is allowed; reuse the lighter guard.
+      const { requireOperator } = await import("@/lib/api");
+      return requireOperator();
+    });
+    const data = SetMyAvatarSchema.parse(input);
+    await setUserAvatar(userId, data.key);
   });
 }

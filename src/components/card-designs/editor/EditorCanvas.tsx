@@ -58,6 +58,8 @@ interface Props {
   stageDimensions: { width: number; height: number };
   /** Common fields across all linked card types — used to label field-bound nodes. */
   availableFields: CommonFieldDefinition[];
+  /** Object-key → signed read URL for static image nodes. */
+  staticImageUrls: Record<string, string>;
   onSelect: (id: string | null) => void;
   onNodeUpdate: (
     id: string,
@@ -74,6 +76,7 @@ export default function EditorCanvas({
   containerRef,
   stageDimensions,
   availableFields,
+  staticImageUrls,
   onSelect,
   onNodeUpdate,
   onDrop,
@@ -483,6 +486,7 @@ export default function EditorCanvas({
                 isEditingText={textEditId === node.id}
                 fieldLabelById={fieldLabelById}
                 codeImages={codeImages}
+                staticImageUrls={staticImageUrls}
                 shapeRefs={shapeRefs}
                 onSelect={() => {
                   if (!node.locked) onSelect(node.id);
@@ -604,6 +608,8 @@ interface NodeShapeProps {
   /** Map of fieldDefinitionId → display label, used for field-bound text. */
   fieldLabelById: Map<string, string>;
   codeImages: Record<string, HTMLImageElement>;
+  /** Object-key → signed URL for static image nodes. */
+  staticImageUrls: Record<string, string>;
   shapeRefs: MutableRefObject<Record<string, Konva.Node | null>>;
   onSelect: () => void;
   onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => void;
@@ -619,6 +625,7 @@ function NodeShape({
   isEditingText,
   fieldLabelById,
   codeImages,
+  staticImageUrls,
   shapeRefs,
   onSelect,
   onDragMove,
@@ -673,6 +680,7 @@ function NodeShape({
         node={node as ImageNode}
         pxPerUnit={pxPerUnit}
         commonDragProps={commonDragProps}
+        staticImageUrls={staticImageUrls}
       />
     );
   }
@@ -757,13 +765,18 @@ interface ImageShapeProps {
   node: ImageNode;
   pxPerUnit: number;
   commonDragProps: Record<string, unknown>;
+  staticImageUrls: Record<string, string>;
 }
 
-function ImageShape({ node, pxPerUnit, commonDragProps }: ImageShapeProps) {
-  const src =
-    node.content.source === "static"
-      ? (node.content as { staticUrl?: string }).staticUrl ?? ""
-      : "";
+function ImageShape({ node, pxPerUnit, commonDragProps, staticImageUrls }: ImageShapeProps) {
+  const src = (() => {
+    if (node.content.source !== "static") return "";
+    const c = node.content as { staticObjectKey?: string; staticUrl?: string };
+    if (c.staticObjectKey && staticImageUrls[c.staticObjectKey]) {
+      return staticImageUrls[c.staticObjectKey];
+    }
+    return c.staticUrl ?? "";
+  })();
   const [img, setImg] = useState<HTMLImageElement | null>(null);
 
   useEffect(() => {

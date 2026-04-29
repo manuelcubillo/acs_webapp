@@ -85,7 +85,7 @@ export function createNode(
         rotation: 0,
         zIndex,
         locked: false,
-        content: { source: "static", staticUrl: "" },
+        content: { source: "static" },
         mode: "fit",
       } satisfies ImageNode;
 

@@ -6,17 +6,19 @@ import CardForm from "@/components/cards/CardForm";
 import type { FieldDefinitionShape } from "@/lib/validation/types";
 
 interface CardEditClientProps {
+  cardId: string;
   cardCode: string;
   fields: FieldDefinitionShape[];
   initialValues: Record<string, unknown>;
-  tenantId: string;
+  photoReadUrls: Record<string, string>;
 }
 
 export default function CardEditClient({
+  cardId,
   cardCode,
   fields,
   initialValues,
-  tenantId,
+  photoReadUrls,
 }: CardEditClientProps) {
   const router = useRouter();
 
@@ -34,7 +36,8 @@ export default function CardEditClient({
       fields={fields}
       initialValues={initialValues}
       initialCode={cardCode}
-      tenantId={tenantId}
+      cardId={cardId}
+      photoReadUrls={photoReadUrls}
       onSubmit={handleSubmit}
       onCancel={() =>
         router.push(`/cards/${encodeURIComponent(cardCode)}`)

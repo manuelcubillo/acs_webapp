@@ -11,7 +11,9 @@
  *   to preserve type integrity at the database level.
  * - field_definitions are soft-deleted (is_active = false), never hard-deleted,
  *   to maintain referential integrity with existing field_values.
- * - Photos are stored as URL references in value_text.
+ * - Photos are stored as object keys (not URLs) in value_text. Keys are
+ *   resolved to short-lived signed URLs at render time. See ADR
+ *   2026-04-27-photo-storage-r2-minio.md.
  * - field_type cannot be changed once field_values exist for that definition.
  */
 
@@ -109,6 +111,12 @@ export const tenants = pgTable("tenants", {
   name: text("name").notNull(),
   /** Preferred card scanning method for all operators of this tenant. */
   scanMode: scanModeEnum("scan_mode").notNull().default("both"),
+  /**
+   * Object key (not URL) of the tenant logo in the photo storage bucket.
+   * Resolved into a signed URL at render time. See ADR
+   * 2026-04-27-photo-storage-r2-minio.md.
+   */
+  logoObjectKey: text("logo_object_key"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -15,7 +15,7 @@
  */
 
 import type { NextRequest } from "next/server";
-import { getCardByCode } from "@/lib/dal";
+import { getCardByCode, signCardPhotos } from "@/lib/dal";
 import { getTenantFromHeader } from "@/lib/api/auth";
 import { routeHandler, apiSuccess } from "@/lib/api/response";
 
@@ -28,7 +28,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const tenantId = getTenantFromHeader(request);
     const { code } = await params;
 
-    const card = await getCardByCode(code, tenantId);
+    const raw = await getCardByCode(code, tenantId);
+    // External readers receive presigned URLs (15 min TTL) in place of object keys.
+    const card = await signCardPhotos(raw);
     return apiSuccess(card);
   });
 }

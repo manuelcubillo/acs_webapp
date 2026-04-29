@@ -16,8 +16,19 @@ const CardDesignEditor = dynamic(() => import("./CardDesignEditor"), { ssr: fals
 interface Props {
   design: CardDesign;
   linkedCardTypes: CardTypeWithFields[];
+  initialStaticImageUrls: Record<string, string>;
 }
 
-export default function CardDesignEditorLoader({ design, linkedCardTypes }: Props) {
-  return <CardDesignEditor design={design} linkedCardTypes={linkedCardTypes} />;
+export default function CardDesignEditorLoader({
+  design,
+  linkedCardTypes,
+  initialStaticImageUrls,
+}: Props) {
+  return (
+    <CardDesignEditor
+      design={design}
+      linkedCardTypes={linkedCardTypes}
+      initialStaticImageUrls={initialStaticImageUrls}
+    />
+  );
 }

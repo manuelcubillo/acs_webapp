@@ -1,6 +1,6 @@
 # Module: auth-tenants
 
-**Last updated**: 2026-04-26 · **Last feature**: create-and-add member (new user tab in InviteMemberModal)
+**Last updated**: 2026-04-28 · **Last feature**: member avatar + tenant logo (uploads through `PhotoUploader`, surfaced in `DashboardShell` and `MemberRow`)
 
 ## Responsibility
 
@@ -44,7 +44,7 @@ Authentication (Better Auth), tenant management, multi-tenancy boundary, members
 
 ## Data model (relevant subset)
 
-- `tenants(id, name, scan_mode, created_at, updated_at)` — `allow_override_on_error` is **not** here; it lives in `dashboard_settings`.
+- `tenants(id, name, scan_mode, logo_object_key, created_at, updated_at)` — `allow_override_on_error` is **not** here; it lives in `dashboard_settings`. `logo_object_key` is the photo storage key (signed at render).
 - `tenant_members(id, tenant_id, user_id, role, is_active, removed_at, ...)` — unique on `(tenant_id, user_id)`. `removed_at IS NOT NULL` = soft-removed; hidden from all default queries.
 - `member_invitations(id, tenant_id, email, role, token, invited_by_user_id, expires_at, accepted_at, revoked_at, created_at)` — token is unique; pending = all three nullable timestamp columns are null AND expires_at > now().
 - `departure_feedback(id, name, email, tenant_name, reason, comment, created_at)` — no FK constraints; row created during deletion before user/tenant is removed. `reason` and `comment` filled in later by `submitDepartureFeedbackAction` via `?fid` token.
@@ -165,8 +165,8 @@ See ADR `2026-04-26-account-deletion-feedback-token.md`.
 
 ## Recent changes
 
+- 2026-04-28 — Member avatar (`user.image`) and tenant logo (`tenants.logo_object_key`, migration 0015) wired through `PhotoUploader`. New actions: `setMyAvatarAction` (operator+ self-edit), `setCurrentTenantLogoAction` (master). New DAL helper `setUserAvatar`. `MemberWithUser.userImage` exposed by `listMembers`; the members page batch-signs avatars. `DashboardShell` shows tenant logo (sidebar) and user avatar (topbar) when present, falling back to initials. ADR `2026-04-27-photo-storage-r2-minio.md`.
 - 2026-04-26 — Replaced "Usuario existente" tab in `InviteMemberModal` with "Usuario nuevo" tab. Added `createAndAddMemberAction`: validates email uniqueness across all tenants, creates user via `auth.api.signUpEmail`, adds membership, links `user.tenantId`. `addExistingUserAction` retained for programmatic use only.
 - 2026-04-26 — Added full member management: email invitations (`member_invitations` table, token flow, Resend email), deactivate/reactivate with session invalidation, soft-remove (`removedAt`), profile edit, password-reset trigger, role changes via `canManage`/`canAssignRole`. `/members` page now requireAdmin. `/invitations/[token]` public accept page. `/account-deactivated` page. Dashboard layout blocks deactivated/removed members. ADR `2026-04-26-member-invitations.md`.
 - 2026-04-26 — Added account deletion flow. New `deleteAccountAction` (pre-creates `departure_feedback` row to capture PII), `DeleteAccountModal` / `DeleteTenantAccountModal` (last-master requires typed phrase), `/goodbye` page with optional feedback form via `?fid` token. ADR `2026-04-26-account-deletion-feedback-token.md`.
 - 2026-04-25 — Added public sign-up + tenant bootstrap. New `/sign-up` and `/onboarding/create-tenant` pages, `createTenantWithMasterAction` in `src/lib/actions/tenants.ts`, pass-through `(dashboard)/layout.tsx` gate, "create account" link on login. ADR `2026-04-25-tenant-bootstrap-best-effort.md` captures the best-effort sequential write strategy.
-- 2026-04-25 — Added password recovery flow: `/forgot-password` + `/reset-password` pages, Resend email transport in `auth.ts`, "forgot password" link on login page. Corrected Login flow (username, not email).

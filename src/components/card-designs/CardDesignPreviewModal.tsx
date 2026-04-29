@@ -26,6 +26,8 @@ interface Props {
   layout: CardDesignLayout;
   fieldValues: Record<string, string>;
   photoValues: Record<string, string>;
+  /** Signed read URLs for static image nodes that reference an object key. */
+  staticImageUrls?: Record<string, string>;
   cardCode: string;
   designName: string;
   onClose: () => void;
@@ -35,6 +37,7 @@ export default function CardDesignPreviewModal({
   layout,
   fieldValues,
   photoValues,
+  staticImageUrls,
   cardCode,
   designName,
   onClose,
@@ -47,11 +50,18 @@ export default function CardDesignPreviewModal({
   // Render on mount
   useEffect(() => {
     let cancelled = false;
-    renderDesignToDataURL({ layout, fieldValues, photoValues, cardCode, scale: 2 })
+    renderDesignToDataURL({
+      layout,
+      fieldValues,
+      photoValues,
+      staticImageUrls,
+      cardCode,
+      scale: 2,
+    })
       .then((url) => { if (!cancelled) setDataUrl(url); })
       .catch(() => { if (!cancelled) setError(LABELS.renderError); });
     return () => { cancelled = true; };
-  }, [layout, fieldValues, photoValues, cardCode]);
+  }, [layout, fieldValues, photoValues, staticImageUrls, cardCode]);
 
   // Close on Escape
   useEffect(() => {

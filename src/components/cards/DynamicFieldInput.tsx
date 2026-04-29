@@ -14,7 +14,10 @@ interface DynamicFieldInputProps {
   onChange: (value: unknown) => void;
   error?: string;
   disabled?: boolean;
-  tenantId?: string;
+  /** Card UUID when editing an existing card. Photo uploads use it as owner. */
+  cardId?: string | null;
+  /** Signed read URL for the field's current photo (photo fields only). */
+  photoReadUrl?: string | null;
 }
 
 export default function DynamicFieldInput({
@@ -23,7 +26,8 @@ export default function DynamicFieldInput({
   onChange,
   error,
   disabled,
-  tenantId,
+  cardId,
+  photoReadUrl,
 }: DynamicFieldInputProps) {
   const common = {
     fieldId: field.id,
@@ -72,7 +76,8 @@ export default function DynamicFieldInput({
           {...common}
           value={value}
           onChange={(v) => onChange(v)}
-          tenantId={tenantId}
+          cardId={cardId}
+          initialReadUrl={photoReadUrl ?? null}
         />
       );
     case "select":

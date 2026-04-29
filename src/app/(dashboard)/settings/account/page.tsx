@@ -21,6 +21,7 @@ import {
   AuthorizationError,
 } from "@/lib/api";
 import { getTenantById, countActiveMasters } from "@/lib/dal";
+import { signPhotoForReadOptional } from "@/lib/storage/read";
 import AccountSettings from "@/components/settings/account/AccountSettings";
 
 export const dynamic = "force-dynamic";
@@ -47,9 +48,22 @@ export default async function AccountSettingsPage() {
 
   if (!tenant) redirect("/dashboard");
 
+  const userImageKey =
+    (session?.user as { image?: string | null } | undefined)?.image ?? null;
+  const userId = session?.user?.id ?? null;
+
+  // Pre-sign avatar + logo for preview.
+  const [userImageUrl, tenantLogoUrl] = await Promise.all([
+    signPhotoForReadOptional(userImageKey),
+    signPhotoForReadOptional(tenant.logoObjectKey),
+  ]);
+
   const user = {
+    id: userId,
     name: session?.user?.name ?? null,
     email: session?.user?.email ?? "",
+    imageObjectKey: userImageKey,
+    imageReadUrl: userImageUrl,
   };
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -59,6 +73,8 @@ export default async function AccountSettingsPage() {
         id: tenant.id,
         name: tenant.name,
         createdAt: tenant.createdAt,
+        logoObjectKey: tenant.logoObjectKey,
+        logoReadUrl: tenantLogoUrl,
       }}
       user={user}
       role={role}

@@ -37,6 +37,8 @@ const LABELS = {
 interface Props {
   initialMembers: MemberWithUser[];
   initialInvitations: InvitationWithInviter[];
+  /** Signed avatar URLs keyed by member id. */
+  memberAvatarReadUrls: Record<string, string>;
   currentUserId: string;
   currentUserRole: TenantRole;
 }
@@ -44,6 +46,7 @@ interface Props {
 export default function MembersClient({
   initialMembers,
   initialInvitations,
+  memberAvatarReadUrls,
   currentUserId,
   currentUserRole,
 }: Props) {
@@ -132,6 +135,7 @@ export default function MembersClient({
       <section style={{ marginBottom: 32 }}>
         <MembersList
           members={initialMembers}
+          memberAvatarReadUrls={memberAvatarReadUrls}
           currentUserId={currentUserId}
           actorRole={currentUserRole}
           onEdit={(m) => { setActionError(""); setEditTarget(m); }}

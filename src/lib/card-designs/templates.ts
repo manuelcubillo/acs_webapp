@@ -96,7 +96,7 @@ const photoCardTemplate: DesignTemplate = {
         rotation: 0,
         zIndex: 2,
         locked: false,
-        content: { source: "static", staticUrl: "" },
+        content: { source: "static" },
         mode: "fill",
       },
       // Holder name
@@ -365,7 +365,7 @@ const passbookTemplate: DesignTemplate = {
         rotation: 0,
         zIndex: 1,
         locked: false,
-        content: { source: "static", staticUrl: "" },
+        content: { source: "static" },
         mode: "fit",
       },
       // Brand name (header)

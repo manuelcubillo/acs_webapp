@@ -32,6 +32,8 @@ const ROLE_COLORS: Record<string, string> = {
 
 interface Props {
   member: MemberWithUser;
+  /** Pre-signed read URL for the member's avatar (or null to fall back to initials). */
+  avatarReadUrl?: string | null;
   isSelf: boolean;
   actorRole: TenantRole;
   onEdit: (member: MemberWithUser) => void;
@@ -41,6 +43,7 @@ interface Props {
 
 export default function MemberRow({
   member,
+  avatarReadUrl,
   isSelf,
   actorRole,
   onEdit,
@@ -72,18 +75,34 @@ export default function MemberRow({
       }}
     >
       {/* Avatar */}
-      <div
-        style={{
-          width: 40, height: 40, borderRadius: 10,
-          background: "linear-gradient(135deg, #e0e7ff, #c7d2fe)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontWeight: 700, fontSize: 14, color: "var(--color-primary)",
-          fontFamily: "var(--font-heading)",
-          flexShrink: 0,
-        }}
-      >
-        {initials || "?"}
-      </div>
+      {avatarReadUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={avatarReadUrl}
+          alt={member.userName}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            objectFit: "cover",
+            border: "1px solid var(--color-border)",
+            flexShrink: 0,
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            width: 40, height: 40, borderRadius: 10,
+            background: "linear-gradient(135deg, #e0e7ff, #c7d2fe)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontWeight: 700, fontSize: 14, color: "var(--color-primary)",
+            fontFamily: "var(--font-heading)",
+            flexShrink: 0,
+          }}
+        >
+          {initials || "?"}
+        </div>
+      )}
 
       {/* Info */}
       <div style={{ flex: 1, minWidth: 0 }}>

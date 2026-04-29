@@ -1,6 +1,6 @@
 # Module: infrastructure
 
-**Last updated**: 2026-04-27 · **Last feature**: card_designs + card_type_designs tables; Konva, qrcode, jsbarcode packages
+**Last updated**: 2026-04-28 · **Last feature**: photo storage via R2 + MinIO behind `CardPhotoStorage`; image optimization module; presigned-PUT upload Server Actions
 
 ## Responsibility
 
@@ -22,6 +22,20 @@ Everything that keeps the app running: database connection, migrations, env vars
 - `src/lib/dal/types.ts` — All Drizzle-derived types + input/output shapes.
 - `src/lib/dal/errors.ts` — `DalError`, `NotFoundError`, `ValidationError`, `ForbiddenOperationError`, `DuplicateCodeError`.
 - `src/lib/dal/index.ts` — Barrel export.
+- `src/lib/dal/photo-urls.ts` — Server-only helpers (`signCardPhotos`, `signCardListPhotos`, `buildPhotoReadUrlMap`) that turn photo object keys into signed read URLs before passing card data to client renderers.
+- `src/lib/storage/types.ts` — `CardPhotoStorage` interface, `PhotoKind` union, key-layout constants.
+- `src/lib/storage/keys.ts` — `buildObjectKey`, `keyMatches`, `tenantPrefix`.
+- `src/lib/storage/s3-base.ts` — Shared S3-compatible class (presigned PUT/GET, head, delete, prefix delete).
+- `src/lib/storage/r2.ts` / `minio.ts` — Adapter shims (virtual-host vs path-style addressing).
+- `src/lib/storage/validation.ts` — `assertObjectMatchesKind`, `assertHeadOk` (server-side guards).
+- `src/lib/storage/read.ts` — `signPhotoForRead`, `signPhotoForReadOptional`, `signPhotosForRead`.
+- `src/lib/storage/index.ts` — Factory: `getPhotoStorage()`; barrel.
+- `src/lib/images/profiles.ts` — `CARD_PHOTO_PROFILE`, `MEMBER_AVATAR_PROFILE`, `TENANT_LOGO_PROFILE`, `CARD_DESIGN_IMAGE_PROFILE`. Tweaks here re-tune storage for that kind.
+- `src/lib/images/optimize.ts` — Browser-side resize + recompress pipeline (canvas, retry-on-too-large).
+- `src/lib/actions/uploads.ts` — `requestPhotoUploadUrlAction`, `confirmPhotoUploadAction`.
+- `src/components/shared/PhotoUploader.tsx` — Universal upload widget (optimize → presign → PUT → confirm).
+- `infra/storage/` — `r2-cors.json`, `minio-cors.json`, `README.md`.
+- `docker-compose.minio.yml` — Local MinIO + bucket-init container.
 - Scripts in `package.json`: `pnpm dev | build | start | lint`, `pnpm db:generate | db:migrate | db:studio`, `pnpm db:seed`, `pnpm test | test:watch`.
 
 ## Environment variables
@@ -33,6 +47,13 @@ BETTER_AUTH_URL=http://localhost:3000
 NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000
 RESEND_APIKEY=re_...                   # Resend API key (transactional email)
 RESEND_FROM_EMAIL=noreply@yourdomain   # Must be a Resend-verified domain
+STORAGE_DRIVER=r2|minio                # Photo storage driver (R2 in prod, MinIO local/self-hosted)
+S3_ENDPOINT=...                        # R2 account-scoped URL, or http://localhost:9000 for MinIO
+S3_REGION=auto                         # R2 → "auto"; MinIO → any string (e.g. us-east-1)
+S3_BUCKET=...
+S3_ACCESS_KEY_ID=...
+S3_SECRET_ACCESS_KEY=...
+S3_FORCE_PATH_STYLE=false              # true for MinIO (path-style), false for R2 (virtual-host)
 ```
 
 ## Runtime constraints
@@ -64,6 +85,8 @@ RESEND_FROM_EMAIL=noreply@yourdomain   # Must be a Resend-verified domain
 | drizzle-kit                    | 0.31.9       | Migrations                                  |
 | vitest                         | 4.0.18       | Tests                                       |
 | tsx                            | 4.21.0       | Scripts                                     |
+| @aws-sdk/client-s3             | 3.1038.0     | Photo storage (R2 + MinIO)                  |
+| @aws-sdk/s3-request-presigner  | 3.1038.0     | Presigned PUT/GET URLs for direct uploads   |
 
 ## Main flows
 
@@ -99,12 +122,12 @@ RESEND_FROM_EMAIL=noreply@yourdomain   # Must be a Resend-verified domain
 
 ## Future considerations
 
-- Photo storage migration to S3/R2 (no code tag; tracked at project level).
+- Janitor cron for orphaned photo objects (replacement uploads write a new key; the previous one is left for an out-of-band sweep).
 
 ## Recent changes
 
+- 2026-04-28 — Photo storage migration: `CardPhotoStorage` (R2 + MinIO) + `src/lib/images/` optimization module + presigned-PUT Server Actions. `tenants.logo_object_key` added (migration 0015). `field_values.value_text` for `photo` fields now stores object keys (not URLs); server-side helpers in `src/lib/dal/photo-urls.ts` sign keys before render. Old `/api/upload` route removed. ADR `2026-04-27-photo-storage-r2-minio.md`.
 - 2026-04-27 — Added `card_designs` + `card_type_designs` tables (migration 0014); added konva 10.2.5, react-konva 19.2.3, qrcode 1.5.4, jsbarcode 3.12.3 to dependencies.
 - 2026-04-26 — Added `departure_feedback` table (migrations 0011, 0012). Note: snapshot files for 0008–0010 were missing; 0011 SQL was hand-trimmed to only the new table to avoid duplicate DDL errors.
 - 2026-04-25 — Added Resend (v6.12.2) for transactional email; documented `RESEND_APIKEY` and `RESEND_FROM_EMAIL` env vars.
 - 2026-04-19 — Initial extraction from technical handoff.
-- 2026-04-19 — Synchronized documentation against source code: removed stale `TODO: API_KEYS` (no code tag found); moved `TODO: STORAGE` to Future considerations (no code tag).

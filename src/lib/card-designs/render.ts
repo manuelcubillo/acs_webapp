@@ -5,7 +5,9 @@
  * All operations are client-only (uses document.createElement, Image, etc.).
  *
  * Field resolution:
- *   - source "static"    → node's staticValue / staticUrl
+ *   - source "static"    → node's staticValue / staticObjectKey / staticUrl.
+ *     Image static nodes prefer `staticObjectKey` (resolved through
+ *     `staticImageUrls`) and fall back to `staticUrl` for legacy data.
  *   - source "field"     → fieldValues[fieldDefinitionId]
  *   - source "card_code" → cardCode argument
  */
@@ -29,6 +31,12 @@ export interface RenderInput {
   fieldValues: Record<string, string>;
   /** Photo URL strings keyed by fieldDefinitionId. */
   photoValues: Record<string, string>;
+  /**
+   * Signed read URLs for static `image` nodes that reference an object key.
+   * Keyed by `staticObjectKey`. Callers (server components or the editor) sign
+   * the keys before render — the renderer never talks to storage directly.
+   */
+  staticImageUrls?: Record<string, string>;
   cardCode: string;
   /** Output scale multiplier — 2 produces retina-quality output. */
   scale?: number;
@@ -42,6 +50,7 @@ export async function renderDesignToDataURL({
   layout,
   fieldValues,
   photoValues,
+  staticImageUrls = {},
   cardCode,
   scale = 2,
 }: RenderInput): Promise<string> {
@@ -71,7 +80,7 @@ export async function renderDesignToDataURL({
   await Promise.allSettled(
     sorted.map(async (node) => {
       if (node.type === "image") {
-        const url = resolveImageUrl(node as ImageNode, photoValues);
+        const url = resolveImageUrl(node as ImageNode, photoValues, staticImageUrls);
         assets.set(node.id, url ? await loadImage(url).catch(() => null) : null);
       } else if (node.type === "qr") {
         const value = resolveCode(node as QrNode, fieldValues, cardCode);
@@ -302,9 +311,17 @@ function resolveCode(
   return fieldValues[(c as { fieldDefinitionId: string }).fieldDefinitionId] ?? "";
 }
 
-function resolveImageUrl(node: ImageNode, photoValues: Record<string, string>): string {
+function resolveImageUrl(
+  node: ImageNode,
+  photoValues: Record<string, string>,
+  staticImageUrls: Record<string, string>,
+): string {
   const c = node.content;
-  if (c.source === "static") return (c as { staticUrl: string }).staticUrl ?? "";
+  if (c.source === "static") {
+    const key = (c as { staticObjectKey?: string }).staticObjectKey;
+    if (key && staticImageUrls[key]) return staticImageUrls[key];
+    return (c as { staticUrl?: string }).staticUrl ?? "";
+  }
   if (c.source === "field") return photoValues[c.fieldDefinitionId] ?? "";
   return "";
 }

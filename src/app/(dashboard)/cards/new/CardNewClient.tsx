@@ -11,13 +11,11 @@ import type { FieldDefinitionShape } from "@/lib/validation/types";
 interface CardNewClientProps {
   cardTypeId: string;
   fields: FieldDefinitionShape[];
-  tenantId: string;
 }
 
 export default function CardNewClient({
   cardTypeId,
   fields,
-  tenantId,
 }: CardNewClientProps) {
   const router = useRouter();
   const [resetKey, setResetKey] = useState(0);
@@ -73,7 +71,6 @@ export default function CardNewClient({
       <CardForm
         key={resetKey}
         fields={fields}
-        tenantId={tenantId}
         onSubmit={handleSubmit}
         onCancel={() => router.back()}
         submitLabel="Crear carnet"

@@ -1,6 +1,6 @@
 # Module: card-designs
 
-**Last updated**: 2026-04-27 · **Last feature**: Editor polish — auto-size text, in-editor preview with mocked data, starter templates, mandatory card-type on create
+**Last updated**: 2026-04-28 · **Last feature**: image nodes upload via `PhotoUploader`; renderer reads `staticObjectKey` through a `staticImageUrls` map
 
 ## Responsibility
 
@@ -80,7 +80,9 @@ Default dimensions: CR80 card = 85.6 × 54 mm; passbook = 340 × 440 px.
 
 Node types: `text | image | qr | barcode128 | rect | line`.
 Bindable nodes (text/image/qr/barcode128) have a `content` discriminated union:
-- `{ source: "static", staticValue/staticUrl }` — fixed value
+- `{ source: "static", staticValue }` — fixed value (text/qr/barcode)
+- `{ source: "static", staticObjectKey }` — uploaded image (preferred for `image` nodes)
+- `{ source: "static", staticUrl }` — legacy / external image URL (still accepted by the renderer for back-compat)
 - `{ source: "field", fieldDefinitionId }` — resolved from linked card types
 - `{ source: "card_code" }` — card's public code (text/qr/barcode128 only)
 
@@ -158,5 +160,6 @@ Note: export uses the browser Canvas API, **not** `Stage.toDataURL()` — the Ko
 
 ## Recent changes
 
+- 2026-04-28 — Image nodes now upload via `PhotoUploader` (kind `card-design-image`) and store `staticObjectKey` in the layout. Editor + page server components pre-sign every static key into a `staticImageUrls` map that flows through `EditorCanvas` (`ImageShape`), `CardDesignPreviewModal`, and `renderDesignToDataURL`. `staticUrl` is retained read-only for legacy nodes. ADR `2026-04-27-photo-storage-r2-minio.md`.
 - 2026-04-27 — Editor polish: text auto-resize (`textMetrics.ts`) on commit + on style/binding change via new `replaceCurrent` history mode; field-bound text shows the field's label on canvas; Posición y tamaño rounds display to 3 decimals; double-click in `ElementPalette` adds the element centred; in-editor **Vista previa** with `buildMockPreviewData`; **Plantillas** picker (`TemplatePicker.tsx`) with 3 starter layouts (`templates.ts`); `NewDesignModal` now requires a card type and links it on create; misc bug fixes (Rules-of-Hooks split for `ImageShape`, `codeImages` cache GC, artboard-bg deselect, `Math.abs` on transform flip, corrected text overlay positioning math).
 - 2026-04-27 — V1 complete: list + Konva editor (Phases 1–3), field binding (Phase 4), link/unlink from editor + card-type detail (Phase 5), PNG preview + export from card detail (Phase 6).

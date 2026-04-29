@@ -16,11 +16,16 @@
 
 import { useState, useTransition } from "react";
 import { Save, Copy, Check } from "lucide-react";
-import { updateCurrentTenantNameAction } from "@/lib/actions/tenants";
+import {
+  setCurrentTenantLogoAction,
+  updateCurrentTenantNameAction,
+} from "@/lib/actions/tenants";
+import { setMyAvatarAction } from "@/lib/actions/members";
 import { deleteAccountAction } from "@/lib/actions/account";
 import { authClient } from "@/lib/auth-client";
 import SettingsSection from "@/components/settings/SettingsSection";
 import SettingsCard from "@/components/settings/SettingsCard";
+import PhotoUploader from "@/components/shared/PhotoUploader";
 import DeleteAccountModal from "./DeleteAccountModal";
 import DeleteTenantAccountModal from "./DeleteTenantAccountModal";
 import type { TenantRole } from "@/lib/api";
@@ -134,9 +139,21 @@ function ReadOnlyField({
 
 interface AccountSettingsProps {
   /** Tenant data fetched server-side. */
-  tenant: { id: string; name: string; createdAt: Date };
+  tenant: {
+    id: string;
+    name: string;
+    createdAt: Date;
+    logoObjectKey: string | null;
+    logoReadUrl: string | null;
+  };
   /** Current user's data from the session. */
-  user: { name: string | null; email: string };
+  user: {
+    id: string | null;
+    name: string | null;
+    email: string;
+    imageObjectKey: string | null;
+    imageReadUrl: string | null;
+  };
   /** Current user's role in this tenant. */
   role: TenantRole;
   /** Number of active master members in this tenant. */
@@ -164,6 +181,41 @@ export default function AccountSettings({ tenant, user, role, masterCount }: Acc
         setTenantError(result.error ?? "Error al guardar");
       }
     });
+  }
+
+  // ── Tenant logo ───────────────────────────────────────────────────────────
+  const [logoReadUrl, setLogoReadUrl] = useState<string | null>(tenant.logoReadUrl);
+  const [logoError, setLogoError] = useState<string | null>(null);
+  const isMaster = role === "master";
+
+  async function handleLogoChange(
+    v: { objectKey: string; readUrl: string } | null,
+  ) {
+    setLogoError(null);
+    const result = await setCurrentTenantLogoAction({
+      key: v?.objectKey ?? null,
+    });
+    if (!result.success) {
+      setLogoError(result.error ?? "No se pudo guardar el logo");
+      return;
+    }
+    setLogoReadUrl(v?.readUrl ?? null);
+  }
+
+  // ── User avatar ────────────────────────────────────────────────────────────
+  const [avatarReadUrl, setAvatarReadUrl] = useState<string | null>(user.imageReadUrl);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+
+  async function handleAvatarChange(
+    v: { objectKey: string; readUrl: string } | null,
+  ) {
+    setAvatarError(null);
+    const result = await setMyAvatarAction({ key: v?.objectKey ?? null });
+    if (!result.success) {
+      setAvatarError(result.error ?? "No se pudo guardar la foto de perfil");
+      return;
+    }
+    setAvatarReadUrl(v?.readUrl ?? null);
   }
 
   // ── User name form ────────────────────────────────────────────────────────
@@ -245,6 +297,29 @@ export default function AccountSettings({ tenant, user, role, masterCount }: Acc
         }
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          {/* Logo */}
+          {isMaster && (
+            <div>
+              <div style={labelStyle}>Logo de la organización</div>
+              <div style={{ marginTop: 6 }}>
+                <PhotoUploader
+                  kind="tenant-logo"
+                  ownerId={tenant.id}
+                  currentObjectKey={tenant.logoObjectKey}
+                  currentReadUrl={logoReadUrl}
+                  previewSize={96}
+                  alt="Logo"
+                  onChange={(v) => void handleLogoChange(v)}
+                />
+              </div>
+              {logoError && (
+                <p style={{ margin: "6px 0 0", fontSize: 12, color: "#dc2626" }}>
+                  {logoError}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Tenant name */}
           <div>
             <label htmlFor="tenant-name" style={labelStyle}>
@@ -299,6 +374,29 @@ export default function AccountSettings({ tenant, user, role, masterCount }: Acc
         }
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          {/* Avatar */}
+          {user.id && (
+            <div>
+              <div style={labelStyle}>Foto de perfil</div>
+              <div style={{ marginTop: 6 }}>
+                <PhotoUploader
+                  kind="member-avatar"
+                  ownerId={user.id}
+                  currentObjectKey={user.imageObjectKey}
+                  currentReadUrl={avatarReadUrl}
+                  previewSize={96}
+                  alt="Avatar"
+                  onChange={(v) => void handleAvatarChange(v)}
+                />
+              </div>
+              {avatarError && (
+                <p style={{ margin: "6px 0 0", fontSize: 12, color: "#dc2626" }}>
+                  {avatarError}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Display name */}
           <div>
             <label htmlFor="user-name" style={labelStyle}>

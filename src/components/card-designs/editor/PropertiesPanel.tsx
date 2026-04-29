@@ -25,6 +25,7 @@ import type { CardDesignLayout, LayoutNode, WebSafeFont } from "@/lib/card-desig
 import { WEB_SAFE_FONTS } from "@/lib/card-designs/types";
 import type { CommonFieldDefinition, CardTypeWithFields, CardType } from "@/lib/dal";
 import { COMPATIBLE_FIELD_TYPES } from "./CardDesignEditor";
+import PhotoUploader from "@/components/shared/PhotoUploader";
 
 const LABELS = {
   panelTitle: "Propiedades",
@@ -59,7 +60,7 @@ const LABELS = {
   overflow: "Desbordamiento",
   contentSection: "Contenido",
   staticValue: "Valor estático",
-  imageUrl: "URL de imagen",
+  imageUpload: "Imagen estática",
   imageMode: "Modo imagen",
   fill: "Relleno",
   stroke: "Borde",
@@ -96,6 +97,10 @@ interface Props {
   availableFields: CommonFieldDefinition[];
   linkedCardTypes: CardTypeWithFields[];
   designId: string;
+  /** Object-key → signed URL for static image nodes (read by uploader for previews). */
+  staticImageUrls: Record<string, string>;
+  /** Called by the uploader to register a fresh signed URL after upload. */
+  onRegisterStaticImageUrl: (key: string, url: string) => void;
   onUpdateLayout: (patch: Partial<CardDesignLayout["canvas"]>) => void;
   onUpdateNode: (id: string, patch: Record<string, unknown>) => void;
   onDeleteNode: (id: string) => void;
@@ -114,6 +119,9 @@ export default function PropertiesPanel({
   unit,
   availableFields,
   linkedCardTypes,
+  designId,
+  staticImageUrls,
+  onRegisterStaticImageUrl,
   onUpdateLayout,
   onUpdateNode,
   onDeleteNode,
@@ -168,6 +176,9 @@ export default function PropertiesPanel({
             node={selectedNode}
             unit={unit}
             availableFields={availableFields}
+            designId={designId}
+            staticImageUrls={staticImageUrls}
+            onRegisterStaticImageUrl={onRegisterStaticImageUrl}
             onUpdate={(patch) => onUpdateNode(selectedNode.id, patch)}
             onDelete={() => onDeleteNode(selectedNode.id)}
             onDuplicate={() => onDuplicateNode(selectedNode.id)}
@@ -247,6 +258,9 @@ function NodeProperties({
   node,
   unit,
   availableFields,
+  designId,
+  staticImageUrls,
+  onRegisterStaticImageUrl,
   onUpdate,
   onDelete,
   onDuplicate,
@@ -255,6 +269,9 @@ function NodeProperties({
   node: LayoutNode;
   unit: string;
   availableFields: CommonFieldDefinition[];
+  designId: string;
+  staticImageUrls: Record<string, string>;
+  onRegisterStaticImageUrl: (key: string, url: string) => void;
   onUpdate: (patch: Record<string, unknown>) => void;
   onDelete: () => void;
   onDuplicate: () => void;
@@ -475,19 +492,39 @@ function NodeProperties({
 
       {node.type === "image" && (
         <Section title={LABELS.contentSection}>
-          {node.content.source === "static" && (
-            <Row label={LABELS.imageUrl}>
-              <input
-                className="input"
-                style={{ fontSize: 12 }}
-                value={(node.content as { staticUrl?: string }).staticUrl ?? ""}
-                placeholder="https://..."
-                onChange={(e) =>
-                  onUpdate({ content: { source: "static", staticUrl: e.target.value } })
-                }
-              />
-            </Row>
-          )}
+          {node.content.source === "static" && (() => {
+            const c = node.content as {
+              staticObjectKey?: string;
+              staticUrl?: string;
+            };
+            const key = c.staticObjectKey ?? null;
+            const readUrl = key ? staticImageUrls[key] ?? null : c.staticUrl ?? null;
+            return (
+              <Row label={LABELS.imageUpload}>
+                <PhotoUploader
+                  kind="card-design-image"
+                  ownerId={designId}
+                  currentObjectKey={key}
+                  currentReadUrl={readUrl}
+                  previewSize={96}
+                  previewAspect={1}
+                  onChange={(v) => {
+                    if (v) {
+                      onRegisterStaticImageUrl(v.objectKey, v.readUrl);
+                      onUpdate({
+                        content: {
+                          source: "static",
+                          staticObjectKey: v.objectKey,
+                        },
+                      });
+                    } else {
+                      onUpdate({ content: { source: "static" } });
+                    }
+                  }}
+                />
+              </Row>
+            );
+          })()}
           <Row label={LABELS.imageMode}>
             <div style={{ display: "flex", gap: 4 }}>
               {(["fit", "fill"] as const).map((m) => (
@@ -780,7 +817,7 @@ function DataSourceSection({
       onUpdate({
         content:
           nodeType === "image"
-            ? { source: "static", staticUrl: "" }
+            ? { source: "static" }
             : { source: "static", staticValue: "" },
       });
     } else if (newSource === "field") {

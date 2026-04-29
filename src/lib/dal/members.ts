@@ -124,6 +124,7 @@ export async function listMembers(tenantId: string): Promise<MemberWithUser[]> {
       userName: user.name,
       userEmail: user.email,
       userUsername: user.username,
+      userImage: user.image,
     })
     .from(tenantMembers)
     .innerJoin(user, eq(tenantMembers.userId, user.id))
@@ -418,4 +419,19 @@ export async function updateMemberProfile(
     .where(eq(user.id, member.userId));
 
   return getMemberById(tenantId, memberId);
+}
+
+/**
+ * Set the avatar object key on the Better Auth `user.image` column.
+ * Pass `null` to clear the avatar. The caller must have already verified
+ * authorization (see `confirmPhotoUploadAction`).
+ */
+export async function setUserAvatar(
+  userId: string,
+  objectKey: string | null,
+): Promise<void> {
+  await db
+    .update(user)
+    .set({ image: objectKey, updatedAt: new Date() })
+    .where(eq(user.id, userId));
 }

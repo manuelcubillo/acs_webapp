@@ -15,6 +15,7 @@ import {
   getTenantById,
   searchCards,
   getSummaryFieldsForCardType,
+  signCardListPhotos,
 } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardList from "@/components/cards/CardList";
@@ -73,7 +74,9 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
       ]);
       fieldDefs = schema.fieldDefinitions.filter((f) => f.isActive);
       summaryFieldIds = summaryFields.map((sf) => sf.fieldDefinitionId);
-      initialData = searchResult;
+      // Sign every photo key in the page batch so client renderers receive URLs.
+      const signedCards = await signCardListPhotos(searchResult.data);
+      initialData = { ...searchResult, data: signedCards };
     } catch {
       // Non-fatal — show empty state.
     }

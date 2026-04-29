@@ -15,7 +15,9 @@ import {
   getDashboardSettings,
   getScanValidationsByCardType,
   listDesignsForCardType,
+  signCardPhotos,
 } from "@/lib/dal";
+import { signPhotoForReadOptional } from "@/lib/storage/read";
 import { validateScan, hasErrorLevelFailures } from "@/lib/validation/scan-validator";
 import type { CardDesignLayout } from "@/lib/card-designs/types";
 import DashboardShell from "@/components/layout/DashboardShell";
@@ -52,7 +54,10 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
   // ── Data ──────────────────────────────────────────────────────────────────
   let card;
   try {
-    card = await getCardByCode(decodedCode, tenantId);
+    const raw = await getCardByCode(decodedCode, tenantId);
+    // Replace photo object keys with short-lived signed URLs before passing
+    // to client components / the design renderer.
+    card = await signCardPhotos(raw);
   } catch {
     redirect("/cards");
   }
@@ -82,7 +87,8 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
       })()
     : null;
 
-  // Flatten card field values into the shapes render.ts expects
+  // Flatten card field values into the shapes render.ts expects.
+  // After signCardPhotos(), photo `f.value` is already a signed URL.
   const fieldValues: Record<string, string> = {};
   const photoValues: Record<string, string> = {};
   for (const f of card.fields) {
@@ -95,6 +101,25 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
     } else {
       fieldValues[f.fieldDefinitionId] = String(f.value ?? "");
     }
+  }
+
+  // Pre-sign every static object key referenced by the preview layout's
+  // image nodes so the renderer can resolve them without round-tripping.
+  const staticImageUrls: Record<string, string> = {};
+  if (previewLayout) {
+    const keys = previewLayout.nodes
+      .filter((n) => n.type === "image" && n.content.source === "static")
+      .map((n) => {
+        const c = (n as { content: { staticObjectKey?: string } }).content;
+        return c.staticObjectKey ?? null;
+      })
+      .filter((k): k is string => typeof k === "string" && k.length > 0);
+    await Promise.all(
+      Array.from(new Set(keys)).map(async (k) => {
+        const url = await signPhotoForReadOptional(k);
+        if (url) staticImageUrls[k] = url;
+      }),
+    );
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -126,6 +151,7 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
                 layout={previewLayout}
                 fieldValues={fieldValues}
                 photoValues={photoValues}
+                staticImageUrls={staticImageUrls}
                 cardCode={card.code}
                 designName={previewDesign!.name}
               />

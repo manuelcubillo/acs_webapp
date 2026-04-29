@@ -156,11 +156,7 @@ export default async function NewCardPage({ searchParams }: NewCardPageProps) {
           Tipo: <strong>{schema.name}</strong>
         </p>
 
-        <CardNewClient
-          cardTypeId={cardTypeId}
-          fields={fields}
-          tenantId={tenantId}
-        />
+        <CardNewClient cardTypeId={cardTypeId} fields={fields} />
       </div>
     </DashboardShell>
   );

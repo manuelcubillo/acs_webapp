@@ -23,3 +23,4 @@ export * from "./activity-feed";
 export * from "./action-history";
 export * from "./common-fields";
 export * from "./card-designs";
+export * from "./photo-urls";

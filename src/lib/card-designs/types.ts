@@ -49,9 +49,20 @@ export interface CardCodeContent {
 }
 
 export type TextContent = StaticContent | FieldContent | CardCodeContent;
-export type ImageContent =
-  | (Omit<StaticContent, "staticValue"> & { staticUrl: string })
-  | FieldContent;
+
+/**
+ * Static image content. Modern uploads write `staticObjectKey` (resolved
+ * to a signed URL at render time). `staticUrl` remains for legacy nodes
+ * and externally-hosted images and is treated as a literal URL when present.
+ */
+export interface ImageStaticContent {
+  source: "static";
+  /** Object key in the photo storage bucket (preferred). */
+  staticObjectKey?: string;
+  /** Legacy / external absolute URL. */
+  staticUrl?: string;
+}
+export type ImageContent = ImageStaticContent | FieldContent;
 export type CodeContent = StaticContent | FieldContent | CardCodeContent;
 
 // ─── Node types ───────────────────────────────────────────────────────────────

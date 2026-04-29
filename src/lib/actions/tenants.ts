@@ -187,6 +187,25 @@ export async function updateCurrentTenantNameAction(
 }
 
 /**
+ * Set or clear the current tenant's logo. Master only.
+ *
+ * The actual upload is handled by `requestPhotoUploadUrlAction` +
+ * `confirmPhotoUploadAction` (kind = `tenant-logo`). This action only
+ * persists the validated key into `tenants.logo_object_key`.
+ */
+export async function setCurrentTenantLogoAction(
+  input: unknown,
+): Promise<ActionResult<Tenant>> {
+  return actionHandler(async () => {
+    const { tenantId } = await requireMaster();
+    const data = z
+      .object({ key: z.string().min(1).nullable() })
+      .parse(input);
+    return updateTenant(tenantId, { logoObjectKey: data.key });
+  });
+}
+
+/**
  * Delete a tenant and cascade all associated data.
  * This is irreversible — use with caution.
  */

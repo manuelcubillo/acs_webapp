@@ -1,6 +1,6 @@
 # Module: cards
 
-**Last updated**: 2026-04-27 · **Last feature**: design preview + PNG export from card detail
+**Last updated**: 2026-04-28 · **Last feature**: photo values are object keys signed at render via `signCardPhotos`
 
 ## Responsibility
 
@@ -82,6 +82,7 @@ The server component fetches the card + actions + scan validations and passes th
 
 ## Recent changes
 
+- 2026-04-28 — Photo storage migration: card detail / list / edit pages now call `signCardPhotos` / `signCardListPhotos` / `buildPhotoReadUrlMap` before passing card data to client renderers. `CardForm` accepts `cardId` + `photoReadUrls`; `PhotoInput` persists object keys (not URLs). External `/api/cards/[code]` returns presigned URLs in photo fields. Card detail page also pre-signs `staticImageUrls` for the design preview's image nodes. ADR `2026-04-27-photo-storage-r2-minio.md`.
 - 2026-04-27 — Added design preview + PNG export to card detail: `CardDesignPreviewButton`, `CardDesignPreviewModal`; `listDesignsForCardType` parallel-fetched on page load; field values serialised by server component.
 - 2026-04-19 — Initial extraction from technical handoff.
 - 2026-04-19 — Synchronized documentation against source code: corrected card detail page to always-informational; added `CardDetailClient`, `executeScanWithAutoActionsAction`, `resumeAutoActionsAction`, `validateBeforeActionAction`, `updateCardCodeAction`, `listCardsAction`; updated search to mention field-level filters; fixed module interactions.

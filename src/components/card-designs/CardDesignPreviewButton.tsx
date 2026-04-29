@@ -21,6 +21,8 @@ interface Props {
   layout: CardDesignLayout;
   fieldValues: Record<string, string>;
   photoValues: Record<string, string>;
+  /** Signed read URLs for static image nodes that reference an object key. */
+  staticImageUrls?: Record<string, string>;
   cardCode: string;
   designName: string;
 }
@@ -29,6 +31,7 @@ export default function CardDesignPreviewButton({
   layout,
   fieldValues,
   photoValues,
+  staticImageUrls,
   cardCode,
   designName,
 }: Props) {
@@ -61,6 +64,7 @@ export default function CardDesignPreviewButton({
           layout={layout}
           fieldValues={fieldValues}
           photoValues={photoValues}
+          staticImageUrls={staticImageUrls}
           cardCode={cardCode}
           designName={designName}
           onClose={() => setOpen(false)}

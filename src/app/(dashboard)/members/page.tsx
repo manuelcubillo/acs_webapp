@@ -8,6 +8,7 @@
 import { redirect } from "next/navigation";
 import { requireAdmin, AuthenticationError } from "@/lib/api";
 import { listMembers, listPendingInvitations } from "@/lib/dal";
+import { signPhotosForRead } from "@/lib/storage/read";
 import DashboardShell from "@/components/layout/DashboardShell";
 import MembersClient from "./MembersClient";
 
@@ -31,6 +32,16 @@ export default async function MembersPage() {
     listPendingInvitations(tenantId).catch(() => []),
   ]);
 
+  // Sign every member avatar key in one batch.
+  const avatarUrls = await signPhotosForRead(members.map((m) => m.userImage));
+  const memberAvatarReadUrls: Record<string, string> = {};
+  for (const m of members) {
+    if (m.userImage) {
+      const url = avatarUrls.get(m.userImage);
+      if (url) memberAvatarReadUrls[m.id] = url;
+    }
+  }
+
   // Resolve the current user's display name from the members list.
   const currentMember = members.find((m) => m.userId === userId);
   const userName = currentMember?.userName;
@@ -40,6 +51,7 @@ export default async function MembersPage() {
       <MembersClient
         initialMembers={members}
         initialInvitations={invitations}
+        memberAvatarReadUrls={memberAvatarReadUrls}
         currentUserId={userId}
         currentUserRole={role}
       />
