@@ -11,41 +11,41 @@ import type { ImageOptimizationProfile } from "./types";
 
 export const CARD_PHOTO_PROFILE: ImageOptimizationProfile = {
   kind: "card-photo",
-  maxWidth: 800,
-  maxHeight: 1000,
+  maxWidth: 3000,
+  maxHeight: 4000,
   targetFormat: "image/webp",
   quality: 0.82,
-  maxOutputBytes: 180 * 1024,
+  maxOutputBytes: 2560 * 1024,
   stripExif: true,
 };
 
 export const MEMBER_AVATAR_PROFILE: ImageOptimizationProfile = {
   kind: "member-avatar",
-  maxWidth: 256,
-  maxHeight: 256,
+  maxWidth: 1024,
+  maxHeight: 1024,
   targetFormat: "image/webp",
   quality: 0.85,
-  maxOutputBytes: 60 * 1024,
+  maxOutputBytes: 2560 * 1024,
   stripExif: true,
   cropAspect: 1,
 };
 
 export const TENANT_LOGO_PROFILE: ImageOptimizationProfile = {
   kind: "tenant-logo",
-  maxWidth: 512,
-  maxHeight: 512,
+  maxWidth: 2048,
+  maxHeight: 2048,
   targetFormat: "image/webp",
   quality: 0.9,
-  maxOutputBytes: 120 * 1024,
+  maxOutputBytes: 2560 * 1024,
   stripExif: true,
 };
 
 export const CARD_DESIGN_IMAGE_PROFILE: ImageOptimizationProfile = {
   kind: "card-design-image",
-  maxWidth: 1200,
-  maxHeight: 1200,
+  maxWidth: 4096,
+  maxHeight: 4096,
   targetFormat: "image/webp",
   quality: 0.85,
-  maxOutputBytes: 300 * 1024,
+  maxOutputBytes: 2560 * 1024,
   stripExif: true,
 };
