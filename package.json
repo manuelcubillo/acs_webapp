@@ -39,7 +39,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^24",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -50,5 +50,13 @@
     "tsx": "^4.21.0",
     "typescript": "^5",
     "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "pnpm": {
+    "_patchedDependencies_disabled": {
+      "@nodable/entities@2.1.0": "patches/@nodable__entities@2.1.0.patch"
+    }
   }
 }

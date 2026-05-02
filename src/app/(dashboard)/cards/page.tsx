@@ -15,8 +15,8 @@ import {
   getTenantById,
   searchCards,
   getSummaryFieldsForCardType,
-  signCardListPhotos,
 } from "@/lib/dal";
+import { signCardListPhotos } from "@/lib/dal/photo-urls";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardList from "@/components/cards/CardList";
 import type { FieldDefinition, PaginatedResult, CardWithFields } from "@/lib/dal/types";

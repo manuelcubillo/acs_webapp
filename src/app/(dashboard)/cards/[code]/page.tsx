@@ -15,8 +15,8 @@ import {
   getDashboardSettings,
   getScanValidationsByCardType,
   listDesignsForCardType,
-  signCardPhotos,
 } from "@/lib/dal";
+import { signCardPhotos } from "@/lib/dal/photo-urls";
 import { signPhotoForReadOptional } from "@/lib/storage/read";
 import { validateScan, hasErrorLevelFailures } from "@/lib/validation/scan-validator";
 import type { CardDesignLayout } from "@/lib/card-designs/types";

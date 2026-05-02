@@ -15,7 +15,8 @@
  */
 
 import type { NextRequest } from "next/server";
-import { getCardByCode, signCardPhotos } from "@/lib/dal";
+import { getCardByCode } from "@/lib/dal";
+import { signCardPhotos } from "@/lib/dal/photo-urls";
 import { getTenantFromHeader } from "@/lib/api/auth";
 import { routeHandler, apiSuccess } from "@/lib/api/response";
 

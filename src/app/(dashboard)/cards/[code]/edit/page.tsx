@@ -10,8 +10,8 @@ import { requireAdmin, AuthenticationError, AuthorizationError } from "@/lib/api
 import {
   getCardByCode,
   getCardTypeWithFullSchema,
-  buildPhotoReadUrlMap,
 } from "@/lib/dal";
+import { buildPhotoReadUrlMap } from "@/lib/dal/photo-urls";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardEditClient from "./CardEditClient";
 import type { FieldDefinitionShape } from "@/lib/validation/types";
