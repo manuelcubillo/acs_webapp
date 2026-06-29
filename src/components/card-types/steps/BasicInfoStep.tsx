@@ -6,7 +6,22 @@
  * Collects the card type name and description.
  */
 
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import type { BasicInfo } from "@/hooks/useCardTypeWizard";
+
+const TEXT = {
+  HEADING:      "Información básica",
+  HEADING_SUB:
+    "Define el nombre y descripción del tipo de tarjeta. Esto identifica qué clase de entidades gestionarás con él.",
+  NAME_LABEL:   "Nombre",
+  NAME_HINT:    "Ej: «Residente», «Vehículo», «Empleado»",
+  NAME_PLACEHOLDER: "Nombre del tipo de tarjeta",
+  DESC_LABEL:   "Descripción",
+  DESC_HINT:    "Opcional. Explica para qué sirve este tipo de tarjeta.",
+  DESC_PLACEHOLDER: "Describe brevemente el propósito de este tipo de tarjeta…",
+} as const;
 
 interface BasicInfoStepProps {
   basicInfo: BasicInfo;
@@ -15,97 +30,67 @@ interface BasicInfoStepProps {
 
 export default function BasicInfoStep({ basicInfo, onChange }: BasicInfoStepProps) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 600 }}>
+    <div className="flex max-w-[600px] flex-col gap-6">
       <div>
-        <div style={{
-          fontSize: 20,
-          fontWeight: 700,
-          fontFamily: "var(--font-heading)",
-          color: "var(--color-dark)",
-          marginBottom: 6,
-        }}>
-          Información básica
+        <div className="mb-1.5 font-heading text-xl font-bold text-foreground">
+          {TEXT.HEADING}
         </div>
-        <div style={{ fontSize: 13.5, color: "var(--color-secondary)" }}>
-          Define el nombre y descripción del tipo de tarjeta. Esto identifica qué
-          clase de entidades gestionarás con él.
-        </div>
+        <div className="text-sm text-muted-foreground">{TEXT.HEADING_SUB}</div>
       </div>
 
       {/* Name */}
       <div>
-        <label style={labelStyle}>
-          Nombre <span style={{ color: "#dc2626" }}>*</span>
-        </label>
-        <div style={{ fontSize: 11.5, color: "var(--color-muted)", marginBottom: 8 }}>
-          Ej: «Residente», «Vehículo», «Empleado»
+        <Label htmlFor="ct-name">
+          {TEXT.NAME_LABEL} <span className="text-destructive">*</span>
+        </Label>
+        <div className="mt-1 mb-2 text-xs text-muted-foreground">
+          {TEXT.NAME_HINT}
         </div>
-        <input
-          className="form-input"
+        <Input
+          id="ct-name"
           value={basicInfo.name}
           onChange={(e) => onChange({ name: e.target.value })}
-          placeholder="Nombre del tipo de tarjeta"
+          placeholder={TEXT.NAME_PLACEHOLDER}
           autoFocus
           maxLength={200}
         />
-        <div style={{ fontSize: 11, color: "var(--color-muted)", marginTop: 5, textAlign: "right" }}>
+        <div className="mt-1.5 text-right text-[11px] text-muted-foreground">
           {basicInfo.name.length}/200
         </div>
       </div>
 
       {/* Description */}
       <div>
-        <label style={labelStyle}>Descripción</label>
-        <div style={{ fontSize: 11.5, color: "var(--color-muted)", marginBottom: 8 }}>
-          Opcional. Explica para qué sirve este tipo de tarjeta.
+        <Label htmlFor="ct-desc">{TEXT.DESC_LABEL}</Label>
+        <div className="mt-1 mb-2 text-xs text-muted-foreground">
+          {TEXT.DESC_HINT}
         </div>
-        <textarea
-          className="form-input"
+        <Textarea
+          id="ct-desc"
           value={basicInfo.description}
           onChange={(e) => onChange({ description: e.target.value })}
-          placeholder="Describe brevemente el propósito de este tipo de tarjeta…"
+          placeholder={TEXT.DESC_PLACEHOLDER}
           rows={4}
           maxLength={1000}
-          style={{ resize: "vertical", lineHeight: 1.6 }}
+          className="resize-y leading-relaxed"
         />
-        <div style={{ fontSize: 11, color: "var(--color-muted)", marginTop: 5, textAlign: "right" }}>
+        <div className="mt-1.5 text-right text-[11px] text-muted-foreground">
           {basicInfo.description.length}/1000
         </div>
       </div>
 
       {/* Preview card */}
       {basicInfo.name && (
-        <div style={{
-          padding: "16px 20px",
-          background: "var(--color-primary-light)",
-          borderRadius: 12,
-          border: "1.5px solid #c7d2fe",
-          display: "flex",
-          alignItems: "center",
-          gap: 14,
-        }}>
-          <div style={{
-            width: 44,
-            height: 44,
-            borderRadius: 11,
-            background: "linear-gradient(135deg, #4f5bff, #7c3aed)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontFamily: "var(--font-heading)",
-            fontSize: 20,
-            color: "#fff",
-            fontWeight: 700,
-            flexShrink: 0,
-          }}>
+        <div className="flex items-center gap-3.5 rounded-xl border border-primary/30 bg-accent px-5 py-4">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary font-heading text-xl font-bold text-primary-foreground">
             {basicInfo.name.charAt(0).toUpperCase()}
           </div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--color-primary)", fontFamily: "var(--font-heading)" }}>
+            <div className="font-heading text-sm font-bold text-primary">
               {basicInfo.name}
             </div>
             {basicInfo.description && (
-              <div style={{ fontSize: 12, color: "#6366f1", marginTop: 2 }}>
+              <div className="mt-0.5 text-xs text-primary/80">
                 {basicInfo.description}
               </div>
             )}
@@ -115,10 +100,3 @@ export default function BasicInfoStep({ basicInfo, onChange }: BasicInfoStepProp
     </div>
   );
 }
-
-const labelStyle: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: "var(--color-dark)",
-  display: "block",
-};

@@ -17,6 +17,8 @@ import {
 } from "@/lib/actions/card-designs";
 import CardDesignCard from "./CardDesignCard";
 import NewDesignModal from "./NewDesignModal";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 const LABELS = {
   heading: "Diseños de Tarjeta",
@@ -78,58 +80,27 @@ export default function CardDesignListClient({ designs, linkCounts }: Props) {
   return (
     <>
       {/* Page header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 24,
-          gap: 16,
-          flexWrap: "wrap",
-        }}
-      >
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1
-            style={{
-              fontSize: 24,
-              fontWeight: 800,
-              fontFamily: "var(--font-heading)",
-              color: "var(--color-dark)",
-              margin: 0,
-            }}
-          >
+          <h1 className="font-heading text-2xl font-extrabold text-foreground">
             {LABELS.heading}
           </h1>
-          <p style={{ fontSize: 13.5, color: "var(--color-secondary)", marginTop: 4 }}>
+          <p className="mt-1 text-sm text-muted-foreground">
             {designs.length === 0
               ? LABELS.subheadingEmpty
               : LABELS.subheadingCount(designs.length)}
           </p>
         </div>
 
-        <button
-          className="btn btn-primary"
-          onClick={() => setModalOpen(true)}
-        >
-          <Plus size={16} strokeWidth={2} />
+        <Button onClick={() => setModalOpen(true)}>
+          <Plus strokeWidth={2} />
           {LABELS.newBtn}
-        </button>
+        </Button>
       </div>
 
-      {/* Kind filter tabs */}
+      {/* Kind filter tabs — segmented control */}
       {designs.length > 0 && (
-        <div
-          style={{
-            display: "flex",
-            gap: 4,
-            marginBottom: 20,
-            background: "var(--color-border-soft)",
-            borderRadius: 10,
-            padding: 4,
-            alignSelf: "flex-start",
-            width: "fit-content",
-          }}
-        >
+        <div className="mb-5 inline-flex w-fit gap-1 rounded-[10px] bg-muted p-1">
           {(
             [
               { value: "all", label: LABELS.filterAll },
@@ -139,20 +110,14 @@ export default function CardDesignListClient({ designs, linkCounts }: Props) {
           ).map(({ value, label }) => (
             <button
               key={value}
+              type="button"
               onClick={() => setFilter(value)}
-              style={{
-                padding: "6px 16px",
-                borderRadius: 7,
-                border: "none",
-                background: filter === value ? "#fff" : "transparent",
-                color:
-                  filter === value ? "var(--color-primary)" : "var(--color-secondary)",
-                fontWeight: filter === value ? 700 : 500,
-                fontSize: 13,
-                cursor: "pointer",
-                transition: "all 0.15s",
-                boxShadow: filter === value ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
-              }}
+              className={cn(
+                "rounded-md px-4 py-1.5 text-sm transition-colors",
+                filter === value
+                  ? "bg-card font-bold text-primary shadow-sm"
+                  : "font-medium text-muted-foreground hover:text-foreground",
+              )}
             >
               {label}
             </button>
@@ -168,13 +133,7 @@ export default function CardDesignListClient({ designs, linkCounts }: Props) {
           onNew={() => setModalOpen(true)}
         />
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
-            gap: 16,
-          }}
-        >
+        <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(340px,1fr))]">
           {filtered.map((design) => (
             <CardDesignCard
               key={design.id}
@@ -205,60 +164,24 @@ function EmptyState({
   onNew: () => void;
 }) {
   return (
-    <div
-      className="card animate-fadein"
-      style={{
-        padding: "60px 24px",
-        textAlign: "center",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 16,
-      }}
-    >
-      <div
-        style={{
-          width: 72,
-          height: 72,
-          borderRadius: 20,
-          background: "var(--color-primary-light)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "var(--color-primary)",
-        }}
-      >
-        <Palette size={34} strokeWidth={1.5} />
+    <div className="animate-fadein flex flex-col items-center gap-4 rounded-2xl border bg-card px-6 py-16 text-center shadow-sm">
+      <div className="flex size-18 items-center justify-center rounded-[20px] bg-accent text-primary">
+        <Palette className="size-8.5" strokeWidth={1.5} />
       </div>
       <div>
-        <div
-          style={{
-            fontSize: 18,
-            fontWeight: 700,
-            fontFamily: "var(--font-heading)",
-            color: "var(--color-dark)",
-            marginBottom: 6,
-          }}
-        >
+        <div className="mb-1.5 font-heading text-lg font-bold text-foreground">
           {LABELS.emptyTitle}
         </div>
-        <div style={{ fontSize: 13.5, color: "var(--color-secondary)", maxWidth: 380 }}>
-          {filtered
-            ? LABELS.emptyFilterHint(filterLabel)
-            : LABELS.emptyHint}
+        <div className="max-w-[380px] text-sm text-muted-foreground">
+          {filtered ? LABELS.emptyFilterHint(filterLabel) : LABELS.emptyHint}
         </div>
       </div>
       {!filtered && (
-        <button
-          className="btn btn-primary"
-          onClick={onNew}
-          style={{ marginTop: 8 }}
-        >
-          <Plus size={16} strokeWidth={2} />
+        <Button onClick={onNew} className="mt-2">
+          <Plus strokeWidth={2} />
           {LABELS.newBtn}
-        </button>
+        </Button>
       )}
     </div>
   );
 }
-

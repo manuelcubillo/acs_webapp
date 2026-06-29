@@ -32,7 +32,7 @@ export default async function NewCardTypePage() {
   return (
     <DashboardShell title="Nuevo tipo de tarjeta" role={role}>
       {/* Full-height wizard layout */}
-      <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <div className="flex h-full flex-col">
         <CardTypeWizard />
       </div>
     </DashboardShell>

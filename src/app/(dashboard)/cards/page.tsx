@@ -19,9 +19,20 @@ import {
 import { signCardListPhotos } from "@/lib/dal/photo-urls";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardList from "@/components/cards/CardList";
+import { Button } from "@/components/ui/button";
 import type { FieldDefinition, PaginatedResult, CardWithFields } from "@/lib/dal/types";
 
 export const dynamic = "force-dynamic";
+
+const TEXT = {
+  TITLE:          "Carnets",
+  ITEM_SINGLE:    "carnet",
+  ITEM_PLURAL:    "carnets",
+  BTN_SCAN:       "Escanear",
+  BTN_NEW:        "Nuevo carnet",
+  NO_CARD_TYPES:  "No hay tipos de tarjeta configurados.",
+  BTN_CREATE_TYPE: "Crear tipo de tarjeta",
+} as const;
 
 interface CardsPageProps {
   searchParams: Promise<{ cardTypeId?: string; q?: string }>;
@@ -84,94 +95,56 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <DashboardShell title="Carnets" role={role}>
+    <DashboardShell title={TEXT.TITLE} role={role}>
       {/* Page header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 20,
-          flexWrap: "wrap",
-          gap: 12,
-        }}
-      >
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1
-            style={{
-              fontSize: 24,
-              fontWeight: 800,
-              fontFamily: "var(--font-heading)",
-              color: "var(--color-dark)",
-              margin: 0,
-            }}
-          >
-            Carnets
+          <h1 className="font-heading text-2xl font-extrabold text-foreground">
+            {TEXT.TITLE}
           </h1>
           {activeCardType && (
-            <p
-              style={{
-                fontSize: 13.5,
-                color: "var(--color-secondary)",
-                marginTop: 4,
-              }}
-            >
-              {initialData.total} carnet{initialData.total !== 1 ? "s" : ""} ·{" "}
+            <p className="mt-1 text-sm text-muted-foreground">
+              {initialData.total}{" "}
+              {initialData.total !== 1 ? TEXT.ITEM_PLURAL : TEXT.ITEM_SINGLE} ·{" "}
               {activeCardType.name}
             </p>
           )}
         </div>
 
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="flex gap-2">
           {/* Scan shortcut */}
-          <Link
-            href="/cards/scan"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "9px 16px",
-              borderRadius: 8,
-              border: "1.5px solid var(--color-border)",
-              background: "#fff",
-              textDecoration: "none",
-              fontSize: 13,
-              fontWeight: 600,
-              color: "var(--color-dark)",
-            }}
-          >
-            <QrCode size={15} strokeWidth={1.8} />
-            Escanear
-          </Link>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/cards/scan">
+              <QrCode className="size-3.5" strokeWidth={1.8} />
+              {TEXT.BTN_SCAN}
+            </Link>
+          </Button>
 
           {isAdmin && activeCardType && (
-            <Link
-              href={`/cards/new?cardTypeId=${activeCardType.id}`}
-              className="btn btn-primary"
-            >
-              <Plus size={16} strokeWidth={2} />
-              Nuevo carnet
-            </Link>
+            <Button asChild size="sm">
+              <Link
+                href={
+                  cardTypes.length > 1
+                    ? "/cards/new"
+                    : `/cards/new?cardTypeId=${activeCardType.id}`
+                }
+              >
+                <Plus className="size-4" strokeWidth={2} />
+                {TEXT.BTN_NEW}
+              </Link>
+            </Button>
           )}
         </div>
       </div>
 
       {/* No card types */}
       {cardTypes.length === 0 && (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "60px 24px",
-            color: "var(--color-muted)",
-          }}
-        >
-          <p style={{ marginBottom: 12 }}>
-            No hay tipos de tarjeta configurados.
-          </p>
+        <div className="px-6 py-16 text-center text-muted-foreground">
+          <p className="mb-3">{TEXT.NO_CARD_TYPES}</p>
           {role === "master" && (
-            <Link href="/card-types/new" className="btn btn-primary">
-              Crear tipo de tarjeta
-            </Link>
+            <Button asChild>
+              <Link href="/card-types/new">{TEXT.BTN_CREATE_TYPE}</Link>
+            </Button>
           )}
         </div>
       )}

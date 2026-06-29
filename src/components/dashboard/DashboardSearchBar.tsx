@@ -1,19 +1,34 @@
 "use client";
 
 /**
- * DashboardSearchBar
+ * DashboardSearchBar — operational scan input.
  *
- * Operational scan input for the dashboard.
- * Handles both:
- *   - Manual code entry (text input + "Escanear" button)
- *   - External barcode reader (fast keystrokes detected by useExternalScanner)
+ * Behavior preserved EXACTLY:
+ *   - Autofocus on mount (immediate barcode-reader capture).
+ *   - Enter submits → onScan(code) (parent handles executeScanWithAutoActionsAction).
+ *   - External reader keystrokes land in this input via natural focus + useExternalScanner.
  *
- * When a scan is submitted, calls `onScan(code)` which triggers
- * executeScanWithAutoActionsAction on the parent.
+ * Presentation rebuilt on shadcn Input + Button. Token-driven, no hex, no inline styles.
+ * Visually the primary operational action on the page.
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Search, Loader2, ScanLine } from "lucide-react";
+import Link from "next/link";
+import { Camera, Loader2, ScanLine, Search } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+
+const TEXT = {
+  PLACEHOLDER:  "Escanea o introduce el código del carnet…",
+  BTN_SCAN:     "Escanear",
+  BTN_SCANNING: "Escaneando…",
+  BTN_CAMERA:   "Cámara",
+  ARIA_INPUT:   "Código del carnet",
+  ARIA_SUBMIT:  "Iniciar escaneo",
+  HINT:         "Pulsa Enter para escanear. El lector externo escribe directamente aquí.",
+} as const;
 
 interface DashboardSearchBarProps {
   onScan: (code: string) => Promise<void>;
@@ -24,7 +39,7 @@ export default function DashboardSearchBar({ onScan, isScanning }: DashboardSear
   const [code, setCode] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Focus input on mount for immediate barcode reader capture
+  // Focus on mount for immediate external-reader capture.
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
@@ -47,56 +62,80 @@ export default function DashboardSearchBar({ onScan, isScanning }: DashboardSear
     [handleSubmit],
   );
 
+  const submitDisabled = isScanning || !code.trim();
+
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
-      <div style={{ position: "relative", flex: 1 }}>
-        <ScanLine
-          size={16}
-          strokeWidth={1.8}
-          style={{
-            position: "absolute",
-            left: 12,
-            top: "50%",
-            transform: "translateY(-50%)",
-            color: "var(--color-muted)",
-            pointerEvents: "none",
-          }}
-        />
-        <input
-          ref={inputRef}
-          type="text"
-          className="form-input"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Código de carnet…"
-          disabled={isScanning}
-          style={{ paddingLeft: 38, width: "100%", boxSizing: "border-box" }}
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
-        />
+    <section
+      aria-label="Escaneo operacional"
+      className={cn(
+        "rounded-2xl border bg-card shadow-sm",
+        "border-border ring-1 ring-transparent",
+        "transition-shadow focus-within:ring-ring/40 focus-within:shadow-md",
+      )}
+    >
+      <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-stretch sm:gap-3 sm:p-5">
+        <div className="relative flex-1">
+          <ScanLine
+            aria-hidden
+            className={cn(
+              "pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2",
+              "text-muted-foreground",
+            )}
+            strokeWidth={1.8}
+          />
+          <Input
+            ref={inputRef}
+            type="text"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={TEXT.PLACEHOLDER}
+            aria-label={TEXT.ARIA_INPUT}
+            disabled={isScanning}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            className={cn(
+              "h-12 w-full rounded-xl pl-12 pr-4 text-base font-medium",
+              "placeholder:text-muted-foreground/70",
+            )}
+          />
+        </div>
+
+        <Button
+          type="button"
+          size="lg"
+          className="h-12 rounded-xl px-6 text-sm font-semibold"
+          onClick={handleSubmit}
+          disabled={submitDisabled}
+          aria-label={TEXT.ARIA_SUBMIT}
+        >
+          {isScanning ? (
+            <Loader2 className="animate-spin" />
+          ) : (
+            <Search />
+          )}
+          <span>{isScanning ? TEXT.BTN_SCANNING : TEXT.BTN_SCAN}</span>
+        </Button>
+
+        <Button
+          type="button"
+          size="lg"
+          variant="outline"
+          className="h-12 rounded-xl px-5 text-sm font-medium"
+          asChild
+        >
+          <Link href="/cards/scan">
+            <Camera />
+            <span>{TEXT.BTN_CAMERA}</span>
+          </Link>
+        </Button>
       </div>
-      <button
-        className="btn btn-primary"
-        onClick={handleSubmit}
-        disabled={isScanning || !code.trim()}
-        style={{
-          display: "flex", alignItems: "center", gap: 6,
-          opacity: isScanning || !code.trim() ? 0.55 : 1,
-          flexShrink: 0,
-        }}
-      >
-        {isScanning
-          ? <Loader2 size={15} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
-          : <Search size={15} strokeWidth={2} />
-        }
-        {isScanning ? "Escaneando…" : "Escanear"}
-      </button>
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      `}</style>
-    </div>
+
+      <p className="border-t border-border bg-muted/40 px-5 py-2 text-xs text-muted-foreground">
+        {TEXT.HINT}
+      </p>
+    </section>
   );
 }

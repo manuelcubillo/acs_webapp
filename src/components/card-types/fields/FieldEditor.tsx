@@ -5,13 +5,49 @@
  *
  * Slide-in panel / modal for creating or editing a FieldDefinitionDraft.
  * Embedded inside FieldDefinitionsStep; parent controls open/close state.
+ *
+ * This is a bottom-docked sheet anchored to the content area (right of the
+ * sidebar). shadcn has no Sheet primitive installed, so the panel layout is
+ * intentionally bespoke; only chrome/colors are tokenized.
  */
 
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import FieldTypeSelector from "./FieldTypeSelector";
 import ValidationRulesEditor from "./ValidationRulesEditor";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import type { FieldDefinitionDraft, FieldType, ValidationRule } from "@/hooks/useCardTypeWizard";
+
+const TEXT = {
+  TITLE_EDIT:    "Editar campo",
+  TITLE_NEW:     "Nuevo campo",
+  SUB_EDIT:      "Modifica las propiedades del campo",
+  SUB_NEW:       "Añade un nuevo campo al tipo de tarjeta",
+  NAME_LABEL:    "Nombre interno",
+  NAME_HINT:     "Identificador técnico (snake_case recomendado)",
+  NAME_PLACEHOLDER: "ej: dni_numero",
+  NAME_LOCKED:   "El nombre no se puede modificar en campos existentes.",
+  LABEL_LABEL:   "Etiqueta visible",
+  LABEL_HINT:    "Texto que verá el usuario final",
+  LABEL_PLACEHOLDER: "ej: Número de DNI",
+  TYPE_LABEL:    "Tipo de campo",
+  TYPE_LOCKED:   "⚠ El tipo de campo no se puede cambiar si ya existen valores guardados.",
+  REQUIRED_LABEL: "¿Campo obligatorio?",
+  REQUIRED_ON:   "Obligatorio",
+  REQUIRED_OFF:  "Opcional",
+  DEFAULT_LABEL: "Valor por defecto",
+  DEFAULT_HINT:  "Opcional",
+  DEFAULT_PLACEHOLDER: "Dejar en blanco si no aplica",
+  RULES_LABEL:   "Reglas de validación",
+  RULES_HINT:    "Activa las reglas que necesites para este campo",
+  CANCEL:        "Cancelar",
+  SAVE_EDIT:     "Guardar cambios",
+  SAVE_NEW:      "Añadir campo",
+} as const;
 
 interface FieldEditorProps {
   /** undefined → create mode; defined → edit mode */
@@ -86,6 +122,7 @@ export default function FieldEditor({ draft, onSave, onClose }: FieldEditorProps
   }
 
   const isEditing = !!draft;
+  const nameLocked = isEditing && !!draft?.id;
   const canSave = form.name.trim().length > 0 && form.label.trim().length > 0;
 
   return (
@@ -93,188 +130,123 @@ export default function FieldEditor({ draft, onSave, onClose }: FieldEditorProps
       {/* Overlay */}
       <div
         onClick={onClose}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(26, 29, 46, 0.35)",
-          zIndex: 40,
-          backdropFilter: "blur(2px)",
-        }}
+        className="fixed inset-0 z-40 bg-black/35 backdrop-blur-[2px]"
       />
 
-      {/* Panel */}
-      <div
-        className="animate-slideup"
-        style={{
-          position: "fixed",
-          bottom: 0,
-          left: "var(--sidebar-width)",
-          right: 0,
-          maxHeight: "85vh",
-          background: "#fff",
-          borderRadius: "20px 20px 0 0",
-          boxShadow: "0 -8px 40px rgba(0,0,0,0.12)",
-          zIndex: 50,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-      >
+      {/* Panel — docked to the content area (right of the sidebar) */}
+      <div className="animate-slideup fixed right-0 bottom-0 left-0 z-50 flex max-h-[85vh] flex-col overflow-hidden rounded-t-[20px] bg-card shadow-2xl md:left-[var(--sidebar-width)]">
         {/* Header */}
-        <div
-          style={{
-            padding: "20px 28px 16px",
-            borderBottom: "1px solid var(--color-border-soft)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexShrink: 0,
-          }}
-        >
+        <div className="flex shrink-0 items-center justify-between border-b px-7 py-4">
           <div>
-            <div style={{ fontSize: 17, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--color-dark)" }}>
-              {isEditing ? "Editar campo" : "Nuevo campo"}
+            <div className="font-heading text-[17px] font-bold text-foreground">
+              {isEditing ? TEXT.TITLE_EDIT : TEXT.TITLE_NEW}
             </div>
-            <div style={{ fontSize: 12.5, color: "var(--color-muted)", marginTop: 2 }}>
-              {isEditing
-                ? "Modifica las propiedades del campo"
-                : "Añade un nuevo campo al tipo de tarjeta"}
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              {isEditing ? TEXT.SUB_EDIT : TEXT.SUB_NEW}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 9,
-              border: "1.5px solid var(--color-border)",
-              background: "#fff",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--color-secondary)",
-            }}
-          >
-            <X size={18} strokeWidth={1.8} />
-          </button>
+          <Button variant="outline" size="icon" onClick={onClose}>
+            <X strokeWidth={1.8} />
+          </Button>
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, overflow: "auto", padding: "24px 28px" }}>
-          <div style={{ maxWidth: 720, display: "flex", flexDirection: "column", gap: 24 }}>
+        <div className="flex-1 overflow-auto px-7 py-6">
+          <div className="flex max-w-[720px] flex-col gap-6">
 
             {/* Name + Label row */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label style={labelStyle}>
-                  Nombre interno <span style={{ color: "#dc2626" }}>*</span>
-                </label>
-                <div style={{ fontSize: 11.5, color: "var(--color-muted)", marginBottom: 6 }}>
-                  Identificador técnico (snake_case recomendado)
+                <Label htmlFor="fe-name">
+                  {TEXT.NAME_LABEL} <span className="text-destructive">*</span>
+                </Label>
+                <div className="mt-1 mb-1.5 text-xs text-muted-foreground">
+                  {TEXT.NAME_HINT}
                 </div>
-                <input
-                  className="form-input"
+                <Input
+                  id="fe-name"
                   value={form.name}
                   onChange={(e) => setField("name", e.target.value)}
-                  placeholder="ej: dni_numero"
-                  disabled={isEditing && !!draft?.id}
+                  placeholder={TEXT.NAME_PLACEHOLDER}
+                  disabled={nameLocked}
                 />
-                {isEditing && !!draft?.id && (
-                  <div style={{ fontSize: 11, color: "var(--color-muted)", marginTop: 4 }}>
-                    El nombre no se puede modificar en campos existentes.
+                {nameLocked && (
+                  <div className="mt-1 text-[11px] text-muted-foreground">
+                    {TEXT.NAME_LOCKED}
                   </div>
                 )}
               </div>
               <div>
-                <label style={labelStyle}>
-                  Etiqueta visible <span style={{ color: "#dc2626" }}>*</span>
-                </label>
-                <div style={{ fontSize: 11.5, color: "var(--color-muted)", marginBottom: 6 }}>
-                  Texto que verá el usuario final
+                <Label htmlFor="fe-label">
+                  {TEXT.LABEL_LABEL} <span className="text-destructive">*</span>
+                </Label>
+                <div className="mt-1 mb-1.5 text-xs text-muted-foreground">
+                  {TEXT.LABEL_HINT}
                 </div>
-                <input
-                  className="form-input"
+                <Input
+                  id="fe-label"
                   value={form.label}
                   onChange={(e) => setField("label", e.target.value)}
-                  placeholder="ej: Número de DNI"
+                  placeholder={TEXT.LABEL_PLACEHOLDER}
                 />
               </div>
             </div>
 
             {/* Field type */}
             <div>
-              <label style={labelStyle}>Tipo de campo</label>
-              <div style={{ marginTop: 10 }}>
+              <Label>{TEXT.TYPE_LABEL}</Label>
+              <div className="mt-2.5">
                 <FieldTypeSelector
                   value={form.fieldType}
                   onChange={handleFieldTypeChange}
-                  readOnly={isEditing && !!draft?.id}
+                  readOnly={nameLocked}
                 />
-                {isEditing && !!draft?.id && (
-                  <div style={{ fontSize: 11.5, color: "#d97706", marginTop: 6, display: "flex", alignItems: "center", gap: 4 }}>
-                    ⚠ El tipo de campo no se puede cambiar si ya existen valores guardados.
+                {nameLocked && (
+                  <div className="mt-1.5 flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                    {TEXT.TYPE_LOCKED}
                   </div>
                 )}
               </div>
             </div>
 
             {/* Required + Default value */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label style={labelStyle}>¿Campo obligatorio?</label>
-                <div style={{ marginTop: 10 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-                    <div
-                      onClick={() => setField("isRequired", !form.isRequired)}
-                      style={{
-                        width: 44,
-                        height: 24,
-                        borderRadius: 12,
-                        background: form.isRequired ? "var(--color-primary)" : "#e5e7eb",
-                        position: "relative",
-                        transition: "background 0.2s ease",
-                        cursor: "pointer",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <div style={{
-                        position: "absolute",
-                        top: 4,
-                        left: form.isRequired ? 23 : 4,
-                        width: 16,
-                        height: 16,
-                        borderRadius: "50%",
-                        background: "#fff",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
-                        transition: "left 0.2s ease",
-                      }} />
-                    </div>
-                    <span style={{ fontSize: 13.5, color: "var(--color-dark)", fontWeight: form.isRequired ? 600 : 400 }}>
-                      {form.isRequired ? "Obligatorio" : "Opcional"}
-                    </span>
-                  </label>
-                </div>
+                <Label>{TEXT.REQUIRED_LABEL}</Label>
+                <label className="mt-2.5 flex cursor-pointer items-center gap-2.5">
+                  <Switch
+                    checked={form.isRequired}
+                    onCheckedChange={(checked) => setField("isRequired", checked)}
+                  />
+                  <span
+                    className={cn(
+                      "text-sm text-foreground",
+                      form.isRequired ? "font-semibold" : "font-normal",
+                    )}
+                  >
+                    {form.isRequired ? TEXT.REQUIRED_ON : TEXT.REQUIRED_OFF}
+                  </span>
+                </label>
               </div>
               <div>
-                <label style={labelStyle}>Valor por defecto</label>
-                <div style={{ fontSize: 11.5, color: "var(--color-muted)", marginBottom: 6 }}>
-                  Opcional
+                <Label htmlFor="fe-default">{TEXT.DEFAULT_LABEL}</Label>
+                <div className="mt-1 mb-1.5 text-xs text-muted-foreground">
+                  {TEXT.DEFAULT_HINT}
                 </div>
-                <input
-                  className="form-input"
+                <Input
+                  id="fe-default"
                   value={form.defaultValue ?? ""}
                   onChange={(e) => setField("defaultValue", e.target.value || null)}
-                  placeholder="Dejar en blanco si no aplica"
+                  placeholder={TEXT.DEFAULT_PLACEHOLDER}
                 />
               </div>
             </div>
 
             {/* Validation rules */}
             <div>
-              <label style={labelStyle}>Reglas de validación</label>
-              <div style={{ fontSize: 11.5, color: "var(--color-muted)", marginBottom: 12 }}>
-                Activa las reglas que necesites para este campo
+              <Label>{TEXT.RULES_LABEL}</Label>
+              <div className="mt-1 mb-3 text-xs text-muted-foreground">
+                {TEXT.RULES_HINT}
               </div>
               <ValidationRulesEditor
                 fieldType={form.fieldType}
@@ -286,34 +258,15 @@ export default function FieldEditor({ draft, onSave, onClose }: FieldEditorProps
         </div>
 
         {/* Footer */}
-        <div style={{
-          padding: "16px 28px",
-          borderTop: "1px solid var(--color-border-soft)",
-          display: "flex",
-          justifyContent: "flex-end",
-          gap: 12,
-          flexShrink: 0,
-          background: "#fff",
-        }}>
-          <button className="btn btn-ghost" onClick={onClose}>
-            Cancelar
-          </button>
-          <button
-            className="btn btn-primary"
-            onClick={handleSave}
-            disabled={!canSave}
-          >
-            {isEditing ? "Guardar cambios" : "Añadir campo"}
-          </button>
+        <div className="flex shrink-0 justify-end gap-3 border-t bg-card px-7 py-4">
+          <Button variant="ghost" onClick={onClose}>
+            {TEXT.CANCEL}
+          </Button>
+          <Button onClick={handleSave} disabled={!canSave}>
+            {isEditing ? TEXT.SAVE_EDIT : TEXT.SAVE_NEW}
+          </Button>
         </div>
       </div>
     </>
   );
 }
-
-const labelStyle: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: "var(--color-dark)",
-  display: "block",
-};

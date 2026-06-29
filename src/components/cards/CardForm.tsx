@@ -1,9 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { useCardForm } from "@/hooks/useCardForm";
+
 import DynamicFieldInput from "./DynamicFieldInput";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+import { useCardForm } from "@/hooks/useCardForm";
 import type { FieldDefinitionShape } from "@/lib/validation/types";
+
+const TEXT = {
+  LABEL_CODE:      "Código",
+  PLACEHOLDER:     "Ej. AB-0001",
+  ERR_CODE:        "El código es obligatorio",
+  ERR_FALLBACK:    "Error al guardar el carnet",
+  BTN_CANCEL:      "Cancelar",
+  BTN_SUBMIT:      "Guardar",
+  BTN_SUBMITTING:  "Guardando…",
+} as const;
 
 interface CardFormProps {
   fields: FieldDefinitionShape[];
@@ -31,7 +46,7 @@ export default function CardForm({
   photoReadUrls = {},
   onSubmit,
   onCancel,
-  submitLabel = "Guardar",
+  submitLabel = TEXT.BTN_SUBMIT,
   codeReadOnly = false,
 }: CardFormProps) {
   const { values, errors, setValue, validate, isLoading, setIsLoading } =
@@ -47,7 +62,7 @@ export default function CardForm({
     setSubmitError("");
 
     if (!code.trim()) {
-      setCodeError("El código es obligatorio");
+      setCodeError(TEXT.ERR_CODE);
       return;
     }
     if (!validate()) return;
@@ -57,7 +72,7 @@ export default function CardForm({
       await onSubmit(code.trim(), values);
     } catch (err) {
       setSubmitError(
-        err instanceof Error ? err.message : "Error al guardar el carnet",
+        err instanceof Error ? err.message : TEXT.ERR_FALLBACK,
       );
     } finally {
       setIsLoading(false);
@@ -65,18 +80,13 @@ export default function CardForm({
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      style={{ display: "flex", flexDirection: "column", gap: 20 }}
-    >
-      {/* Code */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <label
-          style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}
-        >
-          Código <span style={{ color: "#ef4444" }}>*</span>
-        </label>
-        <input
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="card-form-code" className="text-sm font-semibold text-foreground">
+          {TEXT.LABEL_CODE} <span className="text-destructive">*</span>
+        </Label>
+        <Input
+          id="card-form-code"
           type="text"
           value={code}
           onChange={(e) => {
@@ -84,27 +94,17 @@ export default function CardForm({
             setCodeError("");
           }}
           disabled={codeReadOnly || isLoading}
-          placeholder="Ej. AB-0001"
-          style={{
-            padding: "9px 12px",
-            borderRadius: 8,
-            border: `1.5px solid ${codeError ? "#ef4444" : "var(--color-border)"}`,
-            fontSize: 14,
-            outline: "none",
-            background: codeReadOnly ? "var(--color-page-bg)" : "#fff",
-            color: "var(--color-dark)",
-            fontFamily: "monospace",
-            fontWeight: 600,
-            width: "100%",
-            boxSizing: "border-box",
-          }}
+          placeholder={TEXT.PLACEHOLDER}
+          aria-invalid={codeError ? true : undefined}
+          className={cn(
+            "font-mono font-semibold",
+            codeError && "border-destructive focus-visible:ring-destructive/40",
+            codeReadOnly && "bg-muted",
+          )}
         />
-        {codeError && (
-          <span style={{ fontSize: 12, color: "#ef4444" }}>{codeError}</span>
-        )}
+        {codeError && <p className="text-xs text-destructive">{codeError}</p>}
       </div>
 
-      {/* Dynamic fields */}
       {fields.map((field) => (
         <DynamicFieldInput
           key={field.id}
@@ -118,66 +118,27 @@ export default function CardForm({
         />
       ))}
 
-      {/* Submit error */}
       {submitError && (
         <div
-          style={{
-            padding: "10px 14px",
-            borderRadius: 8,
-            background: "#fee2e2",
-            color: "#991b1b",
-            fontSize: 13,
-          }}
+          role="alert"
+          className={cn(
+            "rounded-lg border-2 px-3.5 py-2.5 text-sm",
+            "bg-state-denied border-state-denied-border text-state-denied-foreground",
+          )}
         >
           {submitError}
         </div>
       )}
 
-      {/* Actions */}
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          justifyContent: "flex-end",
-          paddingTop: 4,
-        }}
-      >
+      <div className="flex justify-end gap-2.5 pt-1">
         {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isLoading}
-            style={{
-              padding: "10px 20px",
-              borderRadius: 8,
-              border: "1.5px solid var(--color-border)",
-              background: "#fff",
-              cursor: "pointer",
-              fontSize: 14,
-              fontWeight: 600,
-              color: "var(--color-dark)",
-            }}
-          >
-            Cancelar
-          </button>
+          <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+            {TEXT.BTN_CANCEL}
+          </Button>
         )}
-        <button
-          type="submit"
-          disabled={isLoading}
-          style={{
-            padding: "10px 24px",
-            borderRadius: 8,
-            background: "var(--color-primary)",
-            color: "#fff",
-            border: "none",
-            cursor: isLoading ? "wait" : "pointer",
-            fontSize: 14,
-            fontWeight: 600,
-            opacity: isLoading ? 0.6 : 1,
-          }}
-        >
-          {isLoading ? "Guardando..." : submitLabel}
-        </button>
+        <Button type="submit" disabled={isLoading}>
+          {isLoading ? TEXT.BTN_SUBMITTING : submitLabel}
+        </Button>
       </div>
     </form>
   );

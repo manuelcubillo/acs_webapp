@@ -9,13 +9,32 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { X, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import {
   createCardDesignAction,
   linkDesignToCardTypeAction,
 } from "@/lib/actions/card-designs";
 import { listCardTypesAction } from "@/lib/actions/card-types";
 import type { CardType } from "@/lib/dal";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 const LABELS = {
   title: "Nuevo diseño",
@@ -156,75 +175,24 @@ export default function NewDesignModal({ isOpen, onClose }: Props) {
     }
   }
 
-  if (!isOpen) return null;
+  const handleOpenChange = (open: boolean) => {
+    if (!open && !loading) handleClose();
+  };
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1000,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "rgba(15,18,40,0.45)",
-        padding: 16,
-      }}
-      onClick={handleClose}
-    >
-      <div
-        className="card animate-fadein"
-        style={{ width: "100%", maxWidth: 480, padding: "28px 28px 24px" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: 24,
-          }}
-        >
-          <h2
-            style={{
-              fontSize: 17,
-              fontWeight: 700,
-              fontFamily: "var(--font-heading)",
-              color: "var(--color-dark)",
-              margin: 0,
-            }}
-          >
-            {LABELS.title}
-          </h2>
-          <button
-            onClick={handleClose}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              border: "1.5px solid var(--color-border)",
-              background: "#fff",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--color-muted)",
-            }}
-          >
-            <X size={16} strokeWidth={1.8} />
-          </button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      <DialogContent showCloseButton={!loading} className="max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>{LABELS.title}</DialogTitle>
+        </DialogHeader>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {/* Name */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
-              {LABELS.nameLabel}
-            </label>
-            <input
-              className="input"
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="nd-name">{LABELS.nameLabel}</Label>
+            <Input
+              id="nd-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={LABELS.namePlaceholder}
@@ -235,44 +203,34 @@ export default function NewDesignModal({ isOpen, onClose }: Props) {
           </div>
 
           {/* Description */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
-              {LABELS.descriptionLabel}
-            </label>
-            <textarea
-              className="input"
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="nd-desc">{LABELS.descriptionLabel}</Label>
+            <Textarea
+              id="nd-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder={LABELS.descriptionPlaceholder}
               maxLength={1000}
               rows={2}
-              style={{ resize: "vertical" }}
+              className="resize-y"
             />
           </div>
 
           {/* Kind */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
-              {LABELS.kindLabel}
-            </label>
-            <div style={{ display: "flex", gap: 8 }}>
+          <div className="flex flex-col gap-1.5">
+            <Label>{LABELS.kindLabel}</Label>
+            <div className="flex gap-2">
               {(["card", "passbook"] as const).map((k) => (
                 <button
                   key={k}
                   type="button"
                   onClick={() => handleKindChange(k)}
-                  style={{
-                    flex: 1,
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: `2px solid ${kind === k ? "var(--color-primary)" : "var(--color-border)"}`,
-                    background: kind === k ? "var(--color-primary-light)" : "#fff",
-                    color: kind === k ? "var(--color-primary)" : "var(--color-secondary)",
-                    fontWeight: kind === k ? 700 : 500,
-                    fontSize: 13.5,
-                    cursor: "pointer",
-                    transition: "all 0.15s",
-                  }}
+                  className={cn(
+                    "flex-1 rounded-[10px] border-2 px-3 py-2.5 text-sm transition-colors",
+                    kind === k
+                      ? "border-primary bg-accent font-bold text-primary"
+                      : "border-border bg-card font-medium text-muted-foreground hover:bg-muted",
+                  )}
                 >
                   {k === "card" ? LABELS.kindCard : LABELS.kindPassbook}
                 </button>
@@ -281,64 +239,36 @@ export default function NewDesignModal({ isOpen, onClose }: Props) {
           </div>
 
           {/* Card type */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
-              {LABELS.cardTypeLabel}
-            </label>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="nd-cardtype">{LABELS.cardTypeLabel}</Label>
             {cardTypesLoading ? (
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "var(--color-muted)",
-                  padding: "10px 12px",
-                  border: "1.5px dashed var(--color-border)",
-                  borderRadius: 10,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <Loader2 size={14} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
+              <div className="flex items-center gap-2 rounded-[10px] border border-dashed px-3 py-2.5 text-sm text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" strokeWidth={2} />
                 {LABELS.cardTypeLoading}
               </div>
             ) : cardTypes.length === 0 ? (
-              <p
-                style={{
-                  fontSize: 13,
-                  color: "var(--color-muted)",
-                  margin: 0,
-                  padding: "10px 12px",
-                  border: "1.5px dashed var(--color-border)",
-                  borderRadius: 10,
-                }}
-              >
+              <p className="rounded-[10px] border border-dashed px-3 py-2.5 text-sm text-muted-foreground">
                 {LABELS.cardTypeNone}
               </p>
             ) : (
-              <select
-                className="input"
-                value={cardTypeId}
-                onChange={(e) => setCardTypeId(e.target.value)}
-                required
-              >
-                <option value="">{LABELS.cardTypePlaceholder}</option>
-                {cardTypes.map((ct) => (
-                  <option key={ct.id} value={ct.id}>
-                    {ct.name}
-                  </option>
-                ))}
-              </select>
+              <Select value={cardTypeId} onValueChange={setCardTypeId} required>
+                <SelectTrigger id="nd-cardtype" className="w-full">
+                  <SelectValue placeholder={LABELS.cardTypePlaceholder} />
+                </SelectTrigger>
+                <SelectContent>
+                  {cardTypes.map((ct) => (
+                    <SelectItem key={ct.id} value={ct.id}>{ct.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           </div>
 
           {/* Dimensions */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
-              {LABELS.dimensionsLabel}
-            </label>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input
-                className="input"
+          <div className="flex flex-col gap-1.5">
+            <Label>{LABELS.dimensionsLabel}</Label>
+            <div className="flex items-center gap-2">
+              <Input
                 type="number"
                 value={width}
                 onChange={(e) => setWidth(e.target.value)}
@@ -346,11 +276,10 @@ export default function NewDesignModal({ isOpen, onClose }: Props) {
                 required
                 min={1}
                 step="any"
-                style={{ flex: 1 }}
+                className="flex-1"
               />
-              <span style={{ color: "var(--color-muted)", fontSize: 16, fontWeight: 500 }}>×</span>
-              <input
-                className="input"
+              <span className="text-base font-medium text-muted-foreground">×</span>
+              <Input
                 type="number"
                 value={height}
                 onChange={(e) => setHeight(e.target.value)}
@@ -358,55 +287,45 @@ export default function NewDesignModal({ isOpen, onClose }: Props) {
                 required
                 min={1}
                 step="any"
-                style={{ flex: 1 }}
+                className="flex-1"
               />
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: "var(--color-muted)",
-                  minWidth: 22,
-                }}
-              >
+              <span className="min-w-[22px] text-xs font-bold text-muted-foreground">
                 {unit}
               </span>
             </div>
           </div>
 
           {/* Error */}
-          {error && (
-            <p style={{ fontSize: 13, color: "var(--color-danger)", margin: 0 }}>{error}</p>
-          )}
+          {error && <p className="text-sm text-destructive">{error}</p>}
 
           {/* Actions */}
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 4 }}>
-            <button
+          <DialogFooter className="mt-1">
+            <Button
               type="button"
+              variant="outline"
               onClick={handleClose}
-              className="btn btn-secondary"
               disabled={loading}
             >
               {LABELS.cancel}
-            </button>
-            <button
+            </Button>
+            <Button
               type="submit"
-              className="btn btn-primary"
               disabled={
                 loading || !name.trim() || !cardTypeId || cardTypesLoading || cardTypes.length === 0
               }
             >
               {loading ? (
                 <>
-                  <Loader2 size={15} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
+                  <Loader2 className="animate-spin" strokeWidth={2} />
                   {LABELS.submitting}
                 </>
               ) : (
                 LABELS.submit
               )}
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

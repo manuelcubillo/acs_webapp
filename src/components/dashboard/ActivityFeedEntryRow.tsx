@@ -1,31 +1,43 @@
 "use client";
 
 /**
- * ActivityFeedEntryRow
+ * ActivityFeedEntryRow — one row in the operational dashboard activity feed.
  *
- * Renders a single entry in the operational dashboard activity feed.
- * Supports two visual variants:
- *   - "scan"   → neutral icon, no action label
- *   - "action" → action name + colored icon based on action type
- *
- * Summary field values (configured per card type) are shown inline
- * to help operators identify the card at a glance.
+ * State semantics:
+ *   - log_type='scan'    → --state-info icon (neutral slate). A scan is an event,
+ *                          NOT an "access granted" decision. The validation result
+ *                          is shown elsewhere (ActiveCardZone), not here.
+ *   - log_type='action'  → --primary icon (brand). An action ran.
+ *   - operatorOverride   → --state-override badge (orange). Distinct from a
+ *                          warning so an override is never mistaken for an
+ *                          informational note.
  */
 
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
-import { ScanLine, Zap, Clock, ShieldAlert } from "lucide-react";
 import Link from "next/link";
+import { Clock, ScanLine, ShieldAlert, Zap } from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import type { ActivityFeedEntry } from "@/lib/dal";
+
+const TEXT = {
+  TAG_SCANNED:    "Escaneado",
+  TAG_OVERRIDE:   "Override",
+  ARIA_OVERRIDE:  "Intervención manual del operador — ejecutado con errores de validación",
+  YES:            "Sí",
+  NO:             "No",
+  DASH:           "—",
+} as const;
 
 interface ActivityFeedEntryRowProps {
   entry: ActivityFeedEntry;
 }
 
-/** Format a field value for inline display in the feed. */
 function formatFieldValue(value: unknown, fieldType: string): string {
-  if (value === null || value === undefined) return "—";
-  if (fieldType === "boolean") return value ? "Sí" : "No";
+  if (value === null || value === undefined) return TEXT.DASH;
+  if (fieldType === "boolean") return value ? TEXT.YES : TEXT.NO;
   if (fieldType === "date" && value instanceof Date) {
     return value.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" });
   }
@@ -44,113 +56,74 @@ export default function ActivityFeedEntryRow({ entry }: ActivityFeedEntryRowProp
   return (
     <Link
       href={`/cards/${encodeURIComponent(entry.cardCode)}`}
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 12,
-        padding: "12px 16px",
-        background: "#fff",
-        border: "1.5px solid var(--color-border)",
-        borderRadius: 12,
-        textDecoration: "none",
-        color: "inherit",
-        transition: "box-shadow 0.15s, border-color 0.15s",
-      }}
-      className="feed-entry-row"
+      className={cn(
+        "group flex items-start gap-3 rounded-xl border bg-card px-4 py-3 transition-shadow",
+        "border-border hover:shadow-md hover:border-ring/30",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+      )}
     >
-      {/* Icon */}
-      <div style={{
-        width: 36,
-        height: 36,
-        borderRadius: 10,
-        background: isScan ? "#f0fdf4" : "#eef0ff",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: isScan ? "#16a34a" : "#4f5bff",
-        flexShrink: 0,
-        marginTop: 2,
-      }}>
-        {isScan
-          ? <ScanLine size={16} strokeWidth={1.8} />
-          : <Zap size={16} strokeWidth={1.8} />
-        }
+      {/* Type icon */}
+      <div
+        aria-hidden
+        className={cn(
+          "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border",
+          isScan
+            ? "bg-state-info border-state-info-border text-state-info-icon"
+            : "bg-accent border-accent text-primary",
+        )}
+      >
+        {isScan ? (
+          <ScanLine className="size-4" strokeWidth={1.8} />
+        ) : (
+          <Zap className="size-4" strokeWidth={1.8} />
+        )}
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {/* Top row: card code + type */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{
-            fontSize: 13.5,
-            fontWeight: 700,
-            fontFamily: "var(--font-heading)",
-            color: "var(--color-dark)",
-          }}>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="font-heading text-sm font-bold text-foreground">
             {entry.cardCode}
           </span>
-          <span style={{
-            fontSize: 11,
-            color: "var(--color-muted)",
-            background: "var(--color-subtle-bg)",
-            padding: "1px 7px",
-            borderRadius: 5,
-            border: "1px solid var(--color-border-soft)",
-          }}>
+          <Badge variant="outline" className="bg-card text-[10px] text-muted-foreground">
             {entry.cardTypeName}
-          </span>
+          </Badge>
           {!isScan && entry.actionName && (
-            <span style={{
-              fontSize: 11,
-              fontWeight: 600,
-              color: "#4f5bff",
-              background: "#eef0ff",
-              padding: "1px 7px",
-              borderRadius: 5,
-              border: "1px solid #c7d2fe",
-            }}>
+            <Badge className="bg-accent text-[10px] font-semibold text-accent-foreground">
               {entry.actionName}
-            </span>
+            </Badge>
           )}
           {entry.operatorOverride && (
-            <span
-              title="Intervención manual del operador — ejecutado con errores de validación"
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 3,
-                fontSize: 10.5, fontWeight: 600,
-                color: "#d97706",
-                background: "#fffbeb",
-                padding: "1px 6px",
-                borderRadius: 5,
-                border: "1px solid #fde68a",
-              }}
+            <Badge
+              title={TEXT.ARIA_OVERRIDE}
+              className={cn(
+                "gap-1 text-[10px] font-semibold",
+                "bg-state-override border-state-override-border text-state-override-foreground",
+              )}
             >
-              <ShieldAlert size={11} strokeWidth={2} />
-              Override
-            </span>
+              <ShieldAlert className="size-3" strokeWidth={2} />
+              {TEXT.TAG_OVERRIDE}
+            </Badge>
           )}
           {isScan && (
-            <span style={{
-              fontSize: 11,
-              fontWeight: 500,
-              color: "#16a34a",
-              background: "#f0fdf4",
-              padding: "1px 7px",
-              borderRadius: 5,
-              border: "1px solid #bbf7d0",
-            }}>
-              Escaneado
-            </span>
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-[10px] font-medium",
+                "bg-state-info border-state-info-border text-state-info-foreground",
+              )}
+            >
+              {TEXT.TAG_SCANNED}
+            </Badge>
           )}
         </div>
 
-        {/* Summary fields */}
         {entry.summaryFields.length > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 5, flexWrap: "wrap" }}>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
             {entry.summaryFields.map((sf) => (
-              <div key={sf.fieldDefinitionId} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <span style={{ fontSize: 11, color: "var(--color-muted)" }}>{sf.label}:</span>
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--color-secondary)" }}>
+              <div key={sf.fieldDefinitionId} className="flex items-center gap-1.5">
+                <span className="text-[11px] text-muted-foreground">{sf.label}:</span>
+                <span className="text-[11px] font-semibold text-foreground/80">
                   {formatFieldValue(sf.value, sf.fieldType)}
                 </span>
               </div>
@@ -160,17 +133,8 @@ export default function ActivityFeedEntryRow({ entry }: ActivityFeedEntryRowProp
       </div>
 
       {/* Time */}
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 4,
-        fontSize: 11.5,
-        color: "var(--color-muted)",
-        flexShrink: 0,
-        whiteSpace: "nowrap",
-        marginTop: 2,
-      }}>
-        <Clock size={12} strokeWidth={1.8} />
+      <div className="mt-0.5 flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
+        <Clock className="size-3" strokeWidth={1.8} />
         {timeAgo}
       </div>
     </Link>

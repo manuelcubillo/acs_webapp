@@ -8,6 +8,8 @@ import DateRenderer from "./renderers/DateRenderer";
 import PhotoRenderer from "./renderers/PhotoRenderer";
 import SelectRenderer from "./renderers/SelectRenderer";
 
+const TEXT = { DASH: "—" } as const;
+
 interface DynamicFieldRendererProps {
   fieldType: FieldType;
   value: unknown;
@@ -34,8 +36,8 @@ export default function DynamicFieldRenderer({
       return <SelectRenderer value={value} />;
     default:
       return (
-        <span style={{ color: "var(--color-muted)" }}>
-          {String(value ?? "—")}
+        <span className="text-muted-foreground">
+          {String(value ?? TEXT.DASH)}
         </span>
       );
   }

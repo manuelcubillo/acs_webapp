@@ -16,7 +16,10 @@ import { getCardTypeWithFullSchema } from "@/lib/dal";
 import { listDesignsForCardType } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardTypeLinkedDesigns from "@/components/card-types/CardTypeLinkedDesigns";
-import FieldTypeSelector from "@/components/card-types/fields/FieldTypeSelector";
+import { FieldTypeDisplay } from "@/components/card-types/fields/FieldTypeSelector";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
   Pencil,
@@ -34,13 +37,38 @@ import type { ActionDefinitionWithField, ScanValidationWithField, FieldType } fr
 
 export const dynamic = "force-dynamic";
 
-// ─── Action type display metadata ─────────────────────────────────────────────
+const TEXT = {
+  BREADCRUMB:        "Tipos de Tarjeta",
+  ACTIVE:            "Activo",
+  INACTIVE:          "Inactivo",
+  BTN_EDIT:          "Editar",
+  STAT_FIELDS:       "Campos",
+  STAT_REQUIRED:     "Obligatorios",
+  STAT_ACTIONS:      "Acciones",
+  STAT_VALIDATIONS:  "Validaciones",
+  SECTION_FIELDS:    "Campos del esquema",
+  SECTION_ACTIONS:   "Acciones",
+  SECTION_SCANVAL:   "Validaciones de escaneo",
+  EMPTY_FIELDS:      "No hay campos definidos.",
+  EMPTY_ACTIONS:     "Sin acciones definidas.",
+  EMPTY_SCANVAL:     "Sin validaciones definidas.",
+  REQUIRED:          "Obligatorio",
+  DEFAULT_PREFIX:    "Defecto:",
+  SEVERITY_ERROR:    "Error",
+  SEVERITY_WARNING:  "Aviso",
+  META_ID:           "ID:",
+  META_CREATED:      "Creado:",
+  META_UPDATED:      "Actualizado:",
+} as const;
 
+// ─── Action type display metadata ─────────────────────────────────────────────
+// Decorative action-type categories (NOT access-control state). Uses the
+// Tailwind emerald/rose palette + brand/neutral tokens, matching CardActions.tsx.
 const ACTION_TYPE_META_DETAIL = {
-  increment: { icon: TrendingUp,   color: "#059669", bg: "#ecfdf5", label: "Incrementar" },
-  decrement: { icon: TrendingDown, color: "#dc2626", bg: "#fef2f2", label: "Decrementar" },
-  check:     { icon: CheckSquare,  color: "#4f5bff", bg: "#eef0ff", label: "Marcar Sí" },
-  uncheck:   { icon: Square,       color: "#6b7094", bg: "#f3f4f6", label: "Marcar No" },
+  increment: { icon: TrendingUp,   classes: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400", label: "Incrementar" },
+  decrement: { icon: TrendingDown, classes: "bg-rose-500/15 text-rose-600 dark:text-rose-400", label: "Decrementar" },
+  check:     { icon: CheckSquare,  classes: "bg-accent text-primary", label: "Marcar Sí" },
+  uncheck:   { icon: Square,       classes: "bg-muted text-muted-foreground", label: "Marcar No" },
 } as const;
 
 interface PageProps {
@@ -80,164 +108,132 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
   return (
     <DashboardShell title={cardType.name} role={role}>
       {/* Breadcrumb */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
+      <div className="mb-5 flex items-center gap-2">
         <Link
           href="/card-types"
-          style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--color-muted)", fontSize: 13, textDecoration: "none", fontWeight: 500 }}
+          className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft size={14} strokeWidth={2} />
-          Tipos de Tarjeta
+          <ArrowLeft className="size-3.5" strokeWidth={2} />
+          {TEXT.BREADCRUMB}
         </Link>
-        <span style={{ color: "var(--color-border)", fontSize: 13 }}>/</span>
-        <span style={{ fontSize: 13, color: "var(--color-dark)", fontWeight: 600 }}>
+        <span className="text-sm text-border">/</span>
+        <span className="text-sm font-semibold text-foreground">
           {cardType.name}
         </span>
       </div>
 
       {/* Header card */}
-      <div
-        className="card animate-fadein"
-        style={{ padding: "24px 28px", marginBottom: 20 }}
-      >
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 18 }}>
+      <div className="animate-fadein mb-5 rounded-2xl border bg-card px-7 py-6 shadow-sm">
+        <div className="flex items-start gap-4.5">
           {/* Icon */}
-          <div style={{
-            width: 56,
-            height: 56,
-            borderRadius: 16,
-            background: cardType.isActive ? "linear-gradient(135deg, #eef0ff, #dde1ff)" : "#f3f4f6",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: cardType.isActive ? "var(--color-primary)" : "var(--color-muted)",
-            border: `2px solid ${cardType.isActive ? "#c7d2fe" : "#e5e7eb"}`,
-            flexShrink: 0,
-          }}>
-            <CreditCard size={26} strokeWidth={1.6} />
+          <div
+            className={cn(
+              "flex size-14 shrink-0 items-center justify-center rounded-2xl border",
+              cardType.isActive
+                ? "bg-accent text-primary"
+                : "bg-muted text-muted-foreground",
+            )}
+          >
+            <CreditCard className="size-6.5" strokeWidth={1.6} />
           </div>
 
           {/* Info */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <h1 style={{
-                fontSize: 22,
-                fontWeight: 800,
-                fontFamily: "var(--font-heading)",
-                color: "var(--color-dark)",
-                margin: 0,
-              }}>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="font-heading text-[22px] font-extrabold text-foreground">
                 {cardType.name}
               </h1>
-              <span style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-                fontSize: 11,
-                fontWeight: 600,
-                padding: "3px 9px",
-                borderRadius: 6,
-                background: cardType.isActive ? "#ecfdf5" : "#f3f4f6",
-                color: cardType.isActive ? "#059669" : "#6b7094",
-                border: `1px solid ${cardType.isActive ? "#a7f3d0" : "#e5e7eb"}`,
-              }}>
-                {cardType.isActive ? <CircleDot size={10} strokeWidth={2} /> : <CircleOff size={10} strokeWidth={2} />}
-                {cardType.isActive ? "Activo" : "Inactivo"}
-              </span>
+              <Badge variant={cardType.isActive ? "outline" : "secondary"}>
+                {cardType.isActive ? (
+                  <CircleDot strokeWidth={2} />
+                ) : (
+                  <CircleOff strokeWidth={2} />
+                )}
+                {cardType.isActive ? TEXT.ACTIVE : TEXT.INACTIVE}
+              </Badge>
             </div>
             {cardType.description && (
-              <p style={{ fontSize: 13.5, color: "var(--color-secondary)", margin: "6px 0 0", lineHeight: 1.6 }}>
+              <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
                 {cardType.description}
               </p>
             )}
-            <div style={{ display: "flex", gap: 20, marginTop: 10 }}>
-              <StatChip label="Campos" value={activeFields.length} />
-              <StatChip label="Obligatorios" value={activeFields.filter(f => f.isRequired).length} />
-              <StatChip label="Acciones" value={activeActions.length} />
-              <StatChip label="Validaciones" value={activeScanValidations.length} />
+            <div className="mt-2.5 flex gap-5">
+              <StatChip label={TEXT.STAT_FIELDS} value={activeFields.length} />
+              <StatChip label={TEXT.STAT_REQUIRED} value={activeFields.filter(f => f.isRequired).length} />
+              <StatChip label={TEXT.STAT_ACTIONS} value={activeActions.length} />
+              <StatChip label={TEXT.STAT_VALIDATIONS} value={activeScanValidations.length} />
             </div>
           </div>
 
           {/* Edit button */}
           {isMaster && (
-            <Link
-              href={`/card-types/${cardType.id}/edit`}
-              className="btn btn-secondary"
-              style={{ flexShrink: 0 }}
-            >
-              <Pencil size={14} strokeWidth={2} />
-              Editar
-            </Link>
+            <Button asChild variant="secondary" className="shrink-0">
+              <Link href={`/card-types/${cardType.id}/edit`}>
+                <Pencil strokeWidth={2} />
+                {TEXT.BTN_EDIT}
+              </Link>
+            </Button>
           )}
         </div>
       </div>
 
       {/* Layout: fields (wide) + right column (actions + scan validations) */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 20, alignItems: "start" }}>
+      <div className="grid items-start gap-5 [grid-template-columns:1fr_320px]">
 
         {/* Fields */}
-        <div className="card animate-fadein" style={{ padding: "0", overflow: "hidden" }}>
-          <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--color-border-soft)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--color-dark)" }}>
-              Campos del esquema
+        <div className="animate-fadein overflow-hidden rounded-2xl border bg-card shadow-sm">
+          <div className="flex items-center justify-between border-b px-5 py-4">
+            <div className="font-heading text-sm font-bold text-foreground">
+              {TEXT.SECTION_FIELDS}
             </div>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--color-muted)", background: "var(--color-page-bg)", padding: "2px 8px", borderRadius: 5 }}>
-              {activeFields.length}
-            </span>
+            <Badge variant="secondary">{activeFields.length}</Badge>
           </div>
 
           {activeFields.length === 0 ? (
-            <div style={{ padding: "36px 22px", textAlign: "center", color: "var(--color-muted)", fontSize: 13, fontStyle: "italic" }}>
-              No hay campos definidos.
+            <div className="px-5 py-9 text-center text-sm italic text-muted-foreground">
+              {TEXT.EMPTY_FIELDS}
             </div>
           ) : (
-            <div style={{ padding: "16px 22px", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="flex flex-col gap-2.5 px-5 py-4">
               {activeFields.map((field, i) => (
-                <div key={field.id} style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 14,
-                  padding: "14px 16px",
-                  background: "#fafbfc",
-                  border: "1px solid var(--color-border-soft)",
-                  borderRadius: 12,
-                }}>
+                <div
+                  key={field.id}
+                  className="flex items-start gap-3.5 rounded-xl border bg-muted/40 px-4 py-3.5"
+                >
                   {/* Position */}
-                  <div style={{ width: 22, height: 22, borderRadius: 6, background: "var(--color-primary-light)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "var(--color-primary)", flexShrink: 0 }}>
+                  <div className="flex size-5.5 shrink-0 items-center justify-center rounded-md bg-accent text-[11px] font-bold text-primary">
                     {i + 1}
                   </div>
 
-                  {/* Field type selector (read-only) */}
-                  <div style={{ flexShrink: 0, width: 180 }}>
-                    <FieldTypeSelector
-                      value={field.fieldType as FieldType}
-                      readOnly
-                    />
+                  {/* Field type (read-only, compact chip) */}
+                  <div className="w-32 shrink-0">
+                    <FieldTypeDisplay value={field.fieldType as FieldType} />
                   </div>
 
                   {/* Field info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--color-dark)" }}>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground">
                         {field.label}
                       </span>
-                      <span style={{ fontSize: 11.5, color: "var(--color-muted)" }}>
+                      <span className="text-xs text-muted-foreground">
                         {field.name}
                       </span>
                     </div>
-                    <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {field.isRequired && (
-                        <Tag color="#dc2626" bg="#fef2f2">Obligatorio</Tag>
+                        <Badge variant="secondary">{TEXT.REQUIRED}</Badge>
                       )}
                       {field.defaultValue != null && (
-                        <Tag color="#6b7094" bg="#f3f4f6">
-                          Defecto: {field.defaultValue}
-                        </Tag>
+                        <Badge variant="secondary">
+                          {TEXT.DEFAULT_PREFIX} {field.defaultValue}
+                        </Badge>
                       )}
                       {(() => {
                         const vr = field.validationRules as { rules?: unknown[] } | null | undefined;
                         const count = vr?.rules?.length ?? 0;
                         return count > 0 ? (
-                          <Tag color="#059669" bg="#ecfdf5">{count} regla(s)</Tag>
+                          <Badge variant="secondary">{count} regla(s)</Badge>
                         ) : null;
                       })()}
                     </div>
@@ -249,49 +245,42 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
         </div>
 
         {/* Right column: actions + scan validations stacked */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        <div className="flex flex-col gap-5">
           {/* Actions */}
-          <div className="card animate-fadein" style={{ padding: "0", overflow: "hidden" }}>
-            <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--color-border-soft)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--color-dark)" }}>
-                Acciones
+          <div className="animate-fadein overflow-hidden rounded-2xl border bg-card shadow-sm">
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <div className="font-heading text-sm font-bold text-foreground">
+                {TEXT.SECTION_ACTIONS}
               </div>
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--color-muted)", background: "var(--color-page-bg)", padding: "2px 8px", borderRadius: 5 }}>
-                {activeActions.length}
-              </span>
+              <Badge variant="secondary">{activeActions.length}</Badge>
             </div>
             {activeActions.length === 0 ? (
-              <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--color-muted)", fontSize: 13, fontStyle: "italic" }}>
-                Sin acciones definidas.
+              <div className="px-5 py-6 text-center text-sm italic text-muted-foreground">
+                {TEXT.EMPTY_ACTIONS}
               </div>
             ) : (
-              <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="flex flex-col gap-2 px-3.5 py-3">
                 {activeActions.map((action) => {
                   const actionMeta = ACTION_TYPE_META_DETAIL[action.actionType as keyof typeof ACTION_TYPE_META_DETAIL] ?? ACTION_TYPE_META_DETAIL.increment;
                   const Icon = actionMeta.icon;
                   const amount = (action.config as { amount?: number } | null)?.amount;
                   return (
-                    <div key={action.id} style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: "10px 12px",
-                      background: "#fafbfc",
-                      border: "1px solid var(--color-border-soft)",
-                      borderRadius: 10,
-                    }}>
-                      <div style={{ width: 32, height: 32, borderRadius: 8, background: actionMeta.bg, display: "flex", alignItems: "center", justifyContent: "center", color: actionMeta.color, flexShrink: 0 }}>
-                        <Icon size={15} strokeWidth={1.8} />
+                    <div
+                      key={action.id}
+                      className="flex items-center gap-2.5 rounded-[10px] border bg-muted/40 px-3 py-2.5"
+                    >
+                      <div className={cn("flex size-8 shrink-0 items-center justify-center rounded-lg", actionMeta.classes)}>
+                        <Icon className="size-3.5" strokeWidth={1.8} />
                       </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-foreground">
                           {action.name}
                         </div>
-                        <div style={{ fontSize: 11, color: "var(--color-muted)", marginTop: 2 }}>
+                        <div className="mt-0.5 text-[11px] text-muted-foreground">
                           {actionMeta.label}
                           {amount != null && ` · ${amount}`}
                           {` → `}
-                          <span style={{ color: "var(--color-secondary)" }}>
+                          <span className="text-foreground/80">
                             {(action as ActionDefinitionWithField).targetFieldLabel}
                           </span>
                         </div>
@@ -311,48 +300,48 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
           />
 
           {/* Scan Validations */}
-          <div className="card animate-fadein" style={{ padding: "0", overflow: "hidden" }}>
-            <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--color-border-soft)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--color-dark)" }}>
-                Validaciones de escaneo
+          <div className="animate-fadein overflow-hidden rounded-2xl border bg-card shadow-sm">
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <div className="font-heading text-sm font-bold text-foreground">
+                {TEXT.SECTION_SCANVAL}
               </div>
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--color-muted)", background: "var(--color-page-bg)", padding: "2px 8px", borderRadius: 5 }}>
-                {activeScanValidations.length}
-              </span>
+              <Badge variant="secondary">{activeScanValidations.length}</Badge>
             </div>
             {activeScanValidations.length === 0 ? (
-              <div style={{ padding: "24px 22px", textAlign: "center", color: "var(--color-muted)", fontSize: 13, fontStyle: "italic" }}>
-                Sin validaciones definidas.
+              <div className="px-5 py-6 text-center text-sm italic text-muted-foreground">
+                {TEXT.EMPTY_SCANVAL}
               </div>
             ) : (
-              <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="flex flex-col gap-2 px-3.5 py-3">
                 {activeScanValidations.map((sv) => {
+                  // Severity IS an access-control validation outcome → state tokens.
                   const isError = sv.severity === "error";
-                  const color = isError ? "#dc2626" : "#d97706";
-                  const bg = isError ? "#fef2f2" : "#fffbeb";
                   const Icon = isError ? AlertCircle : AlertTriangle;
+                  const iconWrap = isError
+                    ? "bg-state-denied text-state-denied-icon"
+                    : "bg-state-warning text-state-warning-icon";
+                  const badgeClasses = isError
+                    ? "bg-state-denied border-state-denied-border text-state-denied-foreground"
+                    : "bg-state-warning border-state-warning-border text-state-warning-foreground";
                   return (
-                    <div key={sv.id} style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 10,
-                      padding: "10px 12px",
-                      background: "#fafbfc",
-                      border: "1px solid var(--color-border-soft)",
-                      borderRadius: 10,
-                    }}>
-                      <div style={{ width: 28, height: 28, borderRadius: 7, background: bg, display: "flex", alignItems: "center", justifyContent: "center", color, flexShrink: 0, marginTop: 1 }}>
-                        <Icon size={13} strokeWidth={1.8} />
+                    <div
+                      key={sv.id}
+                      className="flex items-start gap-2.5 rounded-[10px] border bg-muted/40 px-3 py-2.5"
+                    >
+                      <div className={cn("mt-px flex size-7 shrink-0 items-center justify-center rounded-md", iconWrap)}>
+                        <Icon className="size-3.5" strokeWidth={1.8} />
                       </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--color-dark)" }}>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-foreground">
                           {sv.errorMessage}
                         </div>
-                        <div style={{ fontSize: 11, color: "var(--color-muted)", marginTop: 2 }}>
+                        <div className="mt-0.5 text-[11px] text-muted-foreground">
                           {(sv as ScanValidationWithField).fieldLabel} · {sv.rule}
                         </div>
                       </div>
-                      <Tag color={color} bg={bg}>{isError ? "Error" : "Aviso"}</Tag>
+                      <Badge className={cn("shrink-0", badgeClasses)}>
+                        {isError ? TEXT.SEVERITY_ERROR : TEXT.SEVERITY_WARNING}
+                      </Badge>
                     </div>
                   );
                 })}
@@ -363,10 +352,10 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
       </div>
 
       {/* Metadata footer */}
-      <div style={{ marginTop: 20, padding: "12px 16px", background: "var(--color-subtle-bg)", borderRadius: 10, fontSize: 11.5, color: "var(--color-muted)", display: "flex", gap: 20 }}>
-        <span>ID: <code style={{ fontFamily: "monospace", fontSize: 11 }}>{cardType.id}</code></span>
-        <span>Creado: {new Date(cardType.createdAt).toLocaleDateString("es-ES")}</span>
-        <span>Actualizado: {new Date(cardType.updatedAt).toLocaleDateString("es-ES")}</span>
+      <div className="mt-5 flex gap-5 rounded-[10px] bg-muted px-4 py-3 text-[11px] text-muted-foreground">
+        <span>{TEXT.META_ID} <code className="font-mono text-[11px]">{cardType.id}</code></span>
+        <span>{TEXT.META_CREATED} {new Date(cardType.createdAt).toLocaleDateString("es-ES")}</span>
+        <span>{TEXT.META_UPDATED} {new Date(cardType.updatedAt).toLocaleDateString("es-ES")}</span>
       </div>
     </DashboardShell>
   );
@@ -374,25 +363,9 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
 
 function StatChip({ label, value }: { label: string; value: number }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-      <span style={{ fontSize: 14, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--color-dark)" }}>{value}</span>
-      <span style={{ fontSize: 12, color: "var(--color-muted)" }}>{label}</span>
+    <div className="flex items-center gap-1.5">
+      <span className="font-heading text-sm font-bold text-foreground">{value}</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
     </div>
-  );
-}
-
-function Tag({ color, bg, children }: { color: string; bg: string; children: React.ReactNode }) {
-  return (
-    <span style={{
-      fontSize: 11,
-      fontWeight: 600,
-      padding: "2px 7px",
-      borderRadius: 5,
-      color,
-      background: bg,
-      border: `1px solid ${color}30`,
-    }}>
-      {children}
-    </span>
   );
 }

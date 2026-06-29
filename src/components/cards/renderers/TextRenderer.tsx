@@ -6,9 +6,7 @@ interface TextRendererProps {
 
 export default function TextRenderer({ value }: TextRendererProps) {
   if (value === null || value === undefined || value === "") {
-    return (
-      <span style={{ color: "var(--color-muted)", fontStyle: "italic" }}>—</span>
-    );
+    return <span className="italic text-muted-foreground">—</span>;
   }
   return <span>{String(value)}</span>;
 }

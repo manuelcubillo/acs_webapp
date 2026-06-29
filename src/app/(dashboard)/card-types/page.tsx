@@ -17,9 +17,18 @@ import {
 import { getCardTypeWithFullSchema, listCardTypes } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardTypeList from "@/components/card-types/CardTypeList";
+import { Button } from "@/components/ui/button";
 import type { CardTypeWithFullSchema } from "@/lib/dal";
 
 export const dynamic = "force-dynamic";
+
+const TEXT = {
+  TITLE:        "Tipos de Tarjeta",
+  EMPTY:        "No hay tipos definidos todavía.",
+  COUNT_SINGLE: "tipo de tarjeta",
+  COUNT_PLURAL: "tipos de tarjeta",
+  BTN_NEW:      "Nuevo tipo",
+} as const;
 
 export default async function CardTypesPage() {
   // ── Auth guard ────────────────────────────────────────────────────────────
@@ -49,46 +58,27 @@ export default async function CardTypesPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <DashboardShell title="Tipos de Tarjeta" role={role}>
+    <DashboardShell title={TEXT.TITLE} role={role}>
       {/* Page header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 24,
-        }}
-      >
+      <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1
-            style={{
-              fontSize: 24,
-              fontWeight: 800,
-              fontFamily: "var(--font-heading)",
-              color: "var(--color-dark)",
-              margin: 0,
-            }}
-          >
-            Tipos de Tarjeta
+          <h1 className="font-heading text-2xl font-extrabold text-foreground">
+            {TEXT.TITLE}
           </h1>
-          <p
-            style={{
-              fontSize: 13.5,
-              color: "var(--color-secondary)",
-              marginTop: 4,
-            }}
-          >
+          <p className="mt-1 text-sm text-muted-foreground">
             {cardTypes.length === 0
-              ? "No hay tipos definidos todavía."
-              : `${cardTypes.length} tipo${cardTypes.length !== 1 ? "s" : ""} de tarjeta`}
+              ? TEXT.EMPTY
+              : `${cardTypes.length} ${cardTypes.length !== 1 ? TEXT.COUNT_PLURAL : TEXT.COUNT_SINGLE}`}
           </p>
         </div>
 
         {isMaster && (
-          <Link href="/card-types/new" className="btn btn-primary">
-            <Plus size={16} strokeWidth={2} />
-            Nuevo tipo
-          </Link>
+          <Button asChild>
+            <Link href="/card-types/new">
+              <Plus className="size-4" strokeWidth={2} />
+              {TEXT.BTN_NEW}
+            </Link>
+          </Button>
         )}
       </div>
 

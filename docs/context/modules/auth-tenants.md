@@ -1,6 +1,6 @@
 # Module: auth-tenants
 
-**Last updated**: 2026-04-28 · **Last feature**: member avatar + tenant logo (uploads through `PhotoUploader`, surfaced in `DashboardShell` and `MemberRow`)
+**Last updated**: 2026-06-07 · **Last feature**: Phase 3 token/shadcn migration of members + auth screens; new `--role-*` tokens for role badges; `AuthShell` extracted (ADR `2026-06-07-phase3-inline-style-migration.md`)
 
 ## Responsibility
 

@@ -1,7 +1,7 @@
 /**
  * /dashboard — Vista Principal Operacional
  *
- * Operational dashboard: scan input, active card zone, and activity feed.
+ * Operational dashboard: scan input, KPI strip, active card zone, activity feed.
  * Server-rendered with initial data, then hydrated client-side (DashboardView).
  *
  * Accessible to: operator | admin | master
@@ -13,11 +13,27 @@ import {
   AuthenticationError,
   AuthorizationError,
 } from "@/lib/api";
-import { getActivityFeed, getDashboardSettings, getTenantById } from "@/lib/dal";
+import {
+  getActivityFeed,
+  getDashboardSettings,
+  getTenantById,
+  getActionHistory,
+  listCardTypes,
+} from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
 import DashboardView from "@/components/dashboard/DashboardView";
+import type { DashboardKpiData } from "@/components/dashboard/DashboardKpis";
 
 export const dynamic = "force-dynamic";
+
+const PAGE_TITLE = "Vista Principal";
+
+/** Midnight of the caller's day, in the server timezone (Vercel = UTC). */
+function startOfToday(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
 
 export default async function DashboardPage() {
   // ── Auth guard ────────────────────────────────────────────────────────────
@@ -30,9 +46,9 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const { tenantId, role, userId } = context;
+  const { tenantId, role } = context;
 
-  // ── Data fetching (parallel) ───────────────────────────────────────────────
+  // ── Settings + tenant (parallel) ──────────────────────────────────────────
   const [settings, tenant] = await Promise.all([
     getDashboardSettings(tenantId).catch(() => null),
     getTenantById(tenantId).catch(() => null),
@@ -42,19 +58,41 @@ export default async function DashboardPage() {
   const showScan = settings?.showScanEntries ?? true;
   const showAction = settings?.showActionEntries ?? true;
 
-  const initialFeedEntries = await getActivityFeed(tenantId, {
-    limit: feedLimit,
-    includeScanEntries: showScan,
-    includeActionEntries: showAction,
-  }).catch(() => []);
+  // ── Feed + KPI data (parallel) ────────────────────────────────────────────
+  const today = startOfToday();
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  const [initialFeedEntries, scansHistory, actionsHistory, cardTypes] = await Promise.all([
+    getActivityFeed(tenantId, {
+      limit: feedLimit,
+      includeScanEntries: showScan,
+      includeActionEntries: showAction,
+    }).catch(() => []),
+    getActionHistory(tenantId, { dateFrom: today, logTypes: ["scan"] }, { page: 1, pageSize: 1 })
+      .catch(() => ({ data: [], total: 0, limit: 1, offset: 0 })),
+    getActionHistory(tenantId, { dateFrom: today, logTypes: ["action"] }, { page: 1, pageSize: 1 })
+      .catch(() => ({ data: [], total: 0, limit: 1, offset: 0 })),
+    listCardTypes(tenantId).catch(() => []),
+  ]);
+
+  const SCAN_COUNT_CAP = 10000;
+  const kpiData: DashboardKpiData = {
+    scansToday: Math.min(scansHistory.total, SCAN_COUNT_CAP),
+    scansCapped: scansHistory.total > SCAN_COUNT_CAP,
+    actionsToday: Math.min(actionsHistory.total, SCAN_COUNT_CAP),
+    actionsCapped: actionsHistory.total > SCAN_COUNT_CAP,
+    activeCardTypes: cardTypes.length,
+    lastActivityAt: initialFeedEntries[0]?.executedAt
+      ? new Date(initialFeedEntries[0].executedAt)
+      : null,
+  };
+
   return (
-    <DashboardShell title="Vista Principal" role={role} userName={tenant?.name}>
+    <DashboardShell title={PAGE_TITLE} role={role} userName={tenant?.name}>
       <DashboardView
         initialFeedEntries={initialFeedEntries}
         settings={settings}
         allowOverrideOnError={settings?.allowOverrideOnError ?? false}
+        kpiData={kpiData}
       />
     </DashboardShell>
   );

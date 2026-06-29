@@ -16,6 +16,7 @@ import { NotFoundError } from "@/lib/dal/errors";
 import InvitationAcceptClient from "./InvitationAcceptClient";
 import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { MemberInvitation } from "@/lib/dal";
 
 export const dynamic = "force-dynamic";
@@ -38,22 +39,22 @@ function getInvitationError(inv: MemberInvitation): string | null {
 
 function ErrorState({ message }: { message: string }) {
   return (
-    <div className="flex min-h-screen items-center justify-center" style={{ background: "var(--color-page-bg)", padding: 16 }}>
-      <div className="card flex flex-col items-center gap-5 text-center" style={{ padding: "40px 36px", maxWidth: 420 }}>
-        <div style={{ width: 52, height: 52, borderRadius: 13, background: "#fef2f2", border: "1.5px solid #fca5a5", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <ShieldAlert size={24} color="#dc2626" strokeWidth={1.8} />
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <div className="flex max-w-[420px] flex-col items-center gap-5 rounded-2xl border bg-card px-9 py-10 text-center shadow-sm">
+        <div className="flex size-13 items-center justify-center rounded-2xl border border-destructive/30 bg-destructive/10">
+          <ShieldAlert className="size-6 text-destructive" strokeWidth={1.8} />
         </div>
         <div>
-          <h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--color-dark)", margin: "0 0 8px", fontFamily: "var(--font-heading)" }}>
+          <h1 className="mb-2 font-heading text-lg font-bold text-foreground">
             {LABELS.errorTitle}
           </h1>
-          <p style={{ fontSize: 14, color: "var(--color-secondary)", margin: 0, lineHeight: 1.6 }}>
+          <p className="text-sm leading-relaxed text-muted-foreground">
             {message}
           </p>
         </div>
-        <Link href="/login" className="btn btn-primary" style={{ fontSize: 14 }}>
-          {LABELS.backToLogin}
-        </Link>
+        <Button asChild>
+          <Link href="/login">{LABELS.backToLogin}</Link>
+        </Button>
       </div>
     </div>
   );

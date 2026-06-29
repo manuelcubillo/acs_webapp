@@ -24,7 +24,7 @@ const LABELS = {
 interface PaletteItem {
   type: LayoutNode["type"];
   label: string;
-  icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
 }
 
 const ITEMS: PaletteItem[] = [
@@ -47,34 +47,14 @@ export default function ElementPalette({ onAddCentered }: Props) {
   }
 
   return (
-    <div
-      style={{
-        width: 180,
-        flexShrink: 0,
-        background: "#fff",
-        borderRight: "1px solid var(--color-border)",
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-      }}
-    >
+    <div className="flex w-45 shrink-0 flex-col overflow-hidden border-r bg-card">
       {/* Header */}
-      <div
-        style={{
-          padding: "14px 16px 10px",
-          borderBottom: "1px solid var(--color-border-soft)",
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
-          color: "var(--color-muted)",
-        }}
-      >
+      <div className="border-b px-4 pt-3.5 pb-2.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
         {LABELS.title}
       </div>
 
       {/* Items */}
-      <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 2 }}>
+      <div className="flex flex-col gap-0.5 px-2.5 py-2">
         {ITEMS.map(({ type, label, icon: Icon }) => (
           <div
             key={type}
@@ -82,48 +62,16 @@ export default function ElementPalette({ onAddCentered }: Props) {
             onDragStart={(e) => handleDragStart(e, type)}
             onDoubleClick={() => onAddCentered(type)}
             title={label}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "9px 10px",
-              borderRadius: 8,
-              cursor: "grab",
-              userSelect: "none",
-              color: "var(--color-dark)",
-              fontSize: 13,
-              fontWeight: 500,
-              transition: "background 0.1s",
-            }}
-            onMouseOver={(e) => {
-              (e.currentTarget as HTMLDivElement).style.background =
-                "var(--color-primary-light)";
-              (e.currentTarget as HTMLDivElement).style.color =
-                "var(--color-primary)";
-            }}
-            onMouseOut={(e) => {
-              (e.currentTarget as HTMLDivElement).style.background = "transparent";
-              (e.currentTarget as HTMLDivElement).style.color = "var(--color-dark)";
-            }}
+            className="flex cursor-grab select-none items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-primary"
           >
-            <Icon size={16} strokeWidth={1.8} />
+            <Icon className="size-4" strokeWidth={1.8} />
             {label}
           </div>
         ))}
       </div>
 
       {/* Hint */}
-      <div
-        style={{
-          margin: "auto 10px 14px",
-          padding: "10px 12px",
-          background: "var(--color-border-soft)",
-          borderRadius: 8,
-          fontSize: 11.5,
-          color: "var(--color-muted)",
-          lineHeight: 1.5,
-        }}
-      >
+      <div className="mx-2.5 mt-auto mb-3.5 rounded-lg bg-muted px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
         {LABELS.hint}
       </div>
     </div>

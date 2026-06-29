@@ -1,6 +1,6 @@
 # Module: history
 
-**Last updated**: 2026-04-19 · **Last feature**: documentation sync against source code
+**Last updated**: 2026-06-07 · **Last feature**: Phase 3 token/shadcn migration of history view/filters/table (presentation only — ADR `2026-06-07-phase3-inline-style-migration.md`)
 
 ## Responsibility
 

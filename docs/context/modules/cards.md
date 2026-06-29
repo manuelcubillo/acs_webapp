@@ -1,6 +1,6 @@
 # Module: cards
 
-**Last updated**: 2026-04-28 · **Last feature**: photo values are object keys signed at render via `signCardPhotos`
+**Last updated**: 2026-06-07 · **Last feature**: Phase 3 token/shadcn migration of cards route pages (presentation only — ADR `2026-06-07-phase3-inline-style-migration.md`)
 
 ## Responsibility
 

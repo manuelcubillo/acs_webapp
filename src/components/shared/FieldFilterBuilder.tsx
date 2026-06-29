@@ -12,7 +12,28 @@
  */
 
 import { Plus, X } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import type { CommonFieldDefinition, FieldFilter, FieldFilterOperator } from "@/lib/dal";
+
+const TEXT = {
+  SECTION:        "Filtros de campo",
+  ADD_FILTER:     "Añadir filtro de campo",
+  REMOVE_FILTER:  "Eliminar filtro",
+  PLACEHOLDER:    "Valor…",
+  PLACEHOLDER_MIN: "Mín",
+  PLACEHOLDER_MAX: "Máx",
+  SELECT_VALUE:   "Seleccionar…",
+} as const;
 
 export interface FieldFilterBuilderProps {
   fields: CommonFieldDefinition[];
@@ -20,7 +41,7 @@ export interface FieldFilterBuilderProps {
   onFiltersChange: (filters: FieldFilter[]) => void;
 }
 
-// ─── Operator options per field type ──────────────────────────────────────────
+// ─── Operator options per field type ────────────────────────────────────────
 
 type OperatorDef = { value: FieldFilterOperator; label: string };
 
@@ -57,12 +78,12 @@ const SELECT_OPS: OperatorDef[] = [
 
 export function getOperatorsForFieldType(fieldType: string): OperatorDef[] {
   switch (fieldType) {
-    case "text": return TEXT_OPS;
-    case "number": return NUMBER_OPS;
+    case "text":    return TEXT_OPS;
+    case "number":  return NUMBER_OPS;
     case "boolean": return BOOLEAN_OPS;
-    case "date": return DATE_OPS;
-    case "select": return SELECT_OPS;
-    default: return TEXT_OPS;
+    case "date":    return DATE_OPS;
+    case "select":  return SELECT_OPS;
+    default:        return TEXT_OPS;
   }
 }
 
@@ -79,20 +100,12 @@ function getSelectOptions(validationRules: unknown): string[] {
   return [];
 }
 
-// ─── Field lookup helpers ──────────────────────────────────────────────────────
+// ─── Field lookup helpers ───────────────────────────────────────────────────
 
-/**
- * Stable option key for a CommonFieldDefinition.
- * Uses the first fieldDefinitionId as a unique-per-field identifier.
- */
 function fieldKey(def: CommonFieldDefinition): string {
   return def.fieldDefinitionIds[0] ?? `${def.name}:${def.fieldType}`;
 }
 
-/**
- * Find the CommonFieldDefinition that corresponds to a filter's fieldDefinitionIds.
- * Matches by checking if any ID in the filter appears as the first ID of a field def.
- */
 function findFieldDef(
   fields: CommonFieldDefinition[],
   filter: FieldFilter,
@@ -101,7 +114,7 @@ function findFieldDef(
   return fields.find((f) => f.fieldDefinitionIds[0] === filter.fieldDefinitionIds[0]);
 }
 
-// ─── Value input ───────────────────────────────────────────────────────────────
+// ─── Value input ────────────────────────────────────────────────────────────
 
 interface ValueInputProps {
   fieldDef: CommonFieldDefinition;
@@ -111,68 +124,128 @@ interface ValueInputProps {
 }
 
 function ValueInput({ fieldDef, operator, value, onChange }: ValueInputProps) {
-  const inputStyle: React.CSSProperties = {
-    padding: "7px 10px", borderRadius: 7,
-    border: "1px solid var(--color-border)", fontSize: 13,
-    background: "#fff", color: "var(--color-dark)",
-    width: "100%", boxSizing: "border-box",
-  };
-
   if (operator === "is_true" || operator === "is_false") return null;
 
   if (fieldDef.fieldType === "select") {
     const options = getSelectOptions(fieldDef.validationRules);
+    const current = typeof value === "string" ? value : "";
     return (
-      <select style={inputStyle} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)}>
-        <option value="">Seleccionar…</option>
-        {options.map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
+      <Select value={current || undefined} onValueChange={(v) => onChange(v)}>
+        <SelectTrigger className="h-9 text-sm">
+          <SelectValue placeholder={TEXT.SELECT_VALUE} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o} value={o}>
+              {o}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     );
   }
 
   if (operator === "date_between") {
-    const r = value as { min?: string; max?: string } | null ?? {};
+    const r = (value as { min?: string; max?: string } | null) ?? {};
     return (
-      <div style={{ display: "flex", gap: 6, alignItems: "center", flex: 1 }}>
-        <input type="date" style={{ ...inputStyle, flex: 1 }} value={r.min ?? ""} onChange={(e) => onChange({ ...r, min: e.target.value })} />
-        <span style={{ color: "var(--color-muted)", fontSize: 12 }}>→</span>
-        <input type="date" style={{ ...inputStyle, flex: 1 }} value={r.max ?? ""} onChange={(e) => onChange({ ...r, max: e.target.value })} />
+      <div className="flex flex-1 items-center gap-1.5">
+        <Input
+          type="date"
+          className="h-9 flex-1 text-sm"
+          value={r.min ?? ""}
+          onChange={(e) => onChange({ ...r, min: e.target.value })}
+        />
+        <span aria-hidden className="text-xs text-muted-foreground">→</span>
+        <Input
+          type="date"
+          className="h-9 flex-1 text-sm"
+          value={r.max ?? ""}
+          onChange={(e) => onChange({ ...r, max: e.target.value })}
+        />
       </div>
     );
   }
 
   if (operator === "between") {
-    const r = value as { min?: unknown; max?: unknown } | null ?? {};
+    const r = (value as { min?: unknown; max?: unknown } | null) ?? {};
     return (
-      <div style={{ display: "flex", gap: 6, alignItems: "center", flex: 1 }}>
-        <input type="number" style={{ ...inputStyle, flex: 1 }} value={String(r.min ?? "")} placeholder="Mín" onChange={(e) => onChange({ ...r, min: e.target.value })} />
-        <span style={{ color: "var(--color-muted)", fontSize: 12 }}>→</span>
-        <input type="number" style={{ ...inputStyle, flex: 1 }} value={String(r.max ?? "")} placeholder="Máx" onChange={(e) => onChange({ ...r, max: e.target.value })} />
+      <div className="flex flex-1 items-center gap-1.5">
+        <Input
+          type="number"
+          className="h-9 flex-1 text-sm"
+          value={String(r.min ?? "")}
+          placeholder={TEXT.PLACEHOLDER_MIN}
+          onChange={(e) => onChange({ ...r, min: e.target.value })}
+        />
+        <span aria-hidden className="text-xs text-muted-foreground">→</span>
+        <Input
+          type="number"
+          className="h-9 flex-1 text-sm"
+          value={String(r.max ?? "")}
+          placeholder={TEXT.PLACEHOLDER_MAX}
+          onChange={(e) => onChange({ ...r, max: e.target.value })}
+        />
       </div>
     );
   }
 
-  if (operator === "date_eq" || operator === "date_before" || operator === "date_after" || fieldDef.fieldType === "date") {
-    return <input type="date" style={inputStyle} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} />;
+  if (
+    operator === "date_eq" ||
+    operator === "date_before" ||
+    operator === "date_after" ||
+    fieldDef.fieldType === "date"
+  ) {
+    return (
+      <Input
+        type="date"
+        className="h-9 text-sm"
+        value={typeof value === "string" ? value : ""}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    );
   }
 
   if (fieldDef.fieldType === "number") {
-    return <input type="number" style={inputStyle} value={typeof value === "string" || typeof value === "number" ? String(value) : ""} onChange={(e) => onChange(e.target.value)} placeholder="Valor…" />;
+    return (
+      <Input
+        type="number"
+        className="h-9 text-sm"
+        value={typeof value === "string" || typeof value === "number" ? String(value) : ""}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={TEXT.PLACEHOLDER}
+      />
+    );
   }
 
-  return <input type="text" style={inputStyle} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} placeholder="Valor…" />;
+  return (
+    <Input
+      type="text"
+      className="h-9 text-sm"
+      value={typeof value === "string" ? value : ""}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={TEXT.PLACEHOLDER}
+    />
+  );
 }
 
-// ─── Main component ────────────────────────────────────────────────────────────
+// ─── Main component ─────────────────────────────────────────────────────────
 
-export default function FieldFilterBuilder({ fields, filters, onFiltersChange }: FieldFilterBuilderProps) {
+export default function FieldFilterBuilder({
+  fields,
+  filters,
+  onFiltersChange,
+}: FieldFilterBuilderProps) {
   if (fields.length === 0) return null;
 
   const addFilter = () => {
     const first = fields[0];
     onFiltersChange([
       ...filters,
-      { fieldDefinitionIds: first.fieldDefinitionIds, operator: defaultOperatorForType(first.fieldType), value: "" },
+      {
+        fieldDefinitionIds: first.fieldDefinitionIds,
+        operator: defaultOperatorForType(first.fieldType),
+        value: "",
+      },
     ]);
   };
 
@@ -180,12 +253,13 @@ export default function FieldFilterBuilder({ fields, filters, onFiltersChange }:
     const next = filters.map((f, i) => {
       if (i !== idx) return f;
       const updated = { ...f, ...partial };
-      // If field changed, reset operator and value
       if (
         partial.fieldDefinitionIds &&
         partial.fieldDefinitionIds[0] !== f.fieldDefinitionIds[0]
       ) {
-        const fd = fields.find((d) => d.fieldDefinitionIds[0] === partial.fieldDefinitionIds![0]);
+        const fd = fields.find(
+          (d) => d.fieldDefinitionIds[0] === partial.fieldDefinitionIds![0],
+        );
         updated.operator = fd ? defaultOperatorForType(fd.fieldType) : "contains";
         updated.value = "";
       }
@@ -197,74 +271,101 @@ export default function FieldFilterBuilder({ fields, filters, onFiltersChange }:
     onFiltersChange(next);
   };
 
-  const removeFilter = (idx: number) => onFiltersChange(filters.filter((_, i) => i !== idx));
-
-  const selectStyle: React.CSSProperties = {
-    padding: "7px 10px", borderRadius: 7,
-    border: "1px solid var(--color-border)", fontSize: 13,
-    background: "#fff", color: "var(--color-dark)", cursor: "pointer",
-  };
+  const removeFilter = (idx: number) =>
+    onFiltersChange(filters.filter((_, i) => i !== idx));
 
   return (
-    <div style={{ marginTop: 8 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-muted)", marginBottom: 8 }}>
-        Filtros de campo
+    <div className="mt-2">
+      <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+        {TEXT.SECTION}
       </div>
 
       {filters.map((filter, idx) => {
         const fieldDef = findFieldDef(fields, filter);
-        const operators = fieldDef ? getOperatorsForFieldType(fieldDef.fieldType) : TEXT_OPS;
-        const isBooleanOp = filter.operator === "is_true" || filter.operator === "is_false";
+        const operators = fieldDef
+          ? getOperatorsForFieldType(fieldDef.fieldType)
+          : TEXT_OPS;
+        const isBooleanOp =
+          filter.operator === "is_true" || filter.operator === "is_false";
         const currentKey = filter.fieldDefinitionIds[0] ?? "";
 
         return (
-          <div key={idx} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-            {/* Field selector — value is the first fieldDefinitionId of the CommonFieldDefinition */}
-            <select
-              style={{ ...selectStyle, minWidth: 140, flex: "0 0 auto" }}
-              value={currentKey}
-              onChange={(e) => {
-                const fd = fields.find((d) => fieldKey(d) === e.target.value);
+          <div
+            key={idx}
+            className="mb-1.5 flex flex-wrap items-center gap-1.5"
+          >
+            <Select
+              value={currentKey || undefined}
+              onValueChange={(v) => {
+                const fd = fields.find((d) => fieldKey(d) === v);
                 if (fd) updateFilter(idx, { fieldDefinitionIds: fd.fieldDefinitionIds });
               }}
             >
-              {fields.map((fd) => (
-                <option key={fieldKey(fd)} value={fieldKey(fd)}>{fd.label}</option>
-              ))}
-            </select>
+              <SelectTrigger className="h-9 min-w-[140px] text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {fields.map((fd) => (
+                  <SelectItem key={fieldKey(fd)} value={fieldKey(fd)}>
+                    {fd.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-            <select
-              style={{ ...selectStyle, minWidth: 110, flex: "0 0 auto" }}
+            <Select
               value={filter.operator}
-              onChange={(e) => updateFilter(idx, { operator: e.target.value as FieldFilterOperator })}
+              onValueChange={(v) =>
+                updateFilter(idx, { operator: v as FieldFilterOperator })
+              }
             >
-              {operators.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}
-            </select>
+              <SelectTrigger className="h-9 min-w-[110px] text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {operators.map((op) => (
+                  <SelectItem key={op.value} value={op.value}>
+                    {op.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
             {!isBooleanOp && fieldDef && (
-              <div style={{ flex: 1, minWidth: 120 }}>
-                <ValueInput fieldDef={fieldDef} operator={filter.operator} value={filter.value} onChange={(v) => updateFilter(idx, { value: v })} />
+              <div className={cn("min-w-[120px] flex-1")}>
+                <ValueInput
+                  fieldDef={fieldDef}
+                  operator={filter.operator}
+                  value={filter.value}
+                  onChange={(v) => updateFilter(idx, { value: v })}
+                />
               </div>
             )}
 
-            <button
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
               onClick={() => removeFilter(idx)}
-              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 6, border: "1px solid var(--color-border)", background: "#fff", color: "var(--color-muted)", cursor: "pointer", flexShrink: 0 }}
-              title="Eliminar filtro"
+              title={TEXT.REMOVE_FILTER}
+              aria-label={TEXT.REMOVE_FILTER}
             >
-              <X size={13} strokeWidth={2} />
-            </button>
+              <X />
+            </Button>
           </div>
         );
       })}
 
-      <button
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
         onClick={addFilter}
-        style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 7, border: "1.5px dashed var(--color-border)", background: "transparent", fontSize: 12, fontWeight: 600, color: "var(--color-muted)", cursor: "pointer", marginTop: 2 }}
+        className="mt-0.5 gap-1.5 border border-dashed border-border text-muted-foreground hover:text-foreground"
       >
-        <Plus size={13} strokeWidth={2.5} />
-        Añadir filtro de campo
-      </button>
+        <Plus />
+        {TEXT.ADD_FILTER}
+      </Button>
     </div>
   );
 }

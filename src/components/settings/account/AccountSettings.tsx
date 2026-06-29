@@ -28,7 +28,17 @@ import SettingsCard from "@/components/settings/SettingsCard";
 import PhotoUploader from "@/components/shared/PhotoUploader";
 import DeleteAccountModal from "./DeleteAccountModal";
 import DeleteTenantAccountModal from "./DeleteTenantAccountModal";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import type { TenantRole } from "@/lib/api";
+
+const LABEL_CLASS = "block text-sm font-semibold text-foreground";
+const SAVED_TEXT = "Guardado";
+const SAVING_TEXT = "Guardando…";
+const SAVE_TEXT = "Guardar cambios";
 
 // ─── Danger zone copy ─────────────────────────────────────────────────────────
 
@@ -46,30 +56,16 @@ const DANGER_ZONE = {
 
 // ─── Role badge ───────────────────────────────────────────────────────────────
 
-const ROLE_LABELS: Record<TenantRole, { label: string; color: string; bg: string }> = {
-  master: { label: "Master",   color: "#7c3aed", bg: "#f5f3ff" },
-  admin:  { label: "Admin",    color: "#2563eb", bg: "#eff6ff" },
-  operator: { label: "Operador", color: "#16a34a", bg: "#f0fdf4" },
+// Decorative role badges — backed by the --role-* Layer 2 tokens.
+const ROLE_LABELS: Record<TenantRole, { label: string; className: string }> = {
+  master:   { label: "Master",   className: "bg-role-master text-role-master-foreground" },
+  admin:    { label: "Admin",    className: "bg-role-admin text-role-admin-foreground" },
+  operator: { label: "Operador", className: "bg-role-operator text-role-operator-foreground" },
 };
 
 function RoleBadge({ role }: { role: TenantRole }) {
-  const { label, color, bg } = ROLE_LABELS[role] ?? ROLE_LABELS.operator;
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "3px 10px",
-        borderRadius: 20,
-        fontSize: 12,
-        fontWeight: 600,
-        color,
-        background: bg,
-        border: `1px solid ${color}22`,
-      }}
-    >
-      {label}
-    </span>
-  );
+  const { label, className } = ROLE_LABELS[role] ?? ROLE_LABELS.operator;
+  return <Badge className={className}>{label}</Badge>;
 }
 
 // ─── Read-only field ──────────────────────────────────────────────────────────
@@ -94,38 +90,18 @@ function ReadOnlyField({
 
   return (
     <div>
-      <div style={labelStyle}>{label}</div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          marginTop: 6,
-          padding: "10px 14px",
-          background: "var(--color-subtle-bg)",
-          border: "1.5px solid var(--color-border-soft)",
-          borderRadius: 10,
-          fontSize: 14,
-          color: "var(--color-secondary)",
-          fontFamily: "monospace",
-        }}
-      >
-        <span style={{ flex: 1, wordBreak: "break-all" }}>{value}</span>
+      <div className={LABEL_CLASS}>{label}</div>
+      <div className="mt-1.5 flex items-center gap-2 rounded-[10px] border bg-muted px-3.5 py-2.5 font-mono text-sm text-muted-foreground">
+        <span className="flex-1 break-all">{value}</span>
         {copyable && (
           <button
             type="button"
             onClick={handleCopy}
             title="Copiar"
-            style={{
-              border: "none",
-              background: "none",
-              cursor: "pointer",
-              color: copied ? "#16a34a" : "var(--color-muted)",
-              padding: 2,
-              display: "flex",
-              alignItems: "center",
-              flexShrink: 0,
-            }}
+            className={cn(
+              "flex shrink-0 items-center p-0.5",
+              copied ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
           >
             {copied ? <Check size={14} strokeWidth={2} /> : <Copy size={14} strokeWidth={2} />}
           </button>
@@ -277,31 +253,31 @@ export default function AccountSettings({ tenant, user, role, masterCount }: Acc
         description="Nombre y datos de identificación de tu organización."
         footer={
           <>
-            <button
-              className="btn btn-primary"
+            <Button
               onClick={handleTenantSave}
               disabled={isTenantPending || tenantName === tenant.name || !tenantName.trim()}
             >
-              <Save size={14} strokeWidth={2} />
-              {isTenantPending ? "Guardando…" : "Guardar cambios"}
-            </button>
+              <Save strokeWidth={2} />
+              {isTenantPending ? SAVING_TEXT : SAVE_TEXT}
+            </Button>
             {tenantSaved && (
-              <span style={{ fontSize: 12.5, color: "#16a34a", fontWeight: 600 }}>
-                ✓ Guardado
+              <span className="flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+                <Check className="size-3.5" strokeWidth={2.5} />
+                {SAVED_TEXT}
               </span>
             )}
             {tenantError && (
-              <span style={{ fontSize: 12.5, color: "#dc2626" }}>{tenantError}</span>
+              <span className="text-xs text-destructive">{tenantError}</span>
             )}
           </>
         }
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        <div className="flex flex-col gap-4.5">
           {/* Logo */}
           {isMaster && (
             <div>
-              <div style={labelStyle}>Logo de la organización</div>
-              <div style={{ marginTop: 6 }}>
+              <div className={LABEL_CLASS}>Logo de la organización</div>
+              <div className="mt-1.5">
                 <PhotoUploader
                   kind="tenant-logo"
                   ownerId={tenant.id}
@@ -313,26 +289,23 @@ export default function AccountSettings({ tenant, user, role, masterCount }: Acc
                 />
               </div>
               {logoError && (
-                <p style={{ margin: "6px 0 0", fontSize: 12, color: "#dc2626" }}>
-                  {logoError}
-                </p>
+                <p className="mt-1.5 text-xs text-destructive">{logoError}</p>
               )}
             </div>
           )}
 
           {/* Tenant name */}
           <div>
-            <label htmlFor="tenant-name" style={labelStyle}>
+            <Label htmlFor="tenant-name" className={LABEL_CLASS}>
               Nombre de la organización
-            </label>
-            <input
+            </Label>
+            <Input
               id="tenant-name"
               type="text"
-              className="form-input"
               value={tenantName}
               onChange={(e) => setTenantName(e.target.value)}
               placeholder="Nombre de la organización"
-              style={{ marginTop: 6 }}
+              className="mt-1.5"
             />
           </div>
 
@@ -354,31 +327,31 @@ export default function AccountSettings({ tenant, user, role, masterCount }: Acc
         description="Tu nombre de usuario y datos de acceso."
         footer={
           <>
-            <button
-              className="btn btn-primary"
+            <Button
               onClick={handleUserSave}
               disabled={isUserPending || userName === (user.name ?? "")}
             >
-              <Save size={14} strokeWidth={2} />
-              {isUserPending ? "Guardando…" : "Guardar cambios"}
-            </button>
+              <Save strokeWidth={2} />
+              {isUserPending ? SAVING_TEXT : SAVE_TEXT}
+            </Button>
             {userSaved && (
-              <span style={{ fontSize: 12.5, color: "#16a34a", fontWeight: 600 }}>
-                ✓ Guardado
+              <span className="flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+                <Check className="size-3.5" strokeWidth={2.5} />
+                {SAVED_TEXT}
               </span>
             )}
             {userError && (
-              <span style={{ fontSize: 12.5, color: "#dc2626" }}>{userError}</span>
+              <span className="text-xs text-destructive">{userError}</span>
             )}
           </>
         }
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        <div className="flex flex-col gap-4.5">
           {/* Avatar */}
           {user.id && (
             <div>
-              <div style={labelStyle}>Foto de perfil</div>
-              <div style={{ marginTop: 6 }}>
+              <div className={LABEL_CLASS}>Foto de perfil</div>
+              <div className="mt-1.5">
                 <PhotoUploader
                   kind="member-avatar"
                   ownerId={user.id}
@@ -390,26 +363,23 @@ export default function AccountSettings({ tenant, user, role, masterCount }: Acc
                 />
               </div>
               {avatarError && (
-                <p style={{ margin: "6px 0 0", fontSize: 12, color: "#dc2626" }}>
-                  {avatarError}
-                </p>
+                <p className="mt-1.5 text-xs text-destructive">{avatarError}</p>
               )}
             </div>
           )}
 
           {/* Display name */}
           <div>
-            <label htmlFor="user-name" style={labelStyle}>
+            <Label htmlFor="user-name" className={LABEL_CLASS}>
               Nombre para mostrar
-            </label>
-            <input
+            </Label>
+            <Input
               id="user-name"
               type="text"
-              className="form-input"
               value={userName}
               onChange={(e) => setUserName(e.target.value)}
               placeholder="Tu nombre"
-              style={{ marginTop: 6 }}
+              className="mt-1.5"
             />
           </div>
 
@@ -418,8 +388,8 @@ export default function AccountSettings({ tenant, user, role, masterCount }: Acc
 
           {/* Role badge */}
           <div>
-            <div style={labelStyle}>Rol en este tenant</div>
-            <div style={{ marginTop: 6 }}>
+            <div className={LABEL_CLASS}>Rol en este tenant</div>
+            <div className="mt-1.5">
               <RoleBadge role={role} />
             </div>
           </div>
@@ -430,32 +400,23 @@ export default function AccountSettings({ tenant, user, role, masterCount }: Acc
         title={DANGER_ZONE.cardTitle}
         description={DANGER_ZONE.cardDescription}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <p style={{ margin: 0, fontSize: 13, color: "var(--color-secondary)", lineHeight: 1.6 }}>
+        <div className="flex flex-col gap-3">
+          <p className="text-sm leading-relaxed text-muted-foreground">
             {isLastMaster ? DANGER_ZONE.warningLastMaster : DANGER_ZONE.warningNotLastMaster}
           </p>
           {deleteError && (
-            <p style={{ margin: 0, fontSize: 12.5, color: "#dc2626" }}>{deleteError}</p>
+            <p className="text-xs text-destructive">{deleteError}</p>
           )}
           <div>
-            <button
+            <Button
               type="button"
+              variant="outline"
               onClick={() => { setDeleteError(null); setShowDeleteModal(true); }}
               disabled={isDeleting}
-              style={{
-                padding: "9px 18px",
-                borderRadius: 9,
-                border: "1.5px solid #dc2626",
-                background: "#fff",
-                color: "#dc2626",
-                cursor: isDeleting ? "not-allowed" : "pointer",
-                fontSize: 13,
-                fontWeight: 600,
-                opacity: isDeleting ? 0.6 : 1,
-              }}
+              className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
             >
               {isDeleting ? DANGER_ZONE.deletingButton : DANGER_ZONE.deleteButton}
-            </button>
+            </Button>
           </div>
         </div>
       </SettingsCard>
@@ -479,12 +440,3 @@ export default function AccountSettings({ tenant, user, role, masterCount }: Acc
     </SettingsSection>
   );
 }
-
-// ─── Shared styles ────────────────────────────────────────────────────────────
-
-const labelStyle: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: "var(--color-dark)",
-  display: "block",
-};

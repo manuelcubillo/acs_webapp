@@ -1,8 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import { Check } from "lucide-react";
 import { updateTenantSettingsAction } from "@/lib/actions/tenants";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { ScanMode } from "@/lib/dal/types";
+
+const TEXT = {
+  TITLE:    "Modo de escaneo",
+  SUBTITLE: "Define cómo los operadores pueden buscar y escanear carnets.",
+  SAVING:   "Guardando...",
+  SAVE:     "Guardar",
+  SAVED:    "Guardado",
+  ERROR:    "Error al guardar",
+} as const;
 
 interface SettingsClientProps {
   initialScanMode: ScanMode;
@@ -44,59 +56,29 @@ export default function SettingsClient({ initialScanMode }: SettingsClientProps)
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } else {
-      setError(res.error ?? "Error al guardar");
+      setError(res.error ?? TEXT.ERROR);
     }
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 520 }}>
+    <div className="flex max-w-[520px] flex-col gap-6">
       {/* Scan mode */}
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 14,
-          border: "1px solid var(--color-border)",
-          padding: 24,
-        }}
-      >
-        <h2
-          style={{
-            fontSize: 15,
-            fontWeight: 700,
-            color: "var(--color-dark)",
-            margin: "0 0 4px",
-            fontFamily: "var(--font-heading)",
-          }}
-        >
-          Modo de escaneo
+      <div className="rounded-xl border bg-card p-6">
+        <h2 className="mb-1 font-heading text-[15px] font-bold text-foreground">
+          {TEXT.TITLE}
         </h2>
-        <p
-          style={{
-            fontSize: 13,
-            color: "var(--color-muted)",
-            margin: "0 0 18px",
-          }}
-        >
-          Define cómo los operadores pueden buscar y escanear carnets.
-        </p>
+        <p className="mb-4.5 text-sm text-muted-foreground">{TEXT.SUBTITLE}</p>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div className="flex flex-col gap-2.5">
           {SCAN_MODE_OPTIONS.map((opt) => {
             const selected = scanMode === opt.value;
             return (
               <label
                 key={opt.value}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 12,
-                  padding: "12px 14px",
-                  borderRadius: 10,
-                  border: `2px solid ${selected ? "var(--color-primary)" : "var(--color-border)"}`,
-                  background: selected ? "#e0e7ff" : "#fff",
-                  cursor: "pointer",
-                  transition: "all 0.15s",
-                }}
+                className={cn(
+                  "flex cursor-pointer items-start gap-3 rounded-[10px] border-2 px-3.5 py-3 transition-colors",
+                  selected ? "border-primary bg-accent" : "border-border bg-card",
+                )}
               >
                 <input
                   type="radio"
@@ -104,27 +86,13 @@ export default function SettingsClient({ initialScanMode }: SettingsClientProps)
                   value={opt.value}
                   checked={selected}
                   onChange={() => setScanMode(opt.value)}
-                  style={{ marginTop: 2 }}
+                  className="mt-0.5 size-4 accent-primary"
                 />
                 <div>
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 700,
-                      color: selected
-                        ? "var(--color-primary)"
-                        : "var(--color-dark)",
-                    }}
-                  >
+                  <div className={cn("text-sm font-bold", selected ? "text-primary" : "text-foreground")}>
                     {opt.label}
                   </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "var(--color-muted)",
-                      marginTop: 2,
-                    }}
-                  >
+                  <div className="mt-0.5 text-xs text-muted-foreground">
                     {opt.description}
                   </div>
                 </div>
@@ -134,40 +102,22 @@ export default function SettingsClient({ initialScanMode }: SettingsClientProps)
         </div>
 
         {/* Save button */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            marginTop: 18,
-          }}
-        >
-          <button
+        <div className="mt-4.5 flex items-center gap-3">
+          <Button
             onClick={handleSave}
             disabled={saving || scanMode === initialScanMode}
-            style={{
-              padding: "10px 24px",
-              borderRadius: 8,
-              background: "var(--color-primary)",
-              color: "#fff",
-              border: "none",
-              cursor:
-                saving || scanMode === initialScanMode ? "default" : "pointer",
-              fontSize: 14,
-              fontWeight: 600,
-              opacity: saving || scanMode === initialScanMode ? 0.5 : 1,
-            }}
           >
-            {saving ? "Guardando..." : "Guardar"}
-          </button>
+            {saving ? TEXT.SAVING : TEXT.SAVE}
+          </Button>
 
           {saved && (
-            <span style={{ fontSize: 13, color: "#166534", fontWeight: 600 }}>
-              ✓ Guardado
+            <span className="flex items-center gap-1 text-sm font-semibold text-muted-foreground">
+              <Check className="size-3.5" strokeWidth={2.5} />
+              {TEXT.SAVED}
             </span>
           )}
           {error && (
-            <span style={{ fontSize: 13, color: "#991b1b" }}>{error}</span>
+            <span className="text-sm text-destructive">{error}</span>
           )}
         </div>
       </div>

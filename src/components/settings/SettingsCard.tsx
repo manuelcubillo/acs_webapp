@@ -6,15 +6,6 @@
  * optional footer (typically used for the Save button and status message).
  *
  * Server-compatible — no client-side logic.
- *
- * Usage:
- *   <SettingsCard
- *     title="Información del tenant"
- *     description="Nombre visible de tu organización."
- *     footer={<button className="btn btn-primary">Guardar</button>}
- *   >
- *     <input ... />
- *   </SettingsCard>
  */
 
 interface SettingsCardProps {
@@ -37,35 +28,29 @@ export default function SettingsCard({
   footer,
 }: SettingsCardProps) {
   return (
-    <div className="settings-card">
+    <div className="overflow-hidden rounded-xl border bg-card">
       {/* Header */}
-      <div className="settings-card-header">
-        <h2
-          style={{
-            fontSize: 15,
-            fontWeight: 700,
-            fontFamily: "var(--font-heading)",
-            color: "var(--color-dark)",
-            margin: description ? "0 0 4px" : "0",
-          }}
-        >
+      <div className="px-6 pt-5 pb-4">
+        <h2 className="font-heading text-[15px] font-bold text-foreground">
           {title}
         </h2>
         {description && (
-          <p style={{ fontSize: 13, color: "var(--color-muted)", margin: 0 }}>
-            {description}
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         )}
       </div>
 
       {/* Hairline separator */}
-      <div className="settings-card-divider" />
+      <div className="mx-6 h-px bg-border" />
 
       {/* Body */}
-      <div className="settings-card-body">{children}</div>
+      <div className="px-6 py-5">{children}</div>
 
       {/* Optional footer */}
-      {footer && <div className="settings-card-footer">{footer}</div>}
+      {footer && (
+        <div className="flex items-center gap-3 border-t px-6 py-3.5">
+          {footer}
+        </div>
+      )}
     </div>
   );
 }

@@ -5,35 +5,30 @@
  *
  * Main client-side orchestrator for the operational dashboard.
  *
- * Responsibilities:
- *   - Renders the search bar (code input + scan button)
- *   - On scan: calls executeScanWithAutoActionsAction → displays result in ActiveCardZone
- *     - If paused (pausedForConfirmation): shows AutoActionConfirmModal
- *     - On confirm: calls resumeAutoActionsAction (may pause again)
- *   - Manages blocking state (hasBlockingErrors) from scan validations
- *   - On manual action click:
- *     - Validates current state first
- *     - If no errors: execute directly
- *     - If errors + override allowed: show ConfirmActionModal
- *     - If errors + override not allowed: disable buttons (no modal)
- *   - Renders the activity feed (with initial SSR data + auto-refresh)
+ * ALL state, handlers and effects are byte-identical to the previous version —
+ * the scan pipeline (executeScanWithAutoActionsAction / resumeAutoActionsAction),
+ * useExternalScanner integration and the history DAL are untouched. Only the
+ * JSX presentation is rebuilt on token-driven shadcn primitives.
  *
  * Layout:
- *   ┌────────────────────────────────────────┐
- *   │  [SearchBar]          [📷 Cámara]      │
- *   ├──────────────────┬─────────────────────┤
- *   │  ActiveCardZone  │  ActivityFeed       │
- *   └──────────────────┴─────────────────────┘
+ *   ┌──────────────────────────────────────────────────┐
+ *   │   DashboardSearchBar                              │
+ *   ├──────────────────────────────────────────────────┤
+ *   │   DashboardKpis (Scans / Actions / Types / Last)  │
+ *   ├──────────────────────┬───────────────────────────┤
+ *   │   ActiveCardZone     │   ActivityFeed            │
+ *   └──────────────────────┴───────────────────────────┘
  */
 
 import { useState, useCallback } from "react";
-import Link from "next/link";
-import { Camera } from "lucide-react";
+
 import DashboardSearchBar from "./DashboardSearchBar";
 import ActiveCardZone from "./ActiveCardZone";
 import ActivityFeed from "./ActivityFeed";
+import DashboardKpis, { type DashboardKpiData } from "./DashboardKpis";
 import ConfirmActionModal from "@/components/shared/ConfirmActionModal";
 import AutoActionConfirmModal from "@/components/shared/AutoActionConfirmModal";
+import { cn } from "@/lib/utils";
 import {
   executeScanWithAutoActionsAction,
   validateBeforeActionAction,
@@ -55,41 +50,45 @@ import type {
 } from "@/lib/dal";
 import type { ScanValidationResult, ScanValidationCheck } from "@/lib/validation/scan-validator";
 
+const TEXT = {
+  COLUMN_ACTIVE: "Último carnet escaneado",
+  ERR_VALIDATE:  "Error al validar el estado del carnet.",
+  ERR_STATE:     "El estado del carnet ha cambiado — se detectaron errores de validación.",
+  ERR_RESUME:    "Error al reanudar las acciones automáticas.",
+  ERR_EXEC:      "Error al ejecutar la acción.",
+  ERR_ACTION:    "Acción",
+} as const;
+
 interface DashboardViewProps {
   initialFeedEntries: ActivityFeedEntry[];
   settings: DashboardSettings | null;
-  /** Whether allow_override_on_error is enabled for this tenant. */
   allowOverrideOnError: boolean;
+  kpiData: DashboardKpiData;
 }
 
 export default function DashboardView({
   initialFeedEntries,
   settings,
   allowOverrideOnError,
+  kpiData,
 }: DashboardViewProps) {
-  // Raw scan result (from executeScanWithAutoActionsAction)
+  // ── State (UNCHANGED from previous implementation) ────────────────────────
   const [scanResult, setScanResult] = useState<ScanWithAutoActionsResult | null>(null);
-
-  // Active card and current validation state (updated after each manual action)
   const [activeCard, setActiveCard] = useState<CardWithFields | null>(null);
   const [hasBlockingErrors, setHasBlockingErrors] = useState(false);
   const [finalValidationResult, setFinalValidationResult] = useState<ScanValidationResult | null>(null);
 
-  // Manual actions available for the current card type
   const [manualActions, setManualActions] = useState<ActionDefinitionWithField[]>([]);
 
-  // Manual action execution state
   const [isExecutingActionId, setIsExecutingActionId] = useState<string | null>(null);
   const [manualActionError, setManualActionError] = useState<string | null>(null);
 
-  // Overall scan state
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
 
-  // Feed refresh key
   const [feedKey, setFeedKey] = useState(0);
 
-  // ── Auto-action confirm modal state ──────────────────────────────────────────
+  // Auto-action modal state
   const [showAutoActionModal, setShowAutoActionModal] = useState(false);
   const [pendingAutoActionIds, setPendingAutoActionIds] = useState<string[]>([]);
   const [pendingAutoActionNames, setPendingAutoActionNames] = useState<string[]>([]);
@@ -98,14 +97,14 @@ export default function DashboardView({
   const [pausedAtAction, setPausedAtAction] = useState<string>("");
   const [isResumingAutoActions, setIsResumingAutoActions] = useState(false);
 
-  // ── Manual action confirm modal state ────────────────────────────────────────
+  // Manual action modal state
   const [showManualActionModal, setShowManualActionModal] = useState(false);
   const [pendingManualActionId, setPendingManualActionId] = useState<string | null>(null);
   const [manualActionModalErrors, setManualActionModalErrors] = useState<ScanValidationCheck[]>([]);
   const [pendingManualActionName, setPendingManualActionName] = useState<string>("");
   const [isConfirmingManualAction, setIsConfirmingManualAction] = useState(false);
 
-  // ── Shared handler for scan results (handles pause or normal completion) ─────
+  // ── Handlers (UNCHANGED) ──────────────────────────────────────────────────
 
   const handleScanResult = useCallback(async (data: ScanWithAutoActionsResult) => {
     setScanResult(data);
@@ -114,7 +113,6 @@ export default function DashboardView({
     setFinalValidationResult(data.finalValidationResult);
 
     if (data.pausedForConfirmation && data.pendingAutoActionIds) {
-      // Show auto-action confirmation modal
       setCompletedAutoActions(data.autoActions);
       setPendingAutoActionIds(data.pendingAutoActionIds);
       setPendingAutoActionNames(data.pendingAutoActionNames ?? []);
@@ -123,11 +121,8 @@ export default function DashboardView({
       setShowAutoActionModal(true);
     }
 
-    // Refresh activity feed
     setFeedKey((k) => k + 1);
   }, []);
-
-  // ── Operational scan ────────────────────────────────────────────────────────
 
   const handleScan = useCallback(async (code: string) => {
     setIsScanning(true);
@@ -144,7 +139,6 @@ export default function DashboardView({
 
       await handleScanResult(result.data);
 
-      // Load manual (non-auto-execute) actions for this card type
       const actionsResult = await getActionsForCardTypeAction(result.data.card.cardTypeId);
       if (actionsResult.success) {
         setManualActions(actionsResult.data.filter((a) => !a.isAutoExecute));
@@ -153,8 +147,6 @@ export default function DashboardView({
       setIsScanning(false);
     }
   }, [handleScanResult]);
-
-  // ── Auto-action resume ───────────────────────────────────────────────────────
 
   const handleAutoActionResume = useCallback(async () => {
     if (!activeCard) return;
@@ -169,10 +161,9 @@ export default function DashboardView({
       });
 
       if (resumeResult.success) {
-        // May pause again — handleScanResult handles both cases
         await handleScanResult(resumeResult.data);
       } else {
-        setManualActionError(resumeResult.error ?? "Error al reanudar las acciones automáticas.");
+        setManualActionError(resumeResult.error ?? TEXT.ERR_RESUME);
       }
     } finally {
       setIsResumingAutoActions(false);
@@ -181,10 +172,7 @@ export default function DashboardView({
 
   const handleAutoActionStop = useCallback(() => {
     setShowAutoActionModal(false);
-    // Card stays in current state. hasBlockingErrors already set from scan result.
   }, []);
-
-  // ── Core execute + refresh helper ────────────────────────────────────────────
 
   const executeAndRefresh = useCallback(async (
     actionId: string,
@@ -203,11 +191,10 @@ export default function DashboardView({
     });
 
     if (!execResult.success) {
-      setManualActionError(execResult.error ?? "Error al ejecutar la acción.");
+      setManualActionError(execResult.error ?? TEXT.ERR_EXEC);
       return;
     }
 
-    // Re-fetch card (also re-evaluates validations)
     const cardResult = await getCardByCodeAction(activeCard.code);
     if (cardResult.success) {
       setActiveCard(cardResult.data.card);
@@ -216,11 +203,8 @@ export default function DashboardView({
       setHasBlockingErrors(hasErrorLevelFailures(newScanResult));
     }
 
-    // Refresh activity feed
     setFeedKey((k) => k + 1);
   }, [activeCard]);
-
-  // ── Manual action execution (validate → execute or show modal) ──────────────
 
   const handleManualAction = useCallback(async (actionId: string) => {
     if (!activeCard || isExecutingActionId) return;
@@ -228,10 +212,9 @@ export default function DashboardView({
     setManualActionError(null);
 
     try {
-      // 1. Validate current card state before executing
       const preCheck = await validateBeforeActionAction(activeCard.id);
       if (!preCheck.success) {
-        setManualActionError(preCheck.error ?? "Error al validar el estado del carnet.");
+        setManualActionError(preCheck.error ?? TEXT.ERR_VALIDATE);
         return;
       }
 
@@ -241,26 +224,22 @@ export default function DashboardView({
         setHasBlockingErrors(true);
 
         if (allowOverrideOnError) {
-          // Show confirmation modal
           const action = manualActions.find((a) => a.id === actionId);
           setPendingManualActionId(actionId);
-          setPendingManualActionName(action?.name ?? "Acción");
+          setPendingManualActionName(action?.name ?? TEXT.ERR_ACTION);
           setManualActionModalErrors(errorChecks);
           setShowManualActionModal(true);
         } else {
-          setManualActionError("El estado del carnet ha cambiado — se detectaron errores de validación.");
+          setManualActionError(TEXT.ERR_STATE);
         }
         return;
       }
 
-      // 2. No blocking errors — execute directly
       await executeAndRefresh(actionId);
     } finally {
       setIsExecutingActionId(null);
     }
   }, [activeCard, isExecutingActionId, allowOverrideOnError, manualActions, executeAndRefresh]);
-
-  // ── Manual action modal confirm/cancel ──────────────────────────────────────
 
   const handleManualActionConfirm = useCallback(async () => {
     if (!pendingManualActionId) return;
@@ -283,11 +262,10 @@ export default function DashboardView({
     setManualActionModalErrors([]);
   }, []);
 
-  // ────────────────────────────────────────────────────────────────────────────
+  // ── Render (REBUILT on tokens + shadcn primitives) ────────────────────────
 
   return (
     <>
-      {/* Modals (rendered at root level to escape stacking contexts) */}
       <AutoActionConfirmModal
         isOpen={showAutoActionModal}
         onConfirm={handleAutoActionResume}
@@ -308,52 +286,32 @@ export default function DashboardView({
         isLoading={isConfirmingManualAction}
       />
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-        {/* Top bar: search + camera button */}
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <div style={{ flex: 1 }}>
-            <DashboardSearchBar onScan={handleScan} isScanning={isScanning} />
-          </div>
-          <Link
-            href="/cards/scan"
-            className="btn btn-ghost"
-            style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}
-          >
-            <Camera size={16} strokeWidth={1.8} />
-            Cámara
-          </Link>
-        </div>
+      <div className="flex flex-col gap-6">
+        {/* 1. Primary operational action — the focal point */}
+        <DashboardSearchBar onScan={handleScan} isScanning={isScanning} />
 
-        {/* Scan error */}
+        {/* Scan error toast (from execute action layer) */}
         {scanError && (
-          <div style={{
-            padding: "10px 14px",
-            background: "#fef2f2",
-            border: "1px solid #fca5a5",
-            borderRadius: 8,
-            fontSize: 12.5,
-            color: "#dc2626",
-          }}>
+          <div
+            role="alert"
+            className={cn(
+              "rounded-lg border-2 px-4 py-3 text-sm font-medium",
+              "bg-state-denied border-state-denied-border text-state-denied-foreground",
+            )}
+          >
             {scanError}
           </div>
         )}
 
-        {/* Main content: active card + activity feed */}
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1.4fr)",
-          gap: 20,
-          alignItems: "start",
-        }}>
-          {/* Left: Active card zone */}
-          <div>
-            <div style={{
-              fontSize: 12, fontWeight: 700, textTransform: "uppercase",
-              letterSpacing: "0.06em", color: "var(--color-muted)",
-              marginBottom: 10,
-            }}>
-              Último carnet escaneado
-            </div>
+        {/* 2. KPI row */}
+        <DashboardKpis data={kpiData} />
+
+        {/* 3. Two-column work area */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+          <section aria-label={TEXT.COLUMN_ACTIVE} className="flex flex-col gap-3">
+            <h2 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              {TEXT.COLUMN_ACTIVE}
+            </h2>
             <ActiveCardZone
               activeCard={activeCard}
               autoActions={scanResult?.autoActions ?? []}
@@ -367,17 +325,14 @@ export default function DashboardView({
               isExecutingActionId={isExecutingActionId}
               actionError={manualActionError}
             />
-          </div>
+          </section>
 
-          {/* Right: Activity feed */}
-          <div>
-            <ActivityFeed
-              key={feedKey}
-              initialEntries={initialFeedEntries}
-              settings={settings}
-              refreshIntervalMs={15000}
-            />
-          </div>
+          <ActivityFeed
+            key={feedKey}
+            initialEntries={initialFeedEntries}
+            settings={settings}
+            refreshIntervalMs={15000}
+          />
         </div>
       </div>
     </>

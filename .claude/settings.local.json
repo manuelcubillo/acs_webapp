@@ -80,7 +80,12 @@
       "Bash(PATH=\"/opt/homebrew/opt/node@20/bin:$PATH\" pnpm test *)",
       "Bash(pnpm test *)",
       "Bash(pnpm build *)",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(timeout 90 pnpm next build)",
+      "Bash(timeout 60 pnpm next build)",
+      "Bash(pnpm dlx *)",
+      "Bash(sed -n '179,195p' src/components/ui/select.tsx)",
+      "Bash(sed -n '147,165p' src/components/ui/dialog.tsx)"
     ]
   }
 }

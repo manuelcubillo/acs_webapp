@@ -2,6 +2,13 @@
 
 import { LayoutList, Table2 } from "lucide-react";
 
+import { cn } from "@/lib/utils";
+
+const TEXT = {
+  TABLE:  "Tabla",
+  CARDS:  "Fichas",
+} as const;
+
 export type ViewMode = "table" | "profile";
 
 interface CardViewToggleProps {
@@ -10,48 +17,38 @@ interface CardViewToggleProps {
 }
 
 const VIEWS = [
-  { mode: "table" as const, Icon: Table2, label: "Tabla" },
-  { mode: "profile" as const, Icon: LayoutList, label: "Fichas" },
+  { mode: "table" as const,   Icon: Table2,     label: TEXT.TABLE },
+  { mode: "profile" as const, Icon: LayoutList, label: TEXT.CARDS },
 ];
 
 export default function CardViewToggle({ view, onChange }: CardViewToggleProps) {
   return (
     <div
-      style={{
-        display: "flex",
-        gap: 2,
-        background: "#f3f4f6",
-        borderRadius: 8,
-        padding: 2,
-      }}
+      role="group"
+      aria-label="Modo de visualización"
+      className="inline-flex gap-0.5 rounded-md bg-muted p-0.5"
     >
-      {VIEWS.map(({ mode, Icon, label }) => (
-        <button
-          key={mode}
-          onClick={() => onChange(mode)}
-          title={label}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 5,
-            padding: "6px 12px",
-            borderRadius: 6,
-            background: view === mode ? "#fff" : "transparent",
-            border: "none",
-            cursor: "pointer",
-            fontSize: 12,
-            fontWeight: 600,
-            color:
-              view === mode ? "var(--color-dark)" : "var(--color-muted)",
-            boxShadow:
-              view === mode ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-            transition: "all 0.15s",
-          }}
-        >
-          <Icon size={14} strokeWidth={1.8} />
-          {label}
-        </button>
-      ))}
+      {VIEWS.map(({ mode, Icon, label }) => {
+        const active = view === mode;
+        return (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => onChange(mode)}
+            title={label}
+            aria-pressed={active}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-xs font-semibold transition-colors",
+              active
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Icon className="size-3.5" strokeWidth={1.8} />
+            {label}
+          </button>
+        );
+      })}
     </div>
   );
 }

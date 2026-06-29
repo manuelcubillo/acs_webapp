@@ -53,7 +53,7 @@ export default function HistoryFieldFilters({
 
   if (loading) {
     return (
-      <div style={{ fontSize: 12, color: "var(--color-muted)", padding: "8px 0" }}>
+      <div className="py-2 text-xs text-muted-foreground">
         Cargando campos…
       </div>
     );

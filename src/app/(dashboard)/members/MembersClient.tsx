@@ -16,10 +16,14 @@ import PendingInvitationsList from "@/components/members/PendingInvitationsList"
 import InviteMemberModal from "@/components/members/InviteMemberModal";
 import EditMemberModal from "@/components/members/EditMemberModal";
 import ConfirmActionModal from "@/components/members/ConfirmActionModal";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const LABELS = {
   inviteBtn: "Añadir miembro",
   membersTitle: "Miembros",
+  memberCountSingle: "miembro en esta organización",
+  memberCountPlural: "miembros en esta organización",
   invitationsTitle: "Invitaciones pendientes",
   deactivateTitle: "Desactivar miembro",
   deactivateSubtitle: "El miembro perderá acceso inmediatamente.",
@@ -94,45 +98,37 @@ export default function MembersClient({
   return (
     <div>
       {/* Page header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, fontFamily: "var(--font-heading)", color: "var(--color-dark)", margin: 0 }}>
-            Miembros
+          <h1 className="font-heading text-2xl font-extrabold text-foreground">
+            {LABELS.membersTitle}
           </h1>
-          <p style={{ fontSize: 13.5, color: "var(--color-secondary)", marginTop: 4 }}>
-            {initialMembers.length} miembro{initialMembers.length !== 1 ? "s" : ""} en esta organización
+          <p className="mt-1 text-sm text-muted-foreground">
+            {initialMembers.length}{" "}
+            {initialMembers.length !== 1
+              ? LABELS.memberCountPlural
+              : LABELS.memberCountSingle}
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            onClick={refresh}
-            style={{
-              display: "flex", alignItems: "center", gap: 6,
-              padding: "9px 14px", borderRadius: 9,
-              border: "1.5px solid var(--color-border)", background: "#fff",
-              cursor: "pointer", fontSize: 13, fontWeight: 500, color: "var(--color-dark)",
-            }}
-          >
-            <RefreshCw size={14} strokeWidth={2} />
-          </button>
-          <button
-            onClick={() => setInviteOpen(true)}
-            className="btn btn-primary"
-          >
-            <UserPlus size={16} strokeWidth={2} />
+        <div className="flex gap-2">
+          <Button variant="outline" size="icon" onClick={refresh}>
+            <RefreshCw className="size-3.5" strokeWidth={2} />
+          </Button>
+          <Button onClick={() => setInviteOpen(true)}>
+            <UserPlus className="size-4" strokeWidth={2} />
             {LABELS.inviteBtn}
-          </button>
+          </Button>
         </div>
       </div>
 
       {actionError && (
-        <div style={{ padding: "12px 16px", background: "#fef2f2", color: "#dc2626", borderRadius: 10, border: "1px solid #fecaca", marginBottom: 16, fontSize: 13 }}>
-          {actionError}
-        </div>
+        <Alert variant="destructive" className="mb-4">
+          <AlertDescription>{actionError}</AlertDescription>
+        </Alert>
       )}
 
       {/* Members list */}
-      <section style={{ marginBottom: 32 }}>
+      <section className="mb-8">
         <MembersList
           members={initialMembers}
           memberAvatarReadUrls={memberAvatarReadUrls}
@@ -146,7 +142,7 @@ export default function MembersClient({
 
       {/* Pending invitations */}
       <section>
-        <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--color-dark)", marginBottom: 12 }}>
+        <h2 className="mb-3 text-[15px] font-bold text-foreground">
           {LABELS.invitationsTitle}
         </h2>
         <PendingInvitationsList

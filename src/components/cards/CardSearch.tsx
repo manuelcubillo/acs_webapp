@@ -2,34 +2,41 @@
 
 import { useState, useRef } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { Search, Camera, X } from "lucide-react";
-import { useExternalScanner } from "@/hooks/useExternalScanner";
-import type { ScanMode } from "@/lib/dal/types";
 import dynamic from "next/dynamic";
+import { Camera, Search, X } from "lucide-react";
 
-// Lazy-load heavy camera components (avoids SSR issues with html5-qrcode).
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useExternalScanner } from "@/hooks/useExternalScanner";
+import { cn } from "@/lib/utils";
+import type { ScanMode } from "@/lib/dal/types";
+
+const TEXT = {
+  PLACEHOLDER:   "Buscar por código…",
+  BTN_SEARCH:    "Buscar",
+  ARIA_CAMERA:   "Escanear con cámara",
+  ARIA_CLEAR:    "Limpiar búsqueda",
+} as const;
+
 const QRScanner = dynamic(() => import("./scanner/QRScanner"), { ssr: false });
-const ScannerOverlay = dynamic(
-  () => import("./scanner/ScannerOverlay"),
-  { ssr: false },
-);
+const ScannerOverlay = dynamic(() => import("./scanner/ScannerOverlay"), { ssr: false });
 
 interface CardSearchProps {
   scanMode: ScanMode;
-  /** Initial value (from server-rendered URL param). */
   defaultValue?: string;
   placeholder?: string;
-  /**
-   * When provided, called with the search query instead of pushing to the URL.
-   * Used by CardList for client-side state management.
-   */
   onSearch?: (q: string) => void;
 }
 
 export default function CardSearch({
   scanMode,
   defaultValue = "",
-  placeholder = "Buscar por código...",
+  placeholder = TEXT.PLACEHOLDER,
   onSearch,
 }: CardSearchProps) {
   const router = useRouter();
@@ -43,7 +50,6 @@ export default function CardSearch({
   const cameraEnabled = scanMode === "camera" || scanMode === "both";
   const externalEnabled = scanMode === "external_reader" || scanMode === "both";
 
-  /** Push a new search to the URL or invoke the onSearch callback. */
   function navigate(q: string) {
     if (onSearch) {
       onSearch(q.trim());
@@ -75,7 +81,6 @@ export default function CardSearch({
     inputRef.current?.focus();
   }
 
-  // External scanner (barcode reader via HID keyboard injection).
   useExternalScanner({
     onScan: (code) => {
       setQuery(code);
@@ -86,102 +91,55 @@ export default function CardSearch({
 
   return (
     <>
-      <form onSubmit={handleSubmit} style={{ display: "flex", gap: 8 }}>
-        {/* Search input */}
-        <div style={{ flex: 1, position: "relative" }}>
+      <form onSubmit={handleSubmit} className="flex gap-2">
+        <div className="relative flex-1">
           <Search
-            size={16}
-            style={{
-              position: "absolute",
-              left: 11,
-              top: "50%",
-              transform: "translateY(-50%)",
-              color: "var(--color-muted)",
-              pointerEvents: "none",
-            }}
+            aria-hidden
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            strokeWidth={1.8}
           />
-          <input
+          <Input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={placeholder}
-            style={{
-              width: "100%",
-              padding: "9px 36px",
-              borderRadius: 8,
-              border: "1.5px solid var(--color-border)",
-              fontSize: 14,
-              outline: "none",
-              background: "#fff",
-              color: "var(--color-dark)",
-              boxSizing: "border-box",
-            }}
+            className={cn("w-full pl-9", query && "pr-9")}
           />
           {query && (
             <button
               type="button"
               onClick={handleClear}
-              style={{
-                position: "absolute",
-                right: 10,
-                top: "50%",
-                transform: "translateY(-50%)",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: "var(--color-muted)",
-                display: "flex",
-                alignItems: "center",
-                padding: 2,
-              }}
+              aria-label={TEXT.ARIA_CLEAR}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
             >
-              <X size={14} />
+              <X className="size-3.5" strokeWidth={2.2} />
             </button>
           )}
         </div>
 
-        {/* Search button */}
-        <button
-          type="submit"
-          style={{
-            padding: "9px 18px",
-            borderRadius: 8,
-            background: "var(--color-primary)",
-            color: "#fff",
-            border: "none",
-            cursor: "pointer",
-            fontSize: 14,
-            fontWeight: 600,
-            whiteSpace: "nowrap",
-          }}
-        >
-          Buscar
-        </button>
+        <Button type="submit" className="whitespace-nowrap">
+          {TEXT.BTN_SEARCH}
+        </Button>
 
-        {/* Camera button */}
         {cameraEnabled && (
-          <button
-            type="button"
-            onClick={() => setShowCamera(true)}
-            title="Escanear con cámara"
-            style={{
-              padding: "9px 14px",
-              borderRadius: 8,
-              background: "#f3f4f6",
-              border: "1.5px solid var(--color-border)",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              color: "var(--color-dark)",
-            }}
-          >
-            <Camera size={17} strokeWidth={1.8} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setShowCamera(true)}
+                aria-label={TEXT.ARIA_CAMERA}
+              >
+                <Camera />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{TEXT.ARIA_CAMERA}</TooltipContent>
+          </Tooltip>
         )}
       </form>
 
-      {/* Camera overlay */}
       {showCamera && (
         <ScannerOverlay onClose={() => setShowCamera(false)}>
           <QRScanner onScan={handleQRScan} />

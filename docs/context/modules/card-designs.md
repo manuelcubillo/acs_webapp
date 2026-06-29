@@ -1,6 +1,6 @@
 # Module: card-designs
 
-**Last updated**: 2026-04-28 · **Last feature**: image nodes upload via `PhotoUploader`; renderer reads `staticObjectKey` through a `staticImageUrls` map
+**Last updated**: 2026-06-07 · **Last feature**: Phase 3 token/shadcn migration of card-design chrome; Konva canvas + node data colours preserved as documented exceptions (ADR `2026-06-07-phase3-inline-style-migration.md`)
 
 ## Responsibility
 

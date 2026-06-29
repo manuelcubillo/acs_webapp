@@ -1,6 +1,6 @@
 # Module: card-types
 
-**Last updated**: 2026-04-27 · **Last feature**: linked designs section on card-type detail page
+**Last updated**: 2026-06-07 · **Last feature**: Phase 3 token/shadcn migration of card-types (wizard, steps, fields, detail) — presentation only, ADR `2026-06-07-phase3-inline-style-migration.md`
 
 ## Responsibility
 

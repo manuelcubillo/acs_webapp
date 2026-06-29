@@ -122,7 +122,7 @@ export default async function EditCardTypePage({ params }: PageProps) {
 
   return (
     <DashboardShell title={`Editar: ${cardType.name}`} role={role}>
-      <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <div className="flex h-full flex-col">
         <CardTypeWizard initialData={initialData} />
       </div>
     </DashboardShell>

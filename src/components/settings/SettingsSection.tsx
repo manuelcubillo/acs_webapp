@@ -27,31 +27,19 @@ export default function SettingsSection({
   children,
 }: SettingsSectionProps) {
   return (
-    <div style={{ maxWidth: 720, display: "flex", flexDirection: "column", gap: 0 }}>
+    <div className="flex max-w-[720px] flex-col">
       {/* Page heading */}
-      <div style={{ marginBottom: 24 }}>
-        <h1
-          style={{
-            fontSize: 22,
-            fontWeight: 800,
-            fontFamily: "var(--font-heading)",
-            color: "var(--color-dark)",
-            margin: "0 0 6px",
-          }}
-        >
+      <div className="mb-6">
+        <h1 className="mb-1.5 font-heading text-[22px] font-extrabold text-foreground">
           {title}
         </h1>
         {description && (
-          <p style={{ fontSize: 13.5, color: "var(--color-secondary)", margin: 0 }}>
-            {description}
-          </p>
+          <p className="text-sm text-muted-foreground">{description}</p>
         )}
       </div>
 
       {/* Content area — cards stacked vertically */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-        {children}
-      </div>
+      <div className="flex flex-col gap-5">{children}</div>
     </div>
   );
 }

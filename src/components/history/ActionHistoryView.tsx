@@ -24,6 +24,13 @@ import HistoryExportButton from "./HistoryExportButton";
 const PAGE_SIZE = 50;
 const COUNT_CAP = 10_001;
 
+const TEXT = {
+  LOADING:  "Cargando…",
+  EMPTY:    "Sin resultados",
+  CAPPED:   ">10.000",
+  ENTRIES:  "entradas",
+} as const;
+
 interface ActionHistoryViewProps {
   initialData: PaginatedResult<ActionHistoryEntry>;
   filterOptions: HistoryFilterOptions;
@@ -122,31 +129,20 @@ export default function ActionHistoryView({
       />
 
       {/* Toolbar: scan toggle + entry count + export */}
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        flexWrap: "wrap",
-        gap: 12,
-        marginBottom: 12,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-4">
           <HistoryScanToggle
             showScans={showScans}
             onChange={handleScanToggle}
             disabled={isPending}
           />
 
-          <span style={{
-            fontSize: 13,
-            color: "var(--color-muted)",
-            whiteSpace: "nowrap",
-          }}>
+          <span className="whitespace-nowrap text-sm text-muted-foreground">
             {isPending
-              ? "Cargando…"
+              ? TEXT.LOADING
               : total === 0
-                ? "Sin resultados"
-                : `${isCapped ? ">10.000" : total.toLocaleString("es-ES")} entradas`
+                ? TEXT.EMPTY
+                : `${isCapped ? TEXT.CAPPED : total.toLocaleString("es-ES")} ${TEXT.ENTRIES}`
             }
           </span>
         </div>

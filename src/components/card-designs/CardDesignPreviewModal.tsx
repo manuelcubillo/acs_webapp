@@ -7,11 +7,18 @@
  * Uses renderDesignToDataURL from @/lib/card-designs/render (Canvas API).
  */
 
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { X, Download, Loader2, AlertCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Download, Loader2, AlertCircle } from "lucide-react";
 import type { CardDesignLayout } from "@/lib/card-designs/types";
 import { renderDesignToDataURL } from "@/lib/card-designs/render";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 const LABELS = {
   title: "Vista previa del diseño",
@@ -45,7 +52,6 @@ export default function CardDesignPreviewModal({
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
-  const backdropRef = useRef<HTMLDivElement>(null);
 
   // Render on mount
   useEffect(() => {
@@ -63,19 +69,6 @@ export default function CardDesignPreviewModal({
     return () => { cancelled = true; };
   }, [layout, fieldValues, photoValues, staticImageUrls, cardCode]);
 
-  // Close on Escape
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  function handleBackdropClick(e: React.MouseEvent) {
-    if (e.target === backdropRef.current) onClose();
-  }
-
   function handleDownload() {
     if (!dataUrl) return;
     setDownloading(true);
@@ -86,140 +79,53 @@ export default function CardDesignPreviewModal({
     setTimeout(() => setDownloading(false), 500);
   }
 
-  const modal = (
-    <div
-      ref={backdropRef}
-      onClick={handleBackdropClick}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.55)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-        padding: 24,
-      }}
-    >
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 16,
-          boxShadow: "0 24px 64px rgba(0,0,0,0.2)",
-          maxWidth: 640,
-          width: "100%",
-          maxHeight: "90vh",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-      >
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-h-[90vh] max-w-[640px] gap-0 overflow-hidden p-0">
         {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            padding: "16px 20px",
-            borderBottom: "1px solid var(--color-border-soft)",
-            gap: 12,
-          }}
-        >
-          <span
-            style={{
-              flex: 1,
-              fontSize: 15,
-              fontWeight: 700,
-              fontFamily: "var(--font-heading)",
-              color: "var(--color-dark)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
+        <DialogHeader className="border-b p-5">
+          <DialogTitle className="truncate font-heading text-[15px] font-bold">
             {LABELS.title} — {designName}
-          </span>
-          <button
-            onClick={onClose}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: "var(--color-muted)",
-              display: "flex",
-              padding: 4,
-            }}
-          >
-            <X size={18} strokeWidth={2} />
-          </button>
-        </div>
+          </DialogTitle>
+        </DialogHeader>
 
         {/* Preview area */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 24,
-            background: "#f3f4f6",
-            minHeight: 200,
-          }}
-        >
+        <div className="flex min-h-[200px] flex-1 items-center justify-center overflow-y-auto bg-muted p-6">
           {error ? (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, color: "#dc2626" }}>
-              <AlertCircle size={28} strokeWidth={1.5} />
-              <span style={{ fontSize: 13 }}>{error}</span>
+            <div className="flex flex-col items-center gap-2 text-destructive">
+              <AlertCircle className="size-7" strokeWidth={1.5} />
+              <span className="text-sm">{error}</span>
             </div>
           ) : !dataUrl ? (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, color: "var(--color-muted)" }}>
-              <Loader2 size={28} strokeWidth={1.5} style={{ animation: "spin 1s linear infinite" }} />
-              <span style={{ fontSize: 13 }}>{LABELS.loading}</span>
+            <div className="flex flex-col items-center gap-2.5 text-muted-foreground">
+              <Loader2 className="size-7 animate-spin" strokeWidth={1.5} />
+              <span className="text-sm">{LABELS.loading}</span>
             </div>
           ) : (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={dataUrl}
               alt={designName}
-              style={{
-                maxWidth: "100%",
-                maxHeight: "60vh",
-                objectFit: "contain",
-                borderRadius: 8,
-                boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
-              }}
+              className="max-h-[60vh] max-w-full rounded-lg object-contain shadow-lg"
             />
           )}
         </div>
 
         {/* Footer */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 8,
-            padding: "14px 20px",
-            borderTop: "1px solid var(--color-border-soft)",
-          }}
-        >
-          <button onClick={onClose} className="btn btn-secondary">
+        <DialogFooter className="border-t p-5">
+          <Button variant="outline" onClick={onClose}>
             {LABELS.close}
-          </button>
-          <button
-            onClick={handleDownload}
-            disabled={!dataUrl || downloading}
-            className="btn btn-primary"
-          >
+          </Button>
+          <Button onClick={handleDownload} disabled={!dataUrl || downloading}>
             {downloading ? (
-              <Loader2 size={14} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
+              <Loader2 className="animate-spin" strokeWidth={2} />
             ) : (
-              <Download size={14} strokeWidth={2} />
+              <Download strokeWidth={2} />
             )}
             {downloading ? LABELS.downloading : LABELS.download}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
-
-  return createPortal(modal, document.body);
 }

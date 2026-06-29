@@ -21,6 +21,8 @@ Router for tasks. Read `foundation/` once per session. Then read only the module
 | DB migration, schema change, Drizzle                 | `infrastructure`, `<affected module>`           |
 | Deploy, env vars, build, Node version                | `infrastructure`                                |
 | Shared components, cross-card-type field filtering   | `fields`, `cards`                               |
+| Design system, tokens, theming, brand swap, dark mode | `decisions/2026-06-06-design-system-tokens.md`, `decisions/2026-06-06-adopt-shadcn-ui.md` |
+| shadcn primitive, button, dialog, badge, card variants | `decisions/2026-06-06-adopt-shadcn-ui.md`       |
 
 ## If the task doesn't match any row above
 

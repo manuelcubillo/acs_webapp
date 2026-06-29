@@ -7,10 +7,29 @@
  */
 
 import { useState } from "react";
-import { X, Loader2, Mail, UserPlus } from "lucide-react";
+import { Loader2, Mail, UserPlus } from "lucide-react";
 import { inviteMemberByEmailAction } from "@/lib/actions/invitations";
 import { createAndAddMemberAction } from "@/lib/actions/members";
 import type { TenantRole } from "@/lib/api";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const LABELS = {
   title: "Añadir miembro",
@@ -22,6 +41,7 @@ const LABELS = {
   namePlaceholder: "Nombre completo",
   usernameLabel: "Nombre de usuario",
   usernamePlaceholder: "usuario",
+  usernameHint: "Solo letras minúsculas, números, guiones y puntos",
   passwordLabel: "Contraseña",
   roleLabel: "Rol",
   submitEmail: "Enviar invitación",
@@ -29,6 +49,7 @@ const LABELS = {
   submitNew: "Crear y añadir",
   submittingNew: "Creando…",
   cancel: "Cancelar",
+  errUnknown: "Error desconocido.",
   successEmail: "Invitación enviada correctamente.",
   successNew: "Usuario creado y añadido correctamente.",
   roles: {
@@ -102,7 +123,7 @@ export default function InviteMemberModal({
     setLoading(false);
 
     if (!result.success) {
-      setError(result.error ?? "Error desconocido.");
+      setError(result.error ?? LABELS.errUnknown);
       return;
     }
 
@@ -114,93 +135,47 @@ export default function InviteMemberModal({
     }, 1200);
   }
 
-  if (!isOpen) return null;
-
-  const fieldStyle = {
-    label: {
-      display: "block" as const,
-      fontSize: 13,
-      fontWeight: 600,
-      color: "var(--color-dark)",
-      marginBottom: 6,
-    },
+  const handleOpenChange = (open: boolean) => {
+    if (!open && !loading) handleClose();
   };
 
   return (
-    <>
-      <div
-        onClick={() => !loading && handleClose()}
-        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9998 }}
-        aria-hidden="true"
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        style={{
-          position: "fixed",
-          top: "50%", left: "50%",
-          transform: "translate(-50%,-50%)",
-          zIndex: 9999,
-          width: "min(480px, calc(100vw - 32px))",
-          background: "#fff",
-          borderRadius: 16,
-          boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
-          overflow: "hidden",
-        }}
-      >
-        {/* Header */}
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "20px 20px 0",
-        }}>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "var(--color-dark)" }}>
-            {LABELS.title}
-          </h2>
-          {!loading && (
-            <button onClick={handleClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af" }}>
-              <X size={18} />
-            </button>
-          )}
-        </div>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      <DialogContent showCloseButton={!loading} className="max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>{LABELS.title}</DialogTitle>
+        </DialogHeader>
 
         {/* Tabs */}
-        <div style={{ display: "flex", gap: 4, padding: "16px 20px 0", borderBottom: "1px solid var(--color-border-soft)" }}>
-          {(["email", "new"] as Tab[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => { setTab(t); reset(); }}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "8px 14px",
-                border: "none",
-                background: "none",
-                cursor: "pointer",
-                fontSize: 13,
-                fontWeight: tab === t ? 600 : 400,
-                color: tab === t ? "var(--color-primary)" : "var(--color-muted)",
-                borderBottom: tab === t ? "2px solid var(--color-primary)" : "2px solid transparent",
-                marginBottom: -1,
-              }}
-            >
-              {t === "email" ? <Mail size={14} /> : <UserPlus size={14} />}
-              {t === "email" ? LABELS.tabEmail : LABELS.tabNew}
-            </button>
-          ))}
-        </div>
+        <Tabs
+          value={tab}
+          onValueChange={(v) => { setTab(v as Tab); reset(); }}
+        >
+          <TabsList className="w-full">
+            <TabsTrigger value="email" className="gap-1.5">
+              <Mail className="size-3.5" />
+              {LABELS.tabEmail}
+            </TabsTrigger>
+            <TabsTrigger value="new" className="gap-1.5">
+              <UserPlus className="size-3.5" />
+              {LABELS.tabNew}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} style={{ padding: "20px" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <form onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-3.5">
             {/* Email — always shown */}
-            <div>
-              <label style={fieldStyle.label}>{LABELS.emailLabel}</label>
-              <input
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="invite-email">{LABELS.emailLabel}</Label>
+              <Input
+                id="invite-email"
                 type="email"
                 required
                 autoFocus
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setError(""); }}
-                className="form-input"
                 placeholder={LABELS.emailPlaceholder}
               />
             </div>
@@ -208,44 +183,44 @@ export default function InviteMemberModal({
             {/* Extra fields for "new user" tab */}
             {tab === "new" && (
               <>
-                <div>
-                  <label style={fieldStyle.label}>{LABELS.nameLabel}</label>
-                  <input
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="invite-name">{LABELS.nameLabel}</Label>
+                  <Input
+                    id="invite-name"
                     type="text"
                     required
                     value={name}
                     onChange={(e) => { setName(e.target.value); setError(""); }}
-                    className="form-input"
                     placeholder={LABELS.namePlaceholder}
                     minLength={1}
                     maxLength={100}
                   />
                 </div>
 
-                <div>
-                  <label style={fieldStyle.label}>{LABELS.usernameLabel}</label>
-                  <input
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="invite-username">{LABELS.usernameLabel}</Label>
+                  <Input
+                    id="invite-username"
                     type="text"
                     required
                     value={username}
                     onChange={(e) => { setUsername(e.target.value.toLowerCase()); setError(""); }}
-                    className="form-input"
                     placeholder={LABELS.usernamePlaceholder}
                     minLength={2}
                     maxLength={50}
                     pattern="^[a-z0-9_.\-]+$"
-                    title="Solo letras minúsculas, números, guiones y puntos"
+                    title={LABELS.usernameHint}
                   />
                 </div>
 
-                <div>
-                  <label style={fieldStyle.label}>{LABELS.passwordLabel}</label>
-                  <input
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="invite-password">{LABELS.passwordLabel}</Label>
+                  <Input
+                    id="invite-password"
                     type="password"
                     required
                     value={password}
                     onChange={(e) => { setPassword(e.target.value); setError(""); }}
-                    className="form-input"
                     minLength={8}
                     maxLength={128}
                   />
@@ -254,63 +229,52 @@ export default function InviteMemberModal({
             )}
 
             {/* Role — always shown */}
-            <div>
-              <label style={fieldStyle.label}>{LABELS.roleLabel}</label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value as TenantRole)}
-                className="form-input"
-              >
-                {assignableRoles.map((r) => (
-                  <option key={r} value={r}>
-                    {LABELS.roles[r]}
-                  </option>
-                ))}
-              </select>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="invite-role">{LABELS.roleLabel}</Label>
+              <Select value={role} onValueChange={(v) => setRole(v as TenantRole)}>
+                <SelectTrigger id="invite-role" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {assignableRoles.map((r) => (
+                    <SelectItem key={r} value={r}>{LABELS.roles[r]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {error && (
-              <p style={{ margin: 0, padding: "10px 12px", background: "#fef2f2", color: "#dc2626", borderRadius: 8, fontSize: 13, border: "1px solid #fecaca" }}>
-                {error}
-              </p>
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
             )}
             {success && (
-              <p style={{ margin: 0, padding: "10px 12px", background: "#f0fdf4", color: "#16a34a", borderRadius: 8, fontSize: 13, border: "1px solid #bbf7d0" }}>
-                {success}
-              </p>
+              <Alert>
+                <AlertDescription className="text-card-foreground">
+                  {success}
+                </AlertDescription>
+              </Alert>
             )}
           </div>
 
-          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
-            <button
+          <DialogFooter className="mt-5">
+            <Button
               type="button"
+              variant="outline"
               onClick={handleClose}
               disabled={loading}
-              style={{
-                padding: "9px 18px", borderRadius: 9,
-                border: "1.5px solid var(--color-border)",
-                background: "#fff", cursor: loading ? "not-allowed" : "pointer",
-                fontSize: 13, fontWeight: 600, color: "var(--color-secondary)",
-                opacity: loading ? 0.5 : 1,
-              }}
             >
               {LABELS.cancel}
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn btn-primary"
-              style={{ fontSize: 13 }}
-            >
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading && <Loader2 className="animate-spin" />}
               {loading
-                ? <><Loader2 size={14} style={{ animation: "spin 0.8s linear infinite" }} />{tab === "email" ? LABELS.submittingEmail : LABELS.submittingNew}</>
-                : tab === "email" ? LABELS.submitEmail : LABELS.submitNew
-              }
-            </button>
-          </div>
+                ? tab === "email" ? LABELS.submittingEmail : LABELS.submittingNew
+                : tab === "email" ? LABELS.submitEmail : LABELS.submitNew}
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-      <style>{`@keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }`}</style>
-    </>
+      </DialogContent>
+    </Dialog>
   );
 }

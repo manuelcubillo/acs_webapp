@@ -1,6 +1,22 @@
 "use client";
 
+/**
+ * ScannerOverlay — fixed-position dark overlay for camera scanning surfaces.
+ *
+ * The black backdrop is intentional (matches the camera medium), so this
+ * surface intentionally does not follow brand or dark/light mode — it is
+ * always the dark scanner backdrop.
+ */
+
 import { X } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+
+const TEXT = {
+  DEFAULT_TITLE: "Escanear código",
+  DEFAULT_HINT:  "Apunta la cámara al código QR o de barras del carnet",
+  ARIA_CLOSE:    "Cerrar escáner",
+} as const;
 
 interface ScannerOverlayProps {
   children: React.ReactNode;
@@ -12,68 +28,29 @@ interface ScannerOverlayProps {
 export default function ScannerOverlay({
   children,
   onClose,
-  title = "Escanear código",
-  hint = "Apunta la cámara al código QR o de barras del carnet",
+  title = TEXT.DEFAULT_TITLE,
+  hint = TEXT.DEFAULT_HINT,
 }: ScannerOverlayProps) {
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.92)",
-        zIndex: 50,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-      }}
-    >
-      {/* Close */}
-      <button
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/90 p-6">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
         onClick={onClose}
-        style={{
-          position: "absolute",
-          top: 20,
-          right: 20,
-          width: 40,
-          height: 40,
-          borderRadius: "50%",
-          background: "rgba(255,255,255,0.15)",
-          border: "none",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#fff",
-        }}
+        aria-label={TEXT.ARIA_CLOSE}
+        className="absolute right-5 top-5 size-10 rounded-full bg-white/15 text-white hover:bg-white/25"
       >
-        <X size={20} />
-      </button>
+        <X />
+      </Button>
 
-      <h2
-        style={{
-          color: "#fff",
-          fontSize: 18,
-          fontWeight: 700,
-          margin: "0 0 20px",
-          fontFamily: "var(--font-heading)",
-        }}
-      >
+      <h2 className="mb-5 font-heading text-lg font-bold text-white">
         {title}
       </h2>
 
       {children}
 
-      <p
-        style={{
-          color: "rgba(255,255,255,0.5)",
-          fontSize: 13,
-          marginTop: 20,
-          textAlign: "center",
-          maxWidth: 320,
-        }}
-      >
+      <p className="mt-5 max-w-xs text-center text-sm text-white/60">
         {hint}
       </p>
     </div>

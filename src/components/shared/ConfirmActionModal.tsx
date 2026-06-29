@@ -3,23 +3,48 @@
 /**
  * ConfirmActionModal
  *
- * Shown when an operator attempts to execute a manual action on a card
- * that has error-level validation failures AND allow_override_on_error is enabled.
+ * Shown when an operator attempts to execute a manual action on a card that
+ * has error-level validation failures AND allow_override_on_error is enabled.
  *
- * Forces explicit confirmation before proceeding. The execution is logged
- * as an operator override in action_log metadata.
+ * State semantics:
+ *   - The modal frames an OVERRIDE decision → state-override (orange).
+ *   - The error list inside uses state-denied (red) — these are the blocking
+ *     failures the operator is overriding.
+ *   - The "you are about to execute X" context uses muted neutral.
+ *
+ * Behavior preserved EXACTLY — only presentation changes.
+ * The execution is logged with operator_override=true on confirm.
  */
 
 import { useEffect, useRef } from "react";
-import { AlertTriangle, Loader2, X } from "lucide-react";
+import { AlertTriangle, Loader2, ShieldAlert } from "lucide-react";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { ScanValidationCheck } from "@/lib/validation/scan-validator";
+
+const TEXT = {
+  TITLE:        "Errores de validación detectados",
+  SUBTITLE:     "Este carnet tiene errores que requieren confirmación.",
+  ABOUT_TO:     "Vas a ejecutar:",
+  WARNING:      "Si continúas, la acción quedará registrada como intervención manual del operador.",
+  BTN_CANCEL:   "Cancelar",
+  BTN_CONFIRM:  "Confirmar y ejecutar",
+} as const;
 
 export interface ConfirmActionModalProps {
   isOpen: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   actionName: string;
-  /** Only error-level failed checks to display. */
   validationErrors: ScanValidationCheck[];
   isLoading?: boolean;
 }
@@ -32,207 +57,112 @@ export default function ConfirmActionModal({
   validationErrors,
   isLoading = false,
 }: ConfirmActionModalProps) {
-  const confirmBtnRef = useRef<HTMLButtonElement>(null);
+  const cancelBtnRef = useRef<HTMLButtonElement>(null);
 
-  // Focus trap: focus the Cancel button on open (safer default)
+  // Focus cancel on open — safer default.
   useEffect(() => {
-    if (!isOpen) return;
-    const cancelBtn = document.getElementById("confirm-action-cancel");
-    cancelBtn?.focus();
+    if (isOpen) {
+      // Defer one tick so Dialog's portal has mounted.
+      const t = setTimeout(() => cancelBtnRef.current?.focus(), 0);
+      return () => clearTimeout(t);
+    }
   }, [isOpen]);
 
-  // Close on Escape key
-  useEffect(() => {
-    if (!isOpen) return;
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !isLoading) onCancel();
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [isOpen, isLoading, onCancel]);
-
-  if (!isOpen) return null;
+  const handleOpenChange = (open: boolean) => {
+    if (!open && !isLoading) onCancel();
+  };
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        onClick={() => !isLoading && onCancel()}
-        style={{
-          position: "fixed", inset: 0,
-          background: "rgba(0,0,0,0.45)",
-          zIndex: 9998,
-        }}
-        aria-hidden="true"
-      />
-
-      {/* Modal */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="confirm-action-title"
-        style={{
-          position: "fixed",
-          top: "50%", left: "50%",
-          transform: "translate(-50%, -50%)",
-          zIndex: 9999,
-          width: "min(480px, calc(100vw - 32px))",
-          background: "#fff",
-          borderRadius: 16,
-          boxShadow: "0 20px 60px rgba(0,0,0,0.2), 0 4px 12px rgba(0,0,0,0.1)",
-          display: "flex", flexDirection: "column",
-          overflow: "hidden",
-        }}
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      <DialogContent
+        showCloseButton={!isLoading}
+        className="max-w-lg gap-0 overflow-hidden p-0"
       >
-        {/* Header */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 12,
-          padding: "20px 20px 16px",
-          borderBottom: "1px solid #fee2e2",
-          background: "#fff7f7",
-        }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: 10,
-            background: "#fef2f2",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            flexShrink: 0,
-            border: "1.5px solid #fca5a5",
-          }}>
-            <AlertTriangle size={20} color="#dc2626" strokeWidth={2} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div
-              id="confirm-action-title"
-              style={{ fontSize: 15, fontWeight: 700, color: "#991b1b" }}
-            >
-              Errores de validación detectados
-            </div>
-            <div style={{ fontSize: 12.5, color: "#dc2626", marginTop: 2 }}>
-              Este carnet tiene errores que requieren confirmación.
-            </div>
-          </div>
-          {!isLoading && (
-            <button
-              onClick={onCancel}
-              style={{
-                background: "none", border: "none", cursor: "pointer",
-                padding: 4, borderRadius: 6, color: "#9ca3af",
-                display: "flex", alignItems: "center",
-              }}
-              aria-label="Cerrar"
-            >
-              <X size={18} strokeWidth={2} />
-            </button>
+        {/* Header — override-themed (orange) */}
+        <DialogHeader
+          className={cn(
+            "flex-row items-start gap-3 space-y-0 border-b p-5",
+            "bg-state-override border-state-override-border",
           )}
-        </div>
-
-        {/* Body */}
-        <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* Validation error list */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {validationErrors.map((check) => (
-              <div
-                key={check.scanValidationId}
-                style={{
-                  display: "flex", alignItems: "flex-start", gap: 10,
-                  padding: "8px 12px",
-                  background: "#fef2f2",
-                  borderRadius: 8,
-                  borderLeft: "3px solid #dc2626",
-                }}
-              >
-                <AlertTriangle
-                  size={13}
-                  color="#dc2626"
-                  strokeWidth={2}
-                  style={{ flexShrink: 0, marginTop: 1 }}
-                />
-                <div>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#991b1b" }}>
-                    {check.fieldLabel}:
-                  </span>{" "}
-                  <span style={{ fontSize: 12, color: "#b91c1c" }}>
-                    {check.message}
-                  </span>
-                </div>
-              </div>
-            ))}
+        >
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border-2 border-state-override-border bg-card">
+            <ShieldAlert
+              aria-hidden
+              strokeWidth={2}
+              className="size-5 text-state-override-icon"
+            />
           </div>
+          <div className="flex flex-1 flex-col gap-1">
+            <DialogTitle className="text-base font-bold text-state-override-foreground">
+              {TEXT.TITLE}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-state-override-foreground/90">
+              {TEXT.SUBTITLE}
+            </DialogDescription>
+          </div>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-4 p-5">
+          {/* Validation errors */}
+          <ul className="flex flex-col gap-1.5">
+            {validationErrors.map((check) => (
+              <li
+                key={check.scanValidationId}
+                className={cn(
+                  "flex items-start gap-2 rounded-md border-l-4 px-3 py-2 text-sm",
+                  "bg-state-denied border-l-state-denied-icon text-state-denied-foreground",
+                )}
+              >
+                <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0 text-state-denied-icon" />
+                <div className="min-w-0">
+                  <span className="font-semibold">{check.fieldLabel}:</span>{" "}
+                  <span className="opacity-90">{check.message}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
 
           {/* Action context */}
-          <div style={{
-            padding: "10px 12px",
-            background: "#f8f9fa",
-            borderRadius: 8,
-            border: "1px solid var(--color-border)",
-            fontSize: 12.5,
-            color: "var(--color-secondary)",
-          }}>
-            Vas a ejecutar: <strong style={{ color: "var(--color-dark)" }}>{actionName}</strong>
+          <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+            {TEXT.ABOUT_TO}{" "}
+            <strong className="text-foreground">{actionName}</strong>
           </div>
 
-          {/* Warning */}
-          <div style={{
-            fontSize: 12,
-            color: "#92400e",
-            background: "#fffbeb",
-            padding: "8px 12px",
-            borderRadius: 8,
-            border: "1px solid #fde68a",
-          }}>
-            ⚠️ Este carnet tiene errores de validación. Si continúas, la acción quedará registrada como{" "}
-            <strong>intervención manual del operador</strong>.
-          </div>
+          {/* Decision warning */}
+          <p
+            className={cn(
+              "rounded-md border px-3 py-2 text-xs",
+              "bg-state-override border-state-override-border text-state-override-foreground",
+            )}
+          >
+            {TEXT.WARNING}
+          </p>
         </div>
 
-        {/* Footer */}
-        <div style={{
-          display: "flex", gap: 10, justifyContent: "flex-end",
-          padding: "14px 20px",
-          borderTop: "1px solid var(--color-border-soft)",
-          background: "#f9fafb",
-        }}>
-          <button
-            id="confirm-action-cancel"
+        <DialogFooter className="border-t border-border bg-muted/40 px-5 py-3">
+          <Button
+            ref={cancelBtnRef}
+            type="button"
+            variant="outline"
             onClick={onCancel}
             disabled={isLoading}
-            style={{
-              padding: "9px 18px", borderRadius: 9,
-              border: "1.5px solid var(--color-border)",
-              background: "#fff", cursor: isLoading ? "not-allowed" : "pointer",
-              fontSize: 13, fontWeight: 600,
-              color: "var(--color-secondary)",
-              opacity: isLoading ? 0.5 : 1,
-            }}
           >
-            Cancelar
-          </button>
-          <button
-            ref={confirmBtnRef}
+            {TEXT.BTN_CANCEL}
+          </Button>
+          <Button
+            type="button"
             onClick={onConfirm}
             disabled={isLoading}
-            style={{
-              display: "flex", alignItems: "center", gap: 7,
-              padding: "9px 18px", borderRadius: 9,
-              border: "1.5px solid #dc2626",
-              background: isLoading ? "#fca5a5" : "#dc2626",
-              cursor: isLoading ? "not-allowed" : "pointer",
-              fontSize: 13, fontWeight: 600,
-              color: "#fff",
-              transition: "background 0.15s",
-            }}
-          >
-            {isLoading && (
-              <Loader2 size={14} strokeWidth={2} style={{ animation: "spin 0.8s linear infinite" }} />
+            className={cn(
+              "bg-state-override-icon text-white",
+              "hover:bg-state-override-icon/90 focus-visible:ring-state-override-icon/50",
             )}
-            Confirmar y ejecutar
-          </button>
-        </div>
-      </div>
-
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      `}</style>
-    </>
+          >
+            {isLoading && <Loader2 className="animate-spin" />}
+            {TEXT.BTN_CONFIRM}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

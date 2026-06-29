@@ -6,9 +6,7 @@ interface NumberRendererProps {
 
 export default function NumberRenderer({ value }: NumberRendererProps) {
   if (value === null || value === undefined || value === "") {
-    return (
-      <span style={{ color: "var(--color-muted)", fontStyle: "italic" }}>—</span>
-    );
+    return <span className="italic text-muted-foreground">—</span>;
   }
   const num = Number(value);
   if (isNaN(num)) return <span>{String(value)}</span>;

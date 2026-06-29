@@ -12,6 +12,7 @@ import { useState } from "react";
 import { Eye } from "lucide-react";
 import type { CardDesignLayout } from "@/lib/card-designs/types";
 import CardDesignPreviewModal from "./CardDesignPreviewModal";
+import { Button } from "@/components/ui/button";
 
 const LABELS = {
   btn: "Ver diseño",
@@ -39,25 +40,15 @@ export default function CardDesignPreviewButton({
 
   return (
     <>
-      <button
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
         onClick={() => setOpen(true)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "8px 14px",
-          borderRadius: 8,
-          border: "1.5px solid var(--color-border)",
-          background: "#fff",
-          fontSize: 13,
-          fontWeight: 600,
-          color: "var(--color-dark)",
-          cursor: "pointer",
-        }}
       >
-        <Eye size={14} strokeWidth={1.8} />
+        <Eye strokeWidth={1.8} />
         {LABELS.btn}
-      </button>
+      </Button>
 
       {open && (
         <CardDesignPreviewModal

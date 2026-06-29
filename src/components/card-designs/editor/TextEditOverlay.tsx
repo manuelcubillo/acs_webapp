@@ -17,6 +17,7 @@
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Check, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface ScreenRect {
   left: number;
@@ -120,48 +121,44 @@ export default function TextEditOverlay({
         pointerEvents: "none",
       }}
     >
-      {/* Toolbar — sits just above the textarea */}
+      {/* Toolbar — sits just above the textarea.
+          left/top/width are data-driven (screen-space coords of the node). */}
       <div
-        style={{
-          position: "absolute",
-          left,
-          top: top - 34,
-          width,
-          display: "flex",
-          gap: 4,
-          justifyContent: "flex-end",
-          pointerEvents: "auto",
-        }}
+        className="pointer-events-auto absolute flex justify-end gap-1"
+        style={{ left, top: top - 34, width }}
       >
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="icon-sm"
           onMouseDown={(e) => e.preventDefault()}
           onClick={onCancel}
           title="Cancelar (Esc)"
-          style={toolbarBtn("danger")}
+          className="border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
         >
-          <X size={13} strokeWidth={2.2} />
-        </button>
-        <button
+          <X strokeWidth={2.2} />
+        </Button>
+        <Button
           type="button"
+          size="icon-sm"
           onMouseDown={(e) => e.preventDefault()}
           onClick={onCommit}
           title="Confirmar (Enter)"
-          style={toolbarBtn("primary")}
         >
-          <Check size={13} strokeWidth={2.2} />
-        </button>
+          <Check strokeWidth={2.2} />
+        </Button>
       </div>
 
-      {/* Editor */}
+      {/* Editor — left/top/width/height/font/color/align are data-driven
+          (mirror the underlying text node), kept inline. Chrome via classes. */}
       <textarea
         ref={textareaRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
         spellCheck={false}
+        className="pointer-events-auto absolute resize-none rounded-md border-2 border-primary bg-card px-2 py-1.5 leading-tight shadow-lg outline-none"
         style={{
-          position: "absolute",
           left,
           top,
           width,
@@ -170,39 +167,9 @@ export default function TextEditOverlay({
           fontFamily,
           color,
           textAlign: align,
-          background: "#ffffff",
-          border: "2px solid var(--color-primary)",
-          borderRadius: 6,
-          padding: "6px 8px",
-          resize: "none",
-          outline: "none",
-          lineHeight: 1.3,
-          boxSizing: "border-box",
-          boxShadow: "0 8px 24px rgba(15,23,42,0.18)",
-          pointerEvents: "auto",
         }}
       />
     </div>,
     document.body,
   );
-}
-
-function toolbarBtn(variant: "primary" | "danger"): React.CSSProperties {
-  const colors =
-    variant === "primary"
-      ? { bg: "var(--color-primary)", color: "#fff", border: "var(--color-primary)" }
-      : { bg: "#fff", color: "#dc2626", border: "#fca5a5" };
-  return {
-    width: 28,
-    height: 28,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 6,
-    border: `1.5px solid ${colors.border}`,
-    background: colors.bg,
-    color: colors.color,
-    cursor: "pointer",
-    boxShadow: "0 2px 6px rgba(15,23,42,0.15)",
-  };
 }

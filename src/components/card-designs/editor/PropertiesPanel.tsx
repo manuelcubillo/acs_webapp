@@ -26,6 +26,17 @@ import { WEB_SAFE_FONTS } from "@/lib/card-designs/types";
 import type { CommonFieldDefinition, CardTypeWithFields, CardType } from "@/lib/dal";
 import { COMPATIBLE_FIELD_TYPES } from "./CardDesignEditor";
 import PhotoUploader from "@/components/shared/PhotoUploader";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 const LABELS = {
   panelTitle: "Propiedades",
@@ -80,6 +91,7 @@ const LABELS = {
   linkCancel: "Cancelar",
   linkError: "Error al vincular.",
   unlinkError: "Error al desvincular.",
+  loading: "Cargando…",
   dataSourceSection: "Fuente de datos",
   sourceStatic: "Estático",
   sourceField: "Campo",
@@ -89,6 +101,19 @@ const LABELS = {
   cardCodeHint: "Mostrará el código único de la tarjeta.",
   noFieldsHint: "Sin campos. Vincula un tipo de tarjeta al diseño.",
 } as const;
+
+// Sentinel for the field-selector "no field" option (Select can't use "").
+const NO_FIELD = "__none__";
+
+/** Segmented-toggle button class (active = brand accent). */
+function toggleBtnClass(active: boolean): string {
+  return cn(
+    "flex-1 rounded-md border px-0 py-1 text-[11px] font-semibold transition-colors",
+    active
+      ? "border-primary bg-accent text-primary"
+      : "border-border bg-card text-muted-foreground hover:bg-muted",
+  );
+}
 
 interface Props {
   layout: CardDesignLayout;
@@ -135,33 +160,13 @@ export default function PropertiesPanel({
     : null;
 
   return (
-    <div
-      style={{
-        width: 256,
-        flexShrink: 0,
-        background: "#fff",
-        borderLeft: "1px solid var(--color-border)",
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-      }}
-    >
+    <div className="flex w-64 shrink-0 flex-col overflow-hidden border-l bg-card">
       {/* Header */}
-      <div
-        style={{
-          padding: "14px 16px 10px",
-          borderBottom: "1px solid var(--color-border-soft)",
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
-          color: "var(--color-muted)",
-        }}
-      >
+      <div className="border-b px-4 pt-3.5 pb-2.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
         {LABELS.panelTitle}
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
+      <div className="flex-1 overflow-y-auto px-3.5 py-3">
         {!selectedNode ? (
           <CanvasProperties
             canvas={layout.canvas}
@@ -219,7 +224,7 @@ function CanvasProperties({
       </Section>
 
       <Section title={LABELS.safeMargin}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+        <div className="grid grid-cols-2 gap-1.5">
           {(
             [
               ["top", LABELS.top],
@@ -284,7 +289,7 @@ function NodeProperties({
       {/* Position & size */}
       <Section title={LABELS.positionSection}>
         {isLine ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+          <div className="grid grid-cols-2 gap-1.5">
             {(["x1", "y1", "x2", "y2"] as const).map((k) => (
               <Row key={k} label={`${LABELS[k]} (${unit})`}>
                 <NumberInput
@@ -297,7 +302,7 @@ function NodeProperties({
           </div>
         ) : (
           <>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            <div className="grid grid-cols-2 gap-1.5">
               <Row label={`${LABELS.x} (${unit})`}>
                 <NumberInput
                   value={"x" in node ? node.x : 0}
@@ -344,49 +349,57 @@ function NodeProperties({
 
       {/* Layer controls */}
       <Section title={LABELS.layerSection}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+        <div className="grid grid-cols-2 gap-1">
           <IconBtn
-            icon={<ChevronsUp size={13} strokeWidth={2} />}
+            icon={<ChevronsUp strokeWidth={2} />}
             label={LABELS.bringFront}
             onClick={() => onReorder("front")}
           />
           <IconBtn
-            icon={<ArrowUp size={13} strokeWidth={2} />}
+            icon={<ArrowUp strokeWidth={2} />}
             label={LABELS.bringForward}
             onClick={() => onReorder("forward")}
           />
           <IconBtn
-            icon={<ArrowDown size={13} strokeWidth={2} />}
+            icon={<ArrowDown strokeWidth={2} />}
             label={LABELS.sendBackward}
             onClick={() => onReorder("backward")}
           />
           <IconBtn
-            icon={<ChevronsDown size={13} strokeWidth={2} />}
+            icon={<ChevronsDown strokeWidth={2} />}
             label={LABELS.sendBack}
             onClick={() => onReorder("back")}
           />
         </div>
 
-        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-          <button
+        <div className="mt-1.5 flex gap-1.5">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
             onClick={() => onUpdate({ locked: !node.locked })}
-            style={actionBtnStyle(node.locked ? "warn" : "default")}
-          >
-            {node.locked ? (
-              <Lock size={12} strokeWidth={2} />
-            ) : (
-              <Unlock size={12} strokeWidth={2} />
+            className={cn(
+              "flex-1",
+              node.locked && "border-amber-400/50 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300",
             )}
+          >
+            {node.locked ? <Lock strokeWidth={2} /> : <Unlock strokeWidth={2} />}
             {node.locked ? LABELS.unlockNode : LABELS.lockNode}
-          </button>
-          <button onClick={onDuplicate} style={actionBtnStyle("default")}>
-            <Copy size={12} strokeWidth={2} />
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={onDuplicate} className="flex-1">
+            <Copy strokeWidth={2} />
             {LABELS.duplicate}
-          </button>
-          <button onClick={onDelete} style={actionBtnStyle("danger")}>
-            <Trash2 size={12} strokeWidth={2} />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onDelete}
+            className="flex-1 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 strokeWidth={2} />
             {LABELS.delete}
-          </button>
+          </Button>
         </div>
       </Section>
 
@@ -408,10 +421,9 @@ function NodeProperties({
           {node.content.source === "static" && (
           <Section title={LABELS.contentSection}>
             <Row label={LABELS.staticValue}>
-              <textarea
-                className="input"
+              <Textarea
                 rows={2}
-                style={{ resize: "vertical", fontSize: 12 }}
+                className="resize-y text-xs"
                 value={node.content.staticValue ?? ""}
                 onChange={(e) =>
                   onUpdate({
@@ -424,24 +436,26 @@ function NodeProperties({
           )}
           <Section title={LABELS.styleSection}>
             <Row label={LABELS.fontFamily}>
-              <select
-                className="input"
-                style={{ fontSize: 12 }}
+              <Select
                 value={node.style.fontFamily}
-                onChange={(e) =>
-                  onUpdate({
-                    style: { ...node.style, fontFamily: e.target.value as WebSafeFont },
-                  })
+                onValueChange={(v) =>
+                  onUpdate({ style: { ...node.style, fontFamily: v as WebSafeFont } })
                 }
               >
-                {WEB_SAFE_FONTS.map((f) => (
-                  <option key={f} value={f} style={{ fontFamily: f }}>
-                    {f}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger size="sm" className="w-full text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {WEB_SAFE_FONTS.map((f) => (
+                    // fontFamily preview is functional, kept inline.
+                    <SelectItem key={f} value={f} style={{ fontFamily: f }}>
+                      {f}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Row>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            <div className="grid grid-cols-2 gap-1.5">
               <Row label={LABELS.fontSize}>
                 <NumberInput
                   value={node.style.fontSize}
@@ -462,24 +476,13 @@ function NodeProperties({
               </Row>
             </div>
             <Row label={LABELS.textAlign}>
-              <div style={{ display: "flex", gap: 4 }}>
+              <div className="flex gap-1">
                 {(["left", "center", "right"] as const).map((align) => (
                   <button
                     key={align}
-                    onClick={() =>
-                      onUpdate({ style: { ...node.style, align } })
-                    }
-                    style={{
-                      flex: 1,
-                      padding: "4px 0",
-                      borderRadius: 6,
-                      border: `1.5px solid ${node.style.align === align ? "var(--color-primary)" : "var(--color-border)"}`,
-                      background: node.style.align === align ? "var(--color-primary-light)" : "#fff",
-                      color: node.style.align === align ? "var(--color-primary)" : "var(--color-secondary)",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
+                    type="button"
+                    onClick={() => onUpdate({ style: { ...node.style, align } })}
+                    className={toggleBtnClass(node.style.align === align)}
                   >
                     {align === "left" ? "⟵" : align === "center" ? "⟺" : "⟶"}
                   </button>
@@ -526,12 +529,13 @@ function NodeProperties({
             );
           })()}
           <Row label={LABELS.imageMode}>
-            <div style={{ display: "flex", gap: 4 }}>
+            <div className="flex gap-1">
               {(["fit", "fill"] as const).map((m) => (
                 <button
                   key={m}
+                  type="button"
                   onClick={() => onUpdate({ mode: m })}
-                  style={toggleBtnStyle(node.mode === m)}
+                  className={toggleBtnClass(node.mode === m)}
                 >
                   {m}
                 </button>
@@ -545,9 +549,8 @@ function NodeProperties({
         node.content.source === "static" && (
         <Section title={LABELS.contentSection}>
           <Row label={LABELS.staticValue}>
-            <input
-              className="input"
-              style={{ fontSize: 12 }}
+            <Input
+              className="text-xs"
               value={(node.content as { staticValue?: string }).staticValue ?? ""}
               onChange={(e) =>
                 onUpdate({
@@ -561,7 +564,7 @@ function NodeProperties({
 
       {node.type === "rect" && (
         <Section title={LABELS.styleSection}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+          <div className="grid grid-cols-2 gap-1.5">
             <Row label={LABELS.fill}>
               <ColorInput
                 value={node.style.fill}
@@ -598,7 +601,7 @@ function NodeProperties({
 
       {node.type === "line" && (
         <Section title={LABELS.styleSection}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+          <div className="grid grid-cols-2 gap-1.5">
             <Row label={LABELS.stroke}>
               <ColorInput
                 value={node.style.stroke}
@@ -676,11 +679,11 @@ function LinkedCardTypesSection({
   return (
     <Section title={LABELS.linkedTypesSection}>
       {actionError && (
-        <p style={{ fontSize: 11.5, color: "#dc2626", margin: "0 0 6px" }}>{actionError}</p>
+        <p className="mb-1.5 text-[11px] text-destructive">{actionError}</p>
       )}
 
       {linkedCardTypes.length === 0 && !pickerOpen && (
-        <p style={{ fontSize: 11.5, color: "var(--color-muted)", margin: "0 0 6px", lineHeight: 1.5 }}>
+        <p className="mb-1.5 text-[11px] leading-relaxed text-muted-foreground">
           {LABELS.noLinkedTypes}
         </p>
       )}
@@ -688,98 +691,70 @@ function LinkedCardTypesSection({
       {linkedCardTypes.map((ct) => (
         <div
           key={ct.id}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "6px 8px",
-            background: "#f8f9fc",
-            borderRadius: 7,
-            border: "1px solid var(--color-border-soft)",
-            marginBottom: 4,
-          }}
+          className="mb-1 flex items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-1.5"
         >
-          <Link2 size={11} strokeWidth={2} style={{ color: "var(--color-primary)", flexShrink: 0 }} />
-          <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: "var(--color-dark)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <Link2 className="size-3 shrink-0 text-primary" strokeWidth={2} />
+          <span className="flex-1 truncate text-xs font-medium text-foreground">
             {ct.name}
           </span>
           <button
+            type="button"
             onClick={() => void handleUnlink(ct.id)}
             disabled={pendingId === ct.id}
             title={LABELS.unlinkType}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: pendingId === ct.id ? "not-allowed" : "pointer",
-              color: "#dc2626",
-              padding: 2,
-              display: "flex",
-              alignItems: "center",
-              flexShrink: 0,
-            }}
+            className="flex shrink-0 items-center p-0.5 text-destructive disabled:cursor-not-allowed disabled:opacity-50"
           >
             {pendingId === ct.id ? (
-              <Loader2 size={11} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
+              <Loader2 className="size-3 animate-spin" strokeWidth={2} />
             ) : (
-              <Unlink size={11} strokeWidth={2} />
+              <Unlink className="size-3" strokeWidth={2} />
             )}
           </button>
         </div>
       ))}
 
       {pickerOpen ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+        <div className="mt-1 flex flex-col gap-1.5">
           {pickerLoading && !availableCardTypes.length ? (
-            <span style={{ fontSize: 11.5, color: "var(--color-muted)" }}>Cargando…</span>
+            <span className="text-[11px] text-muted-foreground">{LABELS.loading}</span>
           ) : (
-            <select
-              className="input"
-              style={{ fontSize: 12 }}
-              value={selectedId}
-              onChange={(e) => setSelectedId(e.target.value)}
-            >
-              <option value="">{LABELS.linkPickerPlaceholder}</option>
-              {availableCardTypes.map((ct) => (
-                <option key={ct.id} value={ct.id}>{ct.name}</option>
-              ))}
-            </select>
+            <Select value={selectedId} onValueChange={setSelectedId}>
+              <SelectTrigger size="sm" className="w-full text-xs">
+                <SelectValue placeholder={LABELS.linkPickerPlaceholder} />
+              </SelectTrigger>
+              <SelectContent>
+                {availableCardTypes.map((ct) => (
+                  <SelectItem key={ct.id} value={ct.id}>{ct.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
-          <div style={{ display: "flex", gap: 4 }}>
-            <button
+          <div className="flex gap-1">
+            <Button
+              type="button"
+              size="sm"
               onClick={() => void confirmLink()}
               disabled={!selectedId || pickerLoading}
-              className="btn btn-primary"
-              style={{ flex: 1, height: 30, fontSize: 12 }}
+              className="flex-1"
             >
-              {pickerLoading ? <Loader2 size={12} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} /> : LABELS.linkConfirm}
-            </button>
-            <button
+              {pickerLoading ? <Loader2 className="animate-spin" strokeWidth={2} /> : LABELS.linkConfirm}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
               onClick={() => { setPickerOpen(false); setActionError(null); }}
-              className="btn btn-secondary"
-              style={{ flex: 1, height: 30, fontSize: 12 }}
+              className="flex-1"
             >
               {LABELS.linkCancel}
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
         <button
+          type="button"
           onClick={() => void openPicker()}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 5,
-            padding: "5px 10px",
-            borderRadius: 7,
-            border: "1.5px dashed var(--color-primary)",
-            background: "var(--color-primary-light)",
-            color: "var(--color-primary)",
-            cursor: "pointer",
-            fontSize: 12,
-            fontWeight: 600,
-            width: "100%",
-            justifyContent: "center",
-          }}
+          className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-primary bg-accent px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-accent/70"
         >
           {LABELS.linkType}
         </button>
@@ -834,24 +809,15 @@ function DataSourceSection({
     <Section title={LABELS.dataSourceSection}>
       {/* Source toggle */}
       <Row label="">
-        <div style={{ display: "flex", gap: 4 }}>
-          <button
-            onClick={() => setSource("static")}
-            style={toggleBtnStyle(source === "static")}
-          >
+        <div className="flex gap-1">
+          <button type="button" onClick={() => setSource("static")} className={toggleBtnClass(source === "static")}>
             {LABELS.sourceStatic}
           </button>
-          <button
-            onClick={() => setSource("field")}
-            style={toggleBtnStyle(source === "field")}
-          >
+          <button type="button" onClick={() => setSource("field")} className={toggleBtnClass(source === "field")}>
             {LABELS.sourceField}
           </button>
           {supportsCardCode && (
-            <button
-              onClick={() => setSource("card_code")}
-              style={toggleBtnStyle(source === "card_code")}
-            >
+            <button type="button" onClick={() => setSource("card_code")} className={toggleBtnClass(source === "card_code")}>
               {LABELS.sourceCardCode}
             </button>
           )}
@@ -862,41 +828,37 @@ function DataSourceSection({
       {source === "field" && (
         <Row label={LABELS.fieldSelector}>
           {compatible.length === 0 ? (
-            <span style={{ fontSize: 11.5, color: "var(--color-muted)" }}>
+            <span className="text-[11px] text-muted-foreground">
               {LABELS.noFieldsHint}
             </span>
           ) : (
-            <select
-              className="input"
-              style={{ fontSize: 12 }}
-              value={currentFieldId}
-              onChange={(e) =>
+            <Select
+              value={currentFieldId || NO_FIELD}
+              onValueChange={(v) =>
                 onUpdate({
-                  content: { source: "field", fieldDefinitionId: e.target.value },
+                  content: { source: "field", fieldDefinitionId: v === NO_FIELD ? "" : v },
                 })
               }
             >
-              <option value="">{LABELS.fieldSelectorPlaceholder}</option>
-              {compatible.map((f) => (
-                <option key={f.fieldDefinitionIds[0]} value={f.fieldDefinitionIds[0]}>
-                  {f.label || f.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger size="sm" className="w-full text-xs">
+                <SelectValue placeholder={LABELS.fieldSelectorPlaceholder} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_FIELD}>{LABELS.fieldSelectorPlaceholder}</SelectItem>
+                {compatible.map((f) => (
+                  <SelectItem key={f.fieldDefinitionIds[0]} value={f.fieldDefinitionIds[0]}>
+                    {f.label || f.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
         </Row>
       )}
 
       {/* Card code hint */}
       {source === "card_code" && (
-        <p
-          style={{
-            margin: "2px 0 0",
-            fontSize: 11.5,
-            color: "var(--color-muted)",
-            lineHeight: 1.5,
-          }}
-        >
+        <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
           {LABELS.cardCodeHint}
         </p>
       )}
@@ -908,22 +870,11 @@ function DataSourceSection({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div
-        style={{
-          fontSize: 10.5,
-          fontWeight: 700,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
-          color: "var(--color-muted)",
-          marginBottom: 8,
-        }}
-      >
+    <div className="mb-4">
+      <div className="mb-2 text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">
         {title}
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {children}
-      </div>
+      <div className="flex flex-col gap-1.5">{children}</div>
     </div>
   );
 }
@@ -931,16 +882,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div
-        style={{
-          fontSize: 11,
-          color: "var(--color-secondary)",
-          marginBottom: 3,
-          fontWeight: 500,
-        }}
-      >
-        {label}
-      </div>
+      {label && (
+        <div className="mb-0.5 text-[11px] font-medium text-muted-foreground">
+          {label}
+        </div>
+      )}
       {children}
     </div>
   );
@@ -972,10 +918,9 @@ function NumberInput({
       : String(value);
 
   return (
-    <input
+    <Input
       type="number"
-      className="input"
-      style={{ fontSize: 12 }}
+      className="h-8 text-xs"
       value={display}
       min={min}
       max={max}
@@ -1010,25 +955,17 @@ function ColorInput({
   onChange: (v: string) => void;
 }) {
   return (
-    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+    <div className="flex items-center gap-1.5">
+      {/* Native color swatch — its value is node data; chrome via classes. */}
       <input
         type="color"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: 6,
-          border: "1.5px solid var(--color-border)",
-          cursor: "pointer",
-          padding: 2,
-          flexShrink: 0,
-        }}
+        className="size-7 shrink-0 cursor-pointer rounded-md border p-0.5"
       />
-      <input
+      <Input
         type="text"
-        className="input"
-        style={{ fontSize: 12, fontFamily: "monospace" }}
+        className="h-8 font-mono text-xs"
         value={value}
         maxLength={9}
         onChange={(e) => onChange(e.target.value)}
@@ -1047,86 +984,16 @@ function IconBtn({
   onClick: () => void;
 }) {
   return (
-    <button
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
       onClick={onClick}
       title={label}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 4,
-        padding: "5px 6px",
-        borderRadius: 6,
-        border: "1.5px solid var(--color-border)",
-        background: "#fff",
-        cursor: "pointer",
-        fontSize: 11,
-        color: "var(--color-secondary)",
-        fontWeight: 500,
-        transition: "all 0.1s",
-        overflow: "hidden",
-        whiteSpace: "nowrap",
-      }}
-      onMouseOver={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background =
-          "var(--color-primary-light)";
-        (e.currentTarget as HTMLButtonElement).style.color =
-          "var(--color-primary)";
-        (e.currentTarget as HTMLButtonElement).style.borderColor =
-          "var(--color-primary)";
-      }}
-      onMouseOut={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background = "#fff";
-        (e.currentTarget as HTMLButtonElement).style.color =
-          "var(--color-secondary)";
-        (e.currentTarget as HTMLButtonElement).style.borderColor =
-          "var(--color-border)";
-      }}
+      className="justify-center gap-1 overflow-hidden px-1.5 text-[10.5px] hover:bg-accent hover:text-primary"
     >
       {icon}
-      <span style={{ fontSize: 10.5 }}>{label}</span>
-    </button>
+      <span className="truncate">{label}</span>
+    </Button>
   );
-}
-
-function actionBtnStyle(variant: "default" | "danger" | "warn"): React.CSSProperties {
-  const colors = {
-    default: {
-      bg: "#fff",
-      border: "var(--color-border)",
-      color: "var(--color-secondary)",
-    },
-    danger: { bg: "#fff1f1", border: "#fca5a5", color: "#dc2626" },
-    warn: { bg: "#fffbeb", border: "#fde68a", color: "#d97706" },
-  };
-  const c = colors[variant];
-  return {
-    flex: 1,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-    padding: "5px 6px",
-    borderRadius: 6,
-    border: `1.5px solid ${c.border}`,
-    background: c.bg,
-    color: c.color,
-    cursor: "pointer",
-    fontSize: 11,
-    fontWeight: 600,
-  };
-}
-
-function toggleBtnStyle(active: boolean): React.CSSProperties {
-  return {
-    flex: 1,
-    padding: "4px 0",
-    borderRadius: 6,
-    border: `1.5px solid ${active ? "var(--color-primary)" : "var(--color-border)"}`,
-    background: active ? "var(--color-primary-light)" : "#fff",
-    color: active ? "var(--color-primary)" : "var(--color-secondary)",
-    fontSize: 11,
-    fontWeight: 600,
-    cursor: "pointer",
-  };
 }

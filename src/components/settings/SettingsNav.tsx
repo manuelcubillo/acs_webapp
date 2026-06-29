@@ -20,6 +20,9 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { User, LayoutDashboard, ScanLine } from "lucide-react";
 import type { TenantRole } from "@/lib/api";
+import { cn } from "@/lib/utils";
+
+const NAV_TITLE = "Configuración";
 
 // ─── Nav config ───────────────────────────────────────────────────────────────
 
@@ -84,10 +87,15 @@ export default function SettingsNav({ role }: SettingsNavProps) {
   });
 
   return (
-    <nav className="settings-nav-secondary" aria-label="Settings navigation">
-      <span className="settings-nav-label">Configuración</span>
+    <nav
+      className="mb-5 w-full shrink-0 border-b pb-3 sm:mb-0 sm:mr-9 sm:w-50 sm:border-r sm:border-b-0 sm:pr-4 sm:pb-0"
+      aria-label="Settings navigation"
+    >
+      <span className="mb-1.5 hidden px-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:block">
+        {NAV_TITLE}
+      </span>
 
-      <div className="settings-nav-items">
+      <div className="flex gap-1 overflow-x-auto sm:flex-col sm:gap-0.5 sm:overflow-visible">
         {visibleItems.map((item) => {
           const active = pathname.startsWith(item.href);
           const Icon = item.icon;
@@ -95,7 +103,12 @@ export default function SettingsNav({ role }: SettingsNavProps) {
             <Link
               key={item.href}
               href={item.href}
-              className={`settings-nav-item${active ? " active" : ""}`}
+              className={cn(
+                "flex items-center gap-2 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors",
+                active
+                  ? "bg-accent font-semibold text-accent-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
             >
               <Icon size={15} strokeWidth={1.8} />
               {item.label}

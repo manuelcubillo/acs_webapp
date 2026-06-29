@@ -11,9 +11,24 @@
  */
 
 import { useState, useTransition } from "react";
-import { Save, ChevronDown, ChevronUp } from "lucide-react";
+import { Save, Check, ChevronDown, ChevronUp } from "lucide-react";
 import { setCardTypeSummaryFieldsAction } from "@/lib/actions/dashboard-settings";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 import type { CardType, FieldDefinition, CardTypeSummaryField } from "@/lib/dal";
+
+const TEXT = {
+  TITLE:    "Campos de resumen por tipo de tarjeta",
+  EMPTY:    "No hay tipos de tarjeta activos.",
+  NO_FIELDS: "Este tipo de tarjeta no tiene campos activos.",
+  NO_SUMMARY: "Sin campos de resumen configurados",
+  SHOWING:  "Mostrando:",
+  SAVING:   "Guardando…",
+  SAVE:     "Guardar",
+  SAVED:    "Guardado",
+  SELECTED: "campos seleccionados",
+} as const;
 
 interface SummaryFieldsSectionProps {
   cardTypes: CardType[];
@@ -31,23 +46,18 @@ export default function SummaryFieldsSection({
   summaryByCardType,
 }: SummaryFieldsSectionProps) {
   return (
-    <section style={{
-      background: "#fff",
-      border: "1.5px solid var(--color-border)",
-      borderRadius: 14,
-      padding: "24px",
-    }}>
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--color-dark)" }}>
-          Campos de resumen por tipo de tarjeta
+    <section className="rounded-xl border bg-card p-6">
+      <div className="mb-5">
+        <div className="font-heading text-[15px] font-bold text-foreground">
+          {TEXT.TITLE}
         </div>
-        <div style={{ fontSize: 13, color: "var(--color-secondary)", marginTop: 4 }}>
+        <div className="mt-1 text-sm text-muted-foreground">
           Selecciona hasta {MAX_SUMMARY_FIELDS} campos de cada tipo que se mostrarán en el feed
           para identificar rápidamente las tarjetas.
         </div>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="flex flex-col gap-3">
         {cardTypes.map((ct) => (
           <CardTypeSummaryEditor
             key={ct.id}
@@ -57,8 +67,8 @@ export default function SummaryFieldsSection({
           />
         ))}
         {cardTypes.length === 0 && (
-          <div style={{ fontSize: 13.5, color: "var(--color-muted)", textAlign: "center", padding: "24px 0" }}>
-            No hay tipos de tarjeta activos.
+          <div className="py-6 text-center text-sm text-muted-foreground">
+            {TEXT.EMPTY}
           </div>
         )}
       </div>
@@ -110,76 +120,60 @@ function CardTypeSummaryEditor({ cardType, fields, currentSummary }: CardTypeSum
     .join(", ");
 
   return (
-    <div style={{
-      border: "1.5px solid var(--color-border)",
-      borderRadius: 12,
-      overflow: "hidden",
-    }}>
+    <div className="overflow-hidden rounded-xl border">
       {/* Header */}
       <button
         onClick={() => setOpen((o) => !o)}
-        style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          width: "100%", padding: "14px 16px",
-          background: open ? "#fafbfc" : "#fff",
-          border: "none", cursor: "pointer",
-          textAlign: "left",
-        }}
+        className={cn(
+          "flex w-full items-center justify-between px-4 py-3.5 text-left",
+          open ? "bg-muted/40" : "bg-card",
+        )}
       >
         <div>
-          <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--color-dark)" }}>
+          <div className="text-sm font-semibold text-foreground">
             {cardType.name}
           </div>
-          <div style={{ fontSize: 12, color: "var(--color-muted)", marginTop: 2 }}>
+          <div className="mt-0.5 text-xs text-muted-foreground">
             {selected.length === 0
-              ? "Sin campos de resumen configurados"
-              : `Mostrando: ${selectedNames}`}
+              ? TEXT.NO_SUMMARY
+              : `${TEXT.SHOWING} ${selectedNames}`}
           </div>
         </div>
         {open
-          ? <ChevronUp size={16} strokeWidth={2} color="var(--color-muted)" />
-          : <ChevronDown size={16} strokeWidth={2} color="var(--color-muted)" />
+          ? <ChevronUp className="size-4 text-muted-foreground" strokeWidth={2} />
+          : <ChevronDown className="size-4 text-muted-foreground" strokeWidth={2} />
         }
       </button>
 
       {/* Field checkboxes */}
       {open && (
-        <div style={{ padding: "16px", borderTop: "1px solid var(--color-border-soft)" }}>
+        <div className="border-t p-4">
           {fields.length === 0 ? (
-            <div style={{ fontSize: 13, color: "var(--color-muted)" }}>
-              Este tipo de tarjeta no tiene campos activos.
-            </div>
+            <div className="text-sm text-muted-foreground">{TEXT.NO_FIELDS}</div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+            <div className="mb-4 flex flex-col gap-2">
               {fields.map((f) => {
                 const isSelected = selected.includes(f.id);
                 const isDisabled = !isSelected && selected.length >= MAX_SUMMARY_FIELDS;
                 return (
                   <label
                     key={f.id}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 10,
-                      padding: "9px 12px",
-                      background: isSelected ? "#eef0ff" : "#f8f9fa",
-                      border: `1.5px solid ${isSelected ? "#c7d2fe" : "var(--color-border)"}`,
-                      borderRadius: 8,
-                      cursor: isDisabled ? "not-allowed" : "pointer",
-                      opacity: isDisabled ? 0.5 : 1,
-                      transition: "all 0.15s",
-                    }}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-lg border px-3 py-2.5 transition-colors",
+                      isSelected ? "border-primary/30 bg-accent" : "border-border bg-muted/40",
+                      isDisabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+                    )}
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={isSelected}
                       disabled={isDisabled}
-                      onChange={() => toggleField(f.id)}
-                      style={{ accentColor: "#4f5bff", flexShrink: 0 }}
+                      onCheckedChange={() => toggleField(f.id)}
                     />
                     <div>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
+                      <span className="text-sm font-semibold text-foreground">
                         {f.label}
                       </span>
-                      <span style={{ fontSize: 11.5, color: "var(--color-muted)", marginLeft: 6 }}>
+                      <span className="ml-1.5 text-xs text-muted-foreground">
                         ({f.fieldType})
                       </span>
                     </div>
@@ -190,21 +184,24 @@ function CardTypeSummaryEditor({ cardType, fields, currentSummary }: CardTypeSum
           )}
 
           {/* Save row */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <button
-              className="btn btn-primary"
+          <div className="flex items-center gap-2.5">
+            <Button
               onClick={handleSave}
               disabled={isPending || fields.length === 0}
-              style={{ display: "flex", alignItems: "center", gap: 6 }}
             >
-              <Save size={13} strokeWidth={2} />
-              {isPending ? "Guardando…" : "Guardar"}
-            </button>
-            <span style={{ fontSize: 12, color: "var(--color-muted)" }}>
-              {selected.length}/{MAX_SUMMARY_FIELDS} campos seleccionados
+              <Save strokeWidth={2} />
+              {isPending ? TEXT.SAVING : TEXT.SAVE}
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {selected.length}/{MAX_SUMMARY_FIELDS} {TEXT.SELECTED}
             </span>
-            {saved && <span style={{ fontSize: 12.5, color: "#16a34a", fontWeight: 600 }}>✓ Guardado</span>}
-            {error && <span style={{ fontSize: 12.5, color: "#dc2626" }}>{error}</span>}
+            {saved && (
+              <span className="flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+                <Check className="size-3.5" strokeWidth={2.5} />
+                {TEXT.SAVED}
+              </span>
+            )}
+            {error && <span className="text-xs text-destructive">{error}</span>}
           </div>
         </div>
       )}

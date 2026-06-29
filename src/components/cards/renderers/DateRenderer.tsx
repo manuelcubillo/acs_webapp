@@ -6,9 +6,7 @@ interface DateRendererProps {
 
 export default function DateRenderer({ value }: DateRendererProps) {
   if (!value) {
-    return (
-      <span style={{ color: "var(--color-muted)", fontStyle: "italic" }}>—</span>
-    );
+    return <span className="italic text-muted-foreground">—</span>;
   }
   try {
     const date = new Date(String(value));

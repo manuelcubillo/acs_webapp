@@ -12,6 +12,35 @@ import { useState, useEffect } from "react";
 import { ChevronDown, ChevronUp, SlidersHorizontal } from "lucide-react";
 import type { ActionHistoryFilters, HistoryFilterOptions, FieldFilter } from "@/lib/dal";
 import HistoryFieldFilters from "./HistoryFieldFilters";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+
+const TEXT = {
+  TITLE:        "Filtros",
+  FROM:         "Desde",
+  TO:           "Hasta",
+  CARD_TYPE:    "Tipo de carnet",
+  OPERATOR:     "Operador",
+  ALL_OPERATORS: "Todos los operadores",
+  CARD_CODE:    "Código de carnet",
+  CARD_CODE_PH: "Buscar por código…",
+  ACTION:       "Acción",
+  CLEAR:        "Limpiar",
+  APPLY:        "Aplicar filtros",
+} as const;
+
+// Sentinel for the "all operators" option (Select cannot use an empty value).
+const ALL_OPERATORS = "__all__";
 
 interface HistoryFiltersProps {
   options: HistoryFilterOptions;
@@ -127,97 +156,37 @@ export default function HistoryFilters({
     appliedFilters.fieldFilters?.length,
   ].filter(Boolean).length;
 
-  const inputStyle: React.CSSProperties = {
-    padding: "8px 10px",
-    borderRadius: 7,
-    border: "1px solid var(--color-border)",
-    fontSize: 13,
-    background: "#fff",
-    color: "var(--color-dark)",
-    width: "100%",
-    boxSizing: "border-box",
-  };
-
-  const selectStyle: React.CSSProperties = {
-    ...inputStyle,
-    cursor: "pointer",
-  };
-
-  const labelStyle: React.CSSProperties = {
-    fontSize: 11,
-    fontWeight: 700,
-    textTransform: "uppercase",
-    letterSpacing: "0.06em",
-    color: "var(--color-muted)",
-    display: "block",
-    marginBottom: 5,
-  };
+  const LABEL = "mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground";
 
   return (
-    <div style={{
-      border: "1px solid var(--color-border)",
-      borderRadius: 12,
-      overflow: "hidden",
-      marginBottom: 16,
-    }}>
+    <div className="mb-4 overflow-hidden rounded-xl border">
       {/* Header toggle */}
       <button
         onClick={() => setOpen((o) => !o)}
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "12px 16px",
-          background: "#fafafa",
-          border: "none",
-          cursor: "pointer",
-          textAlign: "left",
-        }}
+        className="flex w-full items-center justify-between bg-muted/50 px-4 py-3 text-left hover:bg-muted"
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <SlidersHorizontal size={15} strokeWidth={2} style={{ color: "var(--color-muted)" }} />
-          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
-            Filtros
-          </span>
+        <div className="flex items-center gap-2">
+          <SlidersHorizontal className="size-3.5 text-muted-foreground" strokeWidth={2} />
+          <span className="text-sm font-semibold text-foreground">{TEXT.TITLE}</span>
           {activeCount > 0 && (
-            <span style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              minWidth: 18,
-              height: 18,
-              borderRadius: 9,
-              background: "var(--color-primary, #2563eb)",
-              color: "#fff",
-              fontSize: 11,
-              fontWeight: 700,
-              padding: "0 5px",
-            }}>
-              {activeCount}
-            </span>
+            <Badge className="h-4.5 min-w-4.5 px-1.5 text-[11px]">{activeCount}</Badge>
           )}
         </div>
         {open
-          ? <ChevronUp size={15} strokeWidth={2} style={{ color: "var(--color-muted)" }} />
-          : <ChevronDown size={15} strokeWidth={2} style={{ color: "var(--color-muted)" }} />
+          ? <ChevronUp className="size-3.5 text-muted-foreground" strokeWidth={2} />
+          : <ChevronDown className="size-3.5 text-muted-foreground" strokeWidth={2} />
         }
       </button>
 
       {/* Filter body */}
       {open && (
-        <div style={{ padding: 16, borderTop: "1px solid var(--color-border)" }}>
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-            gap: 14,
-          }}>
+        <div className="border-t p-4">
+          <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(200px,1fr))]">
             {/* Date from */}
             <div>
-              <label style={labelStyle}>Desde</label>
-              <input
+              <Label className={LABEL}>{TEXT.FROM}</Label>
+              <Input
                 type="datetime-local"
-                style={inputStyle}
                 value={form.dateFrom}
                 onChange={(e) => setForm((f) => ({ ...f, dateFrom: e.target.value }))}
               />
@@ -225,10 +194,9 @@ export default function HistoryFilters({
 
             {/* Date to */}
             <div>
-              <label style={labelStyle}>Hasta</label>
-              <input
+              <Label className={LABEL}>{TEXT.TO}</Label>
+              <Input
                 type="datetime-local"
-                style={inputStyle}
                 value={form.dateTo}
                 onChange={(e) => setForm((f) => ({ ...f, dateTo: e.target.value }))}
               />
@@ -236,9 +204,9 @@ export default function HistoryFilters({
 
             {/* Card type — multi-select toggle buttons */}
             {options.cardTypes.length > 0 && (
-              <div style={{ gridColumn: "1 / -1" }}>
-                <label style={labelStyle}>Tipo de carnet</label>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              <div className="col-span-full">
+                <Label className={LABEL}>{TEXT.CARD_TYPE}</Label>
+                <div className="flex flex-wrap gap-1.5">
                   {options.cardTypes.map((ct) => {
                     const selected = form.cardTypeIds.includes(ct.id);
                     return (
@@ -246,22 +214,12 @@ export default function HistoryFilters({
                         key={ct.id}
                         type="button"
                         onClick={() => handleCardTypeToggle(ct.id)}
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          padding: "5px 13px",
-                          borderRadius: 20,
-                          border: selected
-                            ? "1.5px solid var(--color-primary, #2563eb)"
-                            : "1.5px solid var(--color-border)",
-                          background: selected ? "#e0e7ff" : "#fff",
-                          color: selected ? "var(--color-primary, #2563eb)" : "var(--color-dark)",
-                          fontSize: 13,
-                          fontWeight: selected ? 700 : 500,
-                          cursor: "pointer",
-                          transition: "all 0.12s",
-                          whiteSpace: "nowrap",
-                        }}
+                        className={cn(
+                          "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-sm transition-colors",
+                          selected
+                            ? "border-primary bg-accent font-bold text-primary"
+                            : "border-border bg-card font-medium text-foreground hover:bg-muted",
+                        )}
                       >
                         {ct.name}
                       </button>
@@ -273,64 +231,55 @@ export default function HistoryFilters({
 
             {/* Executed by */}
             <div>
-              <label style={labelStyle}>Operador</label>
-              <select
-                style={selectStyle}
-                value={form.executedBy}
-                onChange={(e) => setForm((f) => ({ ...f, executedBy: e.target.value }))}
+              <Label className={LABEL}>{TEXT.OPERATOR}</Label>
+              <Select
+                value={form.executedBy || ALL_OPERATORS}
+                onValueChange={(v) =>
+                  setForm((f) => ({ ...f, executedBy: v === ALL_OPERATORS ? "" : v }))
+                }
               >
-                <option value="">Todos los operadores</option>
-                {options.users.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_OPERATORS}>{TEXT.ALL_OPERATORS}</SelectItem>
+                  {options.users.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Card code */}
             <div>
-              <label style={labelStyle}>Código de carnet</label>
-              <input
+              <Label className={LABEL}>{TEXT.CARD_CODE}</Label>
+              <Input
                 type="text"
-                style={inputStyle}
                 value={form.cardCode}
                 onChange={(e) => setForm((f) => ({ ...f, cardCode: e.target.value }))}
-                placeholder="Buscar por código…"
+                placeholder={TEXT.CARD_CODE_PH}
               />
             </div>
           </div>
 
           {/* Actions — shown only when actions available */}
           {visibleActions.length > 0 && (
-            <div style={{ marginTop: 14 }}>
-              <label style={labelStyle}>Acción</label>
-              <div style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 6,
-              }}>
+            <div className="mt-3.5">
+              <Label className={LABEL}>{TEXT.ACTION}</Label>
+              <div className="flex flex-wrap gap-1.5">
                 {visibleActions.map((a) => {
                   const selected = form.actionDefinitionIds.includes(a.id);
                   return (
                     <button
                       key={a.id}
+                      type="button"
                       onClick={() => handleActionToggle(a.id)}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        padding: "5px 11px",
-                        borderRadius: 20,
-                        border: selected
-                          ? "1.5px solid var(--color-primary, #2563eb)"
-                          : "1.5px solid var(--color-border)",
-                        background: selected
-                          ? "var(--color-primary, #2563eb)"
-                          : "#fff",
-                        color: selected ? "#fff" : "var(--color-dark)",
-                        fontSize: 12,
-                        fontWeight: selected ? 600 : 500,
-                        cursor: "pointer",
-                        transition: "all 0.12s",
-                      }}
+                      className={cn(
+                        "inline-flex items-center rounded-full border px-2.5 py-1 text-xs transition-colors",
+                        selected
+                          ? "border-primary bg-primary font-semibold text-primary-foreground"
+                          : "border-border bg-card font-medium text-foreground hover:bg-muted",
+                      )}
                     >
                       {a.name}
                     </button>
@@ -342,50 +291,23 @@ export default function HistoryFilters({
 
           {/* Field-level filters (only when at least one card type selected) */}
           {form.cardTypeIds.length > 0 && (
-            <HistoryFieldFilters
-              cardTypeIds={form.cardTypeIds}
-              value={form.fieldFilters}
-              onChange={(ff) => setForm((f) => ({ ...f, fieldFilters: ff }))}
-            />
+            <div className="mt-3.5">
+              <HistoryFieldFilters
+                cardTypeIds={form.cardTypeIds}
+                value={form.fieldFilters}
+                onChange={(ff) => setForm((f) => ({ ...f, fieldFilters: ff }))}
+              />
+            </div>
           )}
 
           {/* Apply / Clear */}
-          <div style={{
-            display: "flex",
-            gap: 8,
-            marginTop: 16,
-            justifyContent: "flex-end",
-          }}>
-            <button
-              onClick={handleClear}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 8,
-                border: "1px solid var(--color-border)",
-                background: "#fff",
-                fontSize: 13,
-                fontWeight: 600,
-                color: "var(--color-muted)",
-                cursor: "pointer",
-              }}
-            >
-              Limpiar
-            </button>
-            <button
-              onClick={handleApply}
-              style={{
-                padding: "8px 20px",
-                borderRadius: 8,
-                border: "none",
-                background: "var(--color-primary, #2563eb)",
-                color: "#fff",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Aplicar filtros
-            </button>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="outline" onClick={handleClear}>
+              {TEXT.CLEAR}
+            </Button>
+            <Button onClick={handleApply}>
+              {TEXT.APPLY}
+            </Button>
           </div>
         </div>
       )}

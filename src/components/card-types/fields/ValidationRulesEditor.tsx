@@ -11,8 +11,27 @@
  */
 
 import { getRulesForFieldType, PATTERN_PRESETS } from "@/lib/validation/rules";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import type { FieldType, RuleDefinition } from "@/lib/validation/types";
 import type { ValidationRule } from "@/hooks/useCardTypeWizard";
+
+const TEXT = {
+  EMPTY:        "No hay reglas de validación disponibles para este tipo.",
+  ENABLED:      "Activado",
+  ARRAY_HINT:   "Separar opciones con comas",
+  PRESET_PH:    "— Seleccionar preset —",
+  CUSTOM_REGEX: "Regex personalizado",
+} as const;
 
 interface ValidationRulesEditorProps {
   fieldType: FieldType;
@@ -20,6 +39,8 @@ interface ValidationRulesEditorProps {
   rules: ValidationRule[];
   onChange: (rules: ValidationRule[]) => void;
 }
+
+const CUSTOM_SENTINEL = "__custom__";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -50,53 +71,37 @@ interface RuleValueInputProps {
 }
 
 function RuleValueInput({ def, value, onChange }: RuleValueInputProps) {
-  const inputStyle: React.CSSProperties = {
-    padding: "6px 10px",
-    border: "1.5px solid var(--color-border)",
-    borderRadius: 8,
-    fontSize: 13,
-    fontFamily: "var(--font-body)",
-    color: "var(--color-dark)",
-    background: "#fff",
-    outline: "none",
-    width: "100%",
-  };
-
   if (def.paramType === "boolean") {
     return (
-      <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-        <input
-          type="checkbox"
+      <label className="flex cursor-pointer items-center gap-2">
+        <Checkbox
           checked={value === true}
-          onChange={(e) => onChange(e.target.checked)}
-          style={{ width: 16, height: 16, accentColor: "var(--color-primary)", cursor: "pointer" }}
+          onCheckedChange={(checked) => onChange(checked === true)}
         />
-        <span style={{ fontSize: 12.5, color: "var(--color-secondary)" }}>Activado</span>
+        <span className="text-xs text-muted-foreground">{TEXT.ENABLED}</span>
       </label>
     );
   }
 
   if (def.paramType === "number") {
     return (
-      <input
+      <Input
         type="number"
         value={typeof value === "number" ? value : ""}
         onChange={(e) =>
           onChange(e.target.value === "" ? undefined : Number(e.target.value))
         }
         placeholder={String(def.example ?? "")}
-        style={inputStyle}
       />
     );
   }
 
   if (def.paramType === "iso-date") {
     return (
-      <input
+      <Input
         type="date"
         value={typeof value === "string" ? value : ""}
         onChange={(e) => onChange(e.target.value || undefined)}
-        style={inputStyle}
       />
     );
   }
@@ -106,7 +111,7 @@ function RuleValueInput({ def, value, onChange }: RuleValueInputProps) {
     const currentArr = Array.isArray(value) ? (value as string[]) : [];
     return (
       <div>
-        <input
+        <Input
           type="text"
           value={currentArr.join(", ")}
           onChange={(e) => {
@@ -117,10 +122,9 @@ function RuleValueInput({ def, value, onChange }: RuleValueInputProps) {
             onChange(arr.length > 0 ? arr : []);
           }}
           placeholder={Array.isArray(def.example) ? def.example.join(", ") : "op1, op2, op3"}
-          style={inputStyle}
         />
-        <div style={{ fontSize: 11, color: "var(--color-muted)", marginTop: 4 }}>
-          Separar opciones con comas
+        <div className="mt-1 text-[11px] text-muted-foreground">
+          {TEXT.ARRAY_HINT}
         </div>
       </div>
     );
@@ -128,33 +132,33 @@ function RuleValueInput({ def, value, onChange }: RuleValueInputProps) {
 
   // string — with preset dropdown for "pattern" rule
   if (def.rule === "pattern") {
-    const presets = ["", ...Object.keys(PATTERN_PRESETS)];
-    const isPreset = typeof value === "string" && presets.slice(1).includes(value);
+    const presets = Object.keys(PATTERN_PRESETS);
+    const isPreset = typeof value === "string" && presets.includes(value);
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <select
-          value={isPreset ? (value as string) : "__custom__"}
-          onChange={(e) => {
-            if (e.target.value === "__custom__") onChange("");
-            else onChange(e.target.value);
+      <div className="flex flex-col gap-1.5">
+        <Select
+          value={isPreset ? (value as string) : CUSTOM_SENTINEL}
+          onValueChange={(v) => {
+            if (v === CUSTOM_SENTINEL) onChange("");
+            else onChange(v);
           }}
-          style={{ ...inputStyle, appearance: "auto" }}
         >
-          <option value="">— Seleccionar preset —</option>
-          {Object.keys(PATTERN_PRESETS).map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-          <option value="__custom__">Regex personalizado</option>
-        </select>
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder={TEXT.PRESET_PH} />
+          </SelectTrigger>
+          <SelectContent>
+            {presets.map((p) => (
+              <SelectItem key={p} value={p}>{p}</SelectItem>
+            ))}
+            <SelectItem value={CUSTOM_SENTINEL}>{TEXT.CUSTOM_REGEX}</SelectItem>
+          </SelectContent>
+        </Select>
         {(!isPreset || value === "") && (
-          <input
+          <Input
             type="text"
             value={typeof value === "string" ? value : ""}
             onChange={(e) => onChange(e.target.value)}
             placeholder="^[A-Z]{2}[0-9]+$"
-            style={inputStyle}
           />
         )}
       </div>
@@ -162,12 +166,11 @@ function RuleValueInput({ def, value, onChange }: RuleValueInputProps) {
   }
 
   return (
-    <input
+    <Input
       type="text"
       value={typeof value === "string" ? value : ""}
       onChange={(e) => onChange(e.target.value || undefined)}
       placeholder={String(def.example ?? "")}
-      style={inputStyle}
     />
   );
 }
@@ -183,14 +186,14 @@ export default function ValidationRulesEditor({
 
   if (availableRules.length === 0) {
     return (
-      <div style={{ fontSize: 13, color: "var(--color-muted)", fontStyle: "italic" }}>
-        No hay reglas de validación disponibles para este tipo.
+      <div className="text-sm italic text-muted-foreground">
+        {TEXT.EMPTY}
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div className="flex flex-col gap-3.5">
       {availableRules.map((def) => {
         const existingRule = getRule(rules, def.rule);
         const enabled = !!existingRule;
@@ -198,71 +201,48 @@ export default function ValidationRulesEditor({
         return (
           <div
             key={def.rule}
-            style={{
-              background: enabled ? "#fafbff" : "#fafbfc",
-              border: `1.5px solid ${enabled ? "var(--color-primary-light)" : "var(--color-border-soft)"}`,
-              borderRadius: 12,
-              padding: "14px 16px",
-              transition: "all 0.15s ease",
-            }}
+            className={cn(
+              "rounded-xl border px-4 py-3.5 transition-colors",
+              enabled ? "border-primary/30 bg-accent/40" : "bg-muted/40",
+            )}
           >
             {/* Toggle row */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: enabled ? 12 : 0 }}>
+            <div
+              className={cn(
+                "flex items-center justify-between",
+                enabled && "mb-3",
+              )}
+            >
               <div>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--color-dark)" }}>
+                <div className="text-sm font-semibold text-foreground">
                   {def.rule}
                 </div>
-                <div style={{ fontSize: 11.5, color: "var(--color-muted)", marginTop: 2 }}>
+                <div className="mt-0.5 text-xs text-muted-foreground">
                   {def.description}
                 </div>
               </div>
               {/* Toggle switch */}
-              <label style={{ display: "flex", alignItems: "center", cursor: "pointer", flexShrink: 0 }}>
-                <div
-                  onClick={() => {
-                    if (enabled) {
-                      onChange(removeRule(rules, def.rule));
-                    } else {
-                      // Enable with a sensible default value
-                      const defaultVal =
-                        def.paramType === "boolean"
-                          ? true
-                          : def.paramType === "number"
-                          ? (def.example as number ?? 0)
-                          : def.paramType === "string[]"
-                          ? (def.example ?? [])
-                          : def.paramType === "iso-date"
-                          ? ""
-                          : (def.example ?? "");
-                      onChange(setRule(rules, def, defaultVal));
-                    }
-                  }}
-                  style={{
-                    width: 40,
-                    height: 22,
-                    borderRadius: 11,
-                    background: enabled ? "var(--color-primary)" : "#e5e7eb",
-                    position: "relative",
-                    transition: "background 0.2s ease",
-                    cursor: "pointer",
-                    flexShrink: 0,
-                  }}
-                >
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 3,
-                      left: enabled ? 21 : 3,
-                      width: 16,
-                      height: 16,
-                      borderRadius: "50%",
-                      background: "#fff",
-                      boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
-                      transition: "left 0.2s ease",
-                    }}
-                  />
-                </div>
-              </label>
+              <Switch
+                checked={enabled}
+                onCheckedChange={(checked) => {
+                  if (!checked) {
+                    onChange(removeRule(rules, def.rule));
+                  } else {
+                    // Enable with a sensible default value
+                    const defaultVal =
+                      def.paramType === "boolean"
+                        ? true
+                        : def.paramType === "number"
+                        ? (def.example as number ?? 0)
+                        : def.paramType === "string[]"
+                        ? (def.example ?? [])
+                        : def.paramType === "iso-date"
+                        ? ""
+                        : (def.example ?? "");
+                    onChange(setRule(rules, def, defaultVal));
+                  }
+                }}
+              />
             </div>
 
             {/* Value input (only when enabled) */}

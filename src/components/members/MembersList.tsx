@@ -34,14 +34,12 @@ export default function MembersList({
 }: Props) {
   if (members.length === 0) {
     return (
-      <p style={{ fontSize: 13.5, color: "var(--color-muted)", margin: "12px 0" }}>
-        {LABELS.empty}
-      </p>
+      <p className="my-3 text-sm text-muted-foreground">{LABELS.empty}</p>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div className="flex flex-col gap-2">
       {members.map((m) => (
         <MemberRow
           key={m.id}

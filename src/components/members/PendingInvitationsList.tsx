@@ -9,6 +9,9 @@ import { Mail, Trash2 } from "lucide-react";
 import { revokeInvitationAction } from "@/lib/actions/invitations";
 import type { InvitationWithInviter } from "@/lib/dal";
 import ConfirmActionModal from "./ConfirmActionModal";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 const LABELS = {
   empty: "No hay invitaciones pendientes.",
@@ -16,6 +19,7 @@ const LABELS = {
   expires: "Caduca",
   role: "Rol",
   revokeLabel: "Revocar",
+  revokingLabel: "Revocando…",
   confirmTitle: "Revocar invitación",
   confirmBody: "El enlace de invitación dejará de funcionar. El usuario no podrá unirse con este enlace.",
   confirmBtn: "Revocar",
@@ -26,10 +30,11 @@ const LABELS = {
   },
 } as const;
 
-const ROLE_COLORS: Record<string, string> = {
-  master: "#7c3aed",
-  admin: "#2563eb",
-  operator: "#0891b2",
+/** Decorative role-badge classes — backed by the --role-* Layer 2 tokens. */
+const ROLE_BADGE_CLASS: Record<string, string> = {
+  master: "bg-role-master text-role-master-foreground",
+  admin: "bg-role-admin text-role-admin-foreground",
+  operator: "bg-role-operator text-role-operator-foreground",
 };
 
 interface Props {
@@ -54,75 +59,53 @@ export default function PendingInvitationsList({ invitations, onRevoked }: Props
 
   if (invitations.length === 0) {
     return (
-      <p style={{ fontSize: 13.5, color: "var(--color-muted)", margin: "12px 0" }}>
-        {LABELS.empty}
-      </p>
+      <p className="my-3 text-sm text-muted-foreground">{LABELS.empty}</p>
     );
   }
 
   return (
     <>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="flex flex-col gap-2">
         {invitations.map((inv) => (
           <div
             key={inv.id}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "12px 16px",
-              background: "#fff",
-              border: "1px solid var(--color-border)",
-              borderRadius: 10,
-              flexWrap: "wrap",
-            }}
+            className="flex flex-wrap items-center gap-3 rounded-[10px] border bg-card px-4 py-3"
           >
-            <div
-              style={{
-                width: 36, height: 36, borderRadius: 9,
-                background: "#eff2ff",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <Mail size={16} color="var(--color-primary)" strokeWidth={1.8} />
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-[9px] bg-accent">
+              <Mail className="size-4 text-primary" strokeWidth={1.8} />
             </div>
 
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-dark)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold text-foreground">
                 {inv.email}
               </div>
-              <div style={{ fontSize: 12, color: "var(--color-muted)", marginTop: 2 }}>
+              <div className="mt-0.5 text-xs text-muted-foreground">
                 {LABELS.invited} <strong>{inv.inviterName}</strong>
                 {" · "}
-                {LABELS.expires} {new Date(inv.expiresAt).toLocaleDateString("es-ES")}
+                {LABELS.expires}{" "}
+                {new Date(inv.expiresAt).toLocaleDateString("es-ES")}
               </div>
             </div>
 
-            <span style={{
-              padding: "3px 10px", borderRadius: 20,
-              fontSize: 11.5, fontWeight: 600,
-              color: ROLE_COLORS[inv.role] ?? "#6b7094",
-              background: (ROLE_COLORS[inv.role] ?? "#6b7094") + "18",
-              textTransform: "capitalize",
-              flexShrink: 0,
-            }}>
-              {LABELS.roles[inv.role as keyof typeof LABELS.roles] ?? inv.role}
-            </span>
-
-            <button
-              onClick={() => setRevoking(inv.id)}
-              style={{
-                display: "flex", alignItems: "center", gap: 5,
-                padding: "6px 12px", borderRadius: 7,
-                border: "1px solid #fca5a5", background: "#fef2f2",
-                cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#dc2626",
-                flexShrink: 0,
-              }}
+            <Badge
+              className={cn(
+                "shrink-0 capitalize",
+                ROLE_BADGE_CLASS[inv.role] ?? "bg-role-operator text-role-operator-foreground",
+              )}
             >
-              <Trash2 size={12} strokeWidth={2} />
+              {LABELS.roles[inv.role as keyof typeof LABELS.roles] ?? inv.role}
+            </Badge>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setRevoking(inv.id)}
+              className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              <Trash2 strokeWidth={2} />
               {LABELS.revokeLabel}
-            </button>
+            </Button>
           </div>
         ))}
       </div>
@@ -133,7 +116,7 @@ export default function PendingInvitationsList({ invitations, onRevoked }: Props
         title={LABELS.confirmTitle}
         body={LABELS.confirmBody}
         confirmLabel={LABELS.confirmBtn}
-        confirmingLabel="Revocando…"
+        confirmingLabel={LABELS.revokingLabel}
         destructive
         onConfirm={handleRevoke}
         onCancel={() => setRevoking(null)}

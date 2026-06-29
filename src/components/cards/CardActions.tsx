@@ -6,68 +6,84 @@
  * Renders executable action buttons for a card.
  * Uses ActionDefinitionWithField so it knows the target field name and type.
  * Displays before→after value preview in the feedback after execution.
+ *
+ * Action-type colors map to the four `action_type` enum values
+ * (increment / decrement / check / uncheck). These are NOT access-control
+ * outcomes — they're categorical labels for the kind of mutation. Using
+ * Tailwind built-in palette (emerald / rose / brand / neutral) keeps the
+ * --state-* tokens reserved for scan / validation outcomes.
  */
 
 import { useState } from "react";
-import { TrendingUp, TrendingDown, CheckSquare, Square, Loader2 } from "lucide-react";
-import type { ActionDefinitionWithField } from "@/lib/dal/types";
-import type { ActionExecutionResult } from "@/lib/dal/types";
+import { CheckCircle2, CheckSquare, Loader2, Square, TrendingDown, TrendingUp, XCircle } from "lucide-react";
+
+import { cn } from "@/lib/utils";
+import type { ActionDefinitionWithField, ActionExecutionResult } from "@/lib/dal/types";
 import { executeActionAction } from "@/lib/actions/actions";
 
-// ─── Action display metadata ──────────────────────────────────────────────────
+const TEXT = {
+  SECTION:       "Acciones",
+  BLOCKED:       "Acciones bloqueadas: se detectaron errores de validación.",
+  WARNING:       "Errores de validación detectados. Las acciones requieren confirmación manual.",
+  TITLE_BLOCKED: "Acciones bloqueadas por errores de validación",
+  TITLE_WARNING: "Requiere confirmación — hay errores de validación",
+  EXECUTED:      "ejecutada",
+  FALLBACK_NAME: "Acción",
+  FALLBACK_ERR:  "Error al ejecutar la acción.",
+  YES:           "Sí",
+  NO:            "No",
+  DASH:          "—",
+} as const;
 
 const ACTION_STYLE: Record<
   string,
   {
-    icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
-    color: string;
-    bg: string;
-    border: string;
-    labelColor: string;
+    Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
+    classes: string;
   }
 > = {
-  increment: { icon: TrendingUp,   color: "#fff",              bg: "#059669", border: "#059669", labelColor: "#fff" },
-  decrement: { icon: TrendingDown, color: "#fff",              bg: "#dc2626", border: "#dc2626", labelColor: "#fff" },
-  check:     { icon: CheckSquare,  color: "#fff",              bg: "#4f5bff", border: "#4f5bff", labelColor: "#fff" },
-  uncheck:   { icon: Square,       color: "var(--color-dark)", bg: "#f3f4f6", border: "#d1d5db", labelColor: "var(--color-dark)" },
+  increment: {
+    Icon: TrendingUp,
+    classes: "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700",
+  },
+  decrement: {
+    Icon: TrendingDown,
+    classes: "bg-rose-600 text-white border-rose-600 hover:bg-rose-700",
+  },
+  check: {
+    Icon: CheckSquare,
+    classes: "bg-primary text-primary-foreground border-primary hover:bg-primary/90",
+  },
+  uncheck: {
+    Icon: Square,
+    classes: "bg-muted text-foreground border-border hover:bg-muted/80",
+  },
 };
 
 function formatValue(v: unknown): string {
-  if (v === null || v === undefined) return "—";
+  if (v === null || v === undefined) return TEXT.DASH;
   if (v instanceof Date) return v.toLocaleDateString("es-ES");
-  if (typeof v === "boolean") return v ? "Sí" : "No";
+  if (typeof v === "boolean") return v ? TEXT.YES : TEXT.NO;
   return String(v);
 }
-
-// ─── Component ─────────────────────────────────────────────────────────────────
 
 interface CardActionsProps {
   cardId: string;
   actions: ActionDefinitionWithField[];
-  /** Called after a successful action execution — use to trigger refresh. */
   onActionExecuted?: () => void;
   /**
-   * When true, all buttons are rendered but disabled (grayed out, not clickable).
-   * Use when scan validations detect blocking errors and override is NOT allowed.
-   * Backward compatible: omitting this prop leaves buttons enabled.
+   * When true, all buttons are rendered but disabled — used when blocking
+   * errors are detected AND override is not allowed.
    */
   disabled?: boolean;
   /**
-   * When true, buttons render with amber/warning styling. Clicking calls
-   * onActionClick(actionId, actionName) instead of executing directly.
-   * Used when override IS allowed — parent shows a confirmation modal.
-   * Ignored when disabled=true (disabled takes precedence).
+   * When true, buttons render with warning styling and clicking calls
+   * onActionClick (parent shows a confirmation modal).
+   * Ignored when disabled=true.
    */
   warningMode?: boolean;
-  /**
-   * Called in warningMode when a button is clicked.
-   * Parent is responsible for showing the modal and executing the action.
-   */
   onActionClick?: (actionId: string, actionName: string) => void;
-  /**
-   * When true, is_auto_execute actions are hidden from the button list.
-   * Auto-execute actions should not be clickable manually.
-   */
+  /** When true, is_auto_execute actions are hidden from the button list. */
   filterAutoExecute?: boolean;
 }
 
@@ -93,7 +109,6 @@ export default function CardActions({
   }
   if (activeActions.length === 0) return null;
 
-  // In warningMode, clicking routes to parent modal rather than executing directly
   function handleClick(action: ActionDefinitionWithField) {
     if (disabled) return;
     if (warningMode && onActionClick) {
@@ -120,132 +135,110 @@ export default function CardActions({
       setFeedback({ actionId: action.id, result: res.data });
       onActionExecuted?.();
     } else {
-      setErrorMsg(res.error ?? "Error al ejecutar la acción.");
+      setErrorMsg(res.error ?? TEXT.FALLBACK_ERR);
     }
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <p
-        style={{
-          fontSize: 12,
-          fontWeight: 700,
-          color: "var(--color-muted)",
-          textTransform: "uppercase",
-          letterSpacing: "0.05em",
-          margin: 0,
-        }}
-      >
-        Acciones
+    <div className="flex flex-col gap-2.5">
+      <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+        {TEXT.SECTION}
       </p>
 
       {disabled && (
-        <div style={{
-          padding: "8px 12px",
-          background: "#fef2f2",
-          border: "1px solid #fca5a5",
-          borderRadius: 8,
-          fontSize: 12,
-          color: "#dc2626",
-          fontWeight: 600,
-        }}>
-          Acciones bloqueadas: se detectaron errores de validación.
+        <div
+          role="alert"
+          className={cn(
+            "flex items-start gap-2 rounded-md border px-3 py-2 text-xs font-semibold",
+            "bg-state-denied border-state-denied-border text-state-denied-foreground",
+          )}
+        >
+          <XCircle aria-hidden className="mt-0.5 size-4 shrink-0 text-state-denied-icon" />
+          {TEXT.BLOCKED}
         </div>
       )}
 
       {!disabled && warningMode && (
-        <div style={{
-          padding: "8px 12px",
-          background: "#fffbeb",
-          border: "1px solid #fcd34d",
-          borderRadius: 8,
-          fontSize: 12,
-          color: "#92400e",
-          fontWeight: 600,
-        }}>
-          Errores de validación detectados. Las acciones requieren confirmación manual.
+        <div
+          role="alert"
+          className={cn(
+            "flex items-start gap-2 rounded-md border px-3 py-2 text-xs font-semibold",
+            "bg-state-warning border-state-warning-border text-state-warning-foreground",
+          )}
+        >
+          <Square aria-hidden className="mt-0.5 size-4 shrink-0 text-state-warning-icon" />
+          {TEXT.WARNING}
         </div>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="flex flex-col gap-2">
         {activeActions.map((action) => {
           const style = ACTION_STYLE[action.actionType] ?? ACTION_STYLE.increment;
-          const Icon = style.icon;
+          const { Icon } = style;
           const isLoading = loadingId === action.id;
           const isDisabled = disabled || loadingId !== null;
           const isWarning = !disabled && warningMode;
 
-          // Preview text: what this action will do
           const actionConfig = action.config as { amount?: number } | null;
           const amountLabel =
             (action.actionType === "increment" || action.actionType === "decrement") &&
             actionConfig?.amount != null
               ? ` ${actionConfig.amount}`
               : "";
-
           const previewLabel = `${action.targetFieldLabel}${amountLabel}`;
 
           return (
             <button
               key={action.id}
+              type="button"
               onClick={() => handleClick(action)}
               disabled={isDisabled}
               title={
                 disabled
-                  ? "Acciones bloqueadas por errores de validación"
+                  ? TEXT.TITLE_BLOCKED
                   : isWarning
-                    ? "Requiere confirmación — hay errores de validación"
+                    ? TEXT.TITLE_WARNING
                     : previewLabel
               }
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 9,
-                padding: "10px 14px",
-                borderRadius: 10,
-                background: disabled ? "#f3f4f6" : isWarning ? "#fffbeb" : style.bg,
-                color: disabled ? "#9ca3af" : isWarning ? "#92400e" : style.labelColor,
-                border: `1.5px solid ${disabled ? "#e5e7eb" : isWarning ? "#fcd34d" : style.border}`,
-                cursor: isDisabled ? (disabled ? "not-allowed" : "wait") : "pointer",
-                fontSize: 13,
-                fontWeight: 600,
-                textAlign: "left",
-                opacity: isLoading ? 0.7 : disabled ? 0.5 : 1,
-                transition: "opacity 0.15s",
-              }}
+              className={cn(
+                "flex items-center gap-2.5 rounded-lg border-2 px-3.5 py-2.5 text-left text-sm font-semibold",
+                "transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                disabled
+                  ? "cursor-not-allowed border-border bg-muted text-muted-foreground opacity-50"
+                  : isWarning
+                    ? "bg-state-warning border-state-warning-border text-state-warning-foreground hover:bg-state-warning-border/40"
+                    : style.classes,
+                isLoading && "opacity-70",
+                !isDisabled && !isWarning && "cursor-pointer",
+              )}
             >
               {isLoading ? (
-                <span style={{ animation: "spin 0.8s linear infinite", flexShrink: 0, display: "flex" }}>
-                  <Loader2 size={14} strokeWidth={2} />
-                </span>
+                <Loader2 className="size-3.5 shrink-0 animate-spin" strokeWidth={2} />
               ) : (
-                <span style={{ flexShrink: 0, display: "flex" }}>
-                  <Icon size={14} strokeWidth={2} />
-                </span>
+                <Icon className="size-3.5 shrink-0" strokeWidth={2} />
               )}
-              <span style={{ flex: 1 }}>{action.name}</span>
+              <span className="flex-1">{action.name}</span>
             </button>
           );
         })}
       </div>
 
-      {/* Feedback: before → after */}
       {feedback && (
         <div
-          style={{
-            padding: "10px 14px",
-            borderRadius: 8,
-            background: "#dcfce7",
-            color: "#166534",
-            fontSize: 12.5,
-          }}
+          role="status"
+          className={cn(
+            "rounded-md border px-3 py-2.5 text-xs",
+            "bg-state-granted border-state-granted-border text-state-granted-foreground",
+          )}
         >
-          <div style={{ fontWeight: 600, marginBottom: 2 }}>
-            ✓ {activeActions.find((a) => a.id === feedback.actionId)?.name ?? "Acción"} ejecutada
+          <div className="mb-0.5 flex items-center gap-1.5 font-semibold">
+            <CheckCircle2 className="size-3.5 text-state-granted-icon" />
+            {activeActions.find((a) => a.id === feedback.actionId)?.name ?? TEXT.FALLBACK_NAME}{" "}
+            {TEXT.EXECUTED}
           </div>
-          <div style={{ color: "#15803d" }}>
+          <div>
             {feedback.result.targetFieldLabel}:{" "}
-            <span style={{ textDecoration: "line-through", opacity: 0.7 }}>
+            <span className="line-through opacity-70">
               {formatValue(feedback.result.previousValue)}
             </span>
             {" → "}
@@ -256,21 +249,15 @@ export default function CardActions({
 
       {errorMsg && (
         <div
-          style={{
-            padding: "10px 14px",
-            borderRadius: 8,
-            background: "#fee2e2",
-            color: "#991b1b",
-            fontSize: 12.5,
-          }}
+          role="alert"
+          className={cn(
+            "rounded-md border px-3 py-2.5 text-xs",
+            "bg-state-denied border-state-denied-border text-state-denied-foreground",
+          )}
         >
           {errorMsg}
         </div>
       )}
-
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      `}</style>
     </div>
   );
 }

@@ -8,9 +8,14 @@ import { Edit2, UserCheck, UserX, Trash2 } from "lucide-react";
 import type { MemberWithUser } from "@/lib/dal";
 import type { TenantRole } from "@/lib/api";
 import { canManage } from "@/lib/auth/role-hierarchy";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 const LABELS = {
   selfTooltip: "Edita tus datos en Configuración → Cuenta",
+  selfBadge: "Tú",
   editBtn: "Editar",
   activateBtn: "Activar",
   deactivateBtn: "Desactivar",
@@ -24,10 +29,11 @@ const LABELS = {
   statusInactive: "Inactivo",
 } as const;
 
-const ROLE_COLORS: Record<string, string> = {
-  master: "#7c3aed",
-  admin: "#2563eb",
-  operator: "#0891b2",
+/** Decorative role-badge classes — backed by the --role-* Layer 2 tokens. */
+const ROLE_BADGE_CLASS: Record<string, string> = {
+  master: "bg-role-master text-role-master-foreground",
+  admin: "bg-role-admin text-role-admin-foreground",
+  operator: "bg-role-operator text-role-operator-foreground",
 };
 
 interface Props {
@@ -62,141 +68,98 @@ export default function MemberRow({
 
   return (
     <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 14,
-        padding: "14px 16px",
-        background: "#fff",
-        border: "1px solid var(--color-border)",
-        borderRadius: 12,
-        opacity: member.isActive ? 1 : 0.6,
-        flexWrap: "wrap",
-      }}
+      className={cn(
+        "flex flex-wrap items-center gap-3.5 rounded-xl border bg-card px-4 py-3.5",
+        !member.isActive && "opacity-60",
+      )}
     >
       {/* Avatar */}
-      {avatarReadUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={avatarReadUrl}
-          alt={member.userName}
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 10,
-            objectFit: "cover",
-            border: "1px solid var(--color-border)",
-            flexShrink: 0,
-          }}
-        />
-      ) : (
-        <div
-          style={{
-            width: 40, height: 40, borderRadius: 10,
-            background: "linear-gradient(135deg, #e0e7ff, #c7d2fe)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontWeight: 700, fontSize: 14, color: "var(--color-primary)",
-            fontFamily: "var(--font-heading)",
-            flexShrink: 0,
-          }}
-        >
+      <Avatar className="size-10 shrink-0 rounded-[10px]">
+        {avatarReadUrl && (
+          <AvatarImage src={avatarReadUrl} alt={member.userName} className="rounded-[10px] object-cover" />
+        )}
+        <AvatarFallback className="rounded-[10px] bg-accent font-heading text-sm font-bold text-accent-foreground">
           {initials || "?"}
-        </div>
-      )}
+        </AvatarFallback>
+      </Avatar>
 
       {/* Info */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-dark)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="truncate text-sm font-semibold text-foreground">
             {member.userName}
           </span>
           {isSelf && (
-            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--color-primary)", background: "#eff2ff", padding: "1px 7px", borderRadius: 20 }}>
-              Tú
-            </span>
+            <Badge className="bg-accent text-accent-foreground">
+              {LABELS.selfBadge}
+            </Badge>
           )}
           {!member.isActive && (
-            <span style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", background: "#f3f4f6", padding: "1px 7px", borderRadius: 20 }}>
-              {LABELS.statusInactive}
-            </span>
+            <Badge variant="secondary">{LABELS.statusInactive}</Badge>
           )}
         </div>
-        <div style={{ fontSize: 12.5, color: "var(--color-muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <div className="mt-0.5 truncate text-xs text-muted-foreground">
           {member.userEmail}
-          {member.userUsername && <span style={{ marginLeft: 6, color: "#a0a3b1" }}>@{member.userUsername}</span>}
+          {member.userUsername && (
+            <span className="ml-1.5 text-muted-foreground/70">
+              @{member.userUsername}
+            </span>
+          )}
         </div>
       </div>
 
       {/* Role badge */}
-      <span
-        style={{
-          padding: "3px 11px", borderRadius: 20,
-          fontSize: 12, fontWeight: 600,
-          color: ROLE_COLORS[member.role] ?? "#6b7094",
-          background: (ROLE_COLORS[member.role] ?? "#6b7094") + "18",
-          flexShrink: 0,
-        }}
+      <Badge
+        className={cn(
+          "shrink-0",
+          ROLE_BADGE_CLASS[member.role] ?? "bg-role-operator text-role-operator-foreground",
+        )}
       >
         {LABELS.roles[member.role as keyof typeof LABELS.roles] ?? member.role}
-      </span>
+      </Badge>
 
       {/* Actions */}
-      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-        <button
+      <div className="flex shrink-0 gap-1.5">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
           onClick={() => canAct && onEdit(member)}
           disabled={!canAct}
           title={isSelf ? LABELS.selfTooltip : undefined}
-          style={{
-            display: "flex", alignItems: "center", gap: 4,
-            padding: "6px 10px", borderRadius: 7,
-            border: "1px solid var(--color-border)", background: "#fff",
-            cursor: canAct ? "pointer" : "not-allowed",
-            fontSize: 12, fontWeight: 500, color: canAct ? "var(--color-dark)" : "#9ca3af",
-            opacity: canAct ? 1 : 0.5,
-          }}
         >
-          <Edit2 size={12} strokeWidth={2} />
+          <Edit2 strokeWidth={2} />
           {LABELS.editBtn}
-        </button>
+        </Button>
 
-        <button
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
           onClick={() => canAct && onToggleActive(member)}
           disabled={!canAct}
           title={isSelf ? LABELS.selfTooltip : undefined}
-          style={{
-            display: "flex", alignItems: "center", gap: 4,
-            padding: "6px 10px", borderRadius: 7,
-            border: `1px solid ${member.isActive ? "#fed7aa" : "#bbf7d0"}`,
-            background: member.isActive ? "#fff7ed" : "#f0fdf4",
-            cursor: canAct ? "pointer" : "not-allowed",
-            fontSize: 12, fontWeight: 500,
-            color: canAct ? (member.isActive ? "#ea580c" : "#16a34a") : "#9ca3af",
-            opacity: canAct ? 1 : 0.5,
-          }}
         >
-          {member.isActive
-            ? <UserX size={12} strokeWidth={2} />
-            : <UserCheck size={12} strokeWidth={2} />
-          }
+          {member.isActive ? (
+            <UserX strokeWidth={2} />
+          ) : (
+            <UserCheck strokeWidth={2} />
+          )}
           {member.isActive ? LABELS.deactivateBtn : LABELS.activateBtn}
-        </button>
+        </Button>
 
-        <button
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
           onClick={() => canAct && onRemove(member)}
           disabled={!canAct}
           title={isSelf ? LABELS.selfTooltip : undefined}
-          style={{
-            display: "flex", alignItems: "center", gap: 4,
-            padding: "6px 10px", borderRadius: 7,
-            border: "1px solid #fca5a5", background: "#fef2f2",
-            cursor: canAct ? "pointer" : "not-allowed",
-            fontSize: 12, fontWeight: 500, color: canAct ? "#dc2626" : "#9ca3af",
-            opacity: canAct ? 1 : 0.5,
-          }}
+          className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
         >
-          <Trash2 size={12} strokeWidth={2} />
+          <Trash2 strokeWidth={2} />
           {LABELS.removeBtn}
-        </button>
+        </Button>
       </div>
     </div>
   );

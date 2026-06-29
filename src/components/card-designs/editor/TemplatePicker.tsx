@@ -7,8 +7,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import { X, Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 import {
   SAMPLE_TEMPLATES,
   cloneTemplateLayout,
@@ -16,6 +15,16 @@ import {
 } from "@/lib/card-designs/templates";
 import type { CardDesignLayout } from "@/lib/card-designs/types";
 import { renderDesignToDataURL } from "@/lib/card-designs/render";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 const LABELS = {
   title: "Cargar plantilla",
@@ -55,18 +64,6 @@ export default function TemplatePicker({
 
   const [pendingTemplate, setPendingTemplate] = useState<DesignTemplate | null>(null);
 
-  // Close on Escape
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        if (pendingTemplate) setPendingTemplate(null);
-        else onClose();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, pendingTemplate]);
-
   function handleApply(template: DesignTemplate) {
     if (designHasContent) {
       setPendingTemplate(template);
@@ -83,96 +80,45 @@ export default function TemplatePicker({
     onClose();
   }
 
-  const modal = (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15,18,40,0.55)",
-        zIndex: 1000,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#fff",
-          borderRadius: 16,
-          boxShadow: "0 24px 64px rgba(0,0,0,0.2)",
-          maxWidth: 920,
-          width: "100%",
-          maxHeight: "90vh",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            padding: "18px 22px",
-            borderBottom: "1px solid var(--color-border-soft)",
-            gap: 12,
-          }}
-        >
-          <Sparkles size={18} strokeWidth={1.8} style={{ color: "var(--color-primary)" }} />
-          <div style={{ flex: 1 }}>
-            <div
-              style={{
-                fontSize: 16,
-                fontWeight: 700,
-                fontFamily: "var(--font-heading)",
-                color: "var(--color-dark)",
-              }}
-            >
-              {LABELS.title}
+  return (
+    <>
+      <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+        <DialogContent className="max-h-[90vh] max-w-[920px] gap-0 overflow-hidden p-0">
+          {/* Header */}
+          <DialogHeader className="flex-row items-center gap-3 space-y-0 border-b p-5">
+            <Sparkles className="size-4.5 text-primary" strokeWidth={1.8} />
+            <div className="flex-1">
+              <DialogTitle className="font-heading text-base font-bold">
+                {LABELS.title}
+              </DialogTitle>
+              <DialogDescription className="mt-0.5 text-xs">
+                {LABELS.subtitle}
+              </DialogDescription>
             </div>
-            <div style={{ fontSize: 12, color: "var(--color-muted)", marginTop: 2 }}>
-              {LABELS.subtitle}
-            </div>
+          </DialogHeader>
+
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto bg-muted/40 p-5">
+            {templates.length === 0 ? (
+              <p className="p-6 text-center text-sm text-muted-foreground">
+                {LABELS.empty}
+              </p>
+            ) : (
+              <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]">
+                {templates.map((tpl) => (
+                  <TemplateCard
+                    key={tpl.id}
+                    template={tpl}
+                    onApply={() => handleApply(tpl)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-          <button
-            onClick={onClose}
-            title={LABELS.close}
-            style={iconBtnStyle()}
-          >
-            <X size={16} strokeWidth={2} />
-          </button>
-        </div>
+        </DialogContent>
+      </Dialog>
 
-        {/* Body */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 22, background: "#f8fafc" }}>
-          {templates.length === 0 ? (
-            <p style={{ fontSize: 13, color: "var(--color-muted)", textAlign: "center", padding: 24 }}>
-              {LABELS.empty}
-            </p>
-          ) : (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                gap: 16,
-              }}
-            >
-              {templates.map((tpl) => (
-                <TemplateCard
-                  key={tpl.id}
-                  template={tpl}
-                  onApply={() => handleApply(tpl)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Confirmation modal nested for replace warning */}
+      {/* Confirmation modal for replace warning */}
       {pendingTemplate && (
         <ConfirmReplace
           template={pendingTemplate}
@@ -180,10 +126,8 @@ export default function TemplatePicker({
           onConfirm={confirmApply}
         />
       )}
-    </div>
+    </>
   );
-
-  return createPortal(modal, document.body);
 }
 
 // ─── Template card ──────────────────────────────────────────────────────────
@@ -222,94 +166,50 @@ function TemplateCard({
     template.layout.canvas.width / Math.max(1, template.layout.canvas.height);
 
   return (
-    <div
-      style={{
-        background: "#fff",
-        borderRadius: 12,
-        border: "1px solid var(--color-border)",
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        boxShadow: "0 2px 6px rgba(15,23,42,0.06)",
-      }}
-    >
-      {/* Thumbnail */}
+    <div className="flex flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
+      {/* Thumbnail — aspectRatio is data-driven (template dimensions). */}
       <div
-        style={{
-          aspectRatio: String(aspect),
-          background: "#f1f5f9",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 12,
-        }}
+        className="flex items-center justify-center bg-muted p-3"
+        style={{ aspectRatio: String(aspect) }}
       >
         {thumb ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={thumb}
             alt={template.name}
-            style={{
-              maxWidth: "100%",
-              maxHeight: "100%",
-              objectFit: "contain",
-              borderRadius: 6,
-              boxShadow: "0 4px 14px rgba(15,23,42,0.12)",
-            }}
+            className="max-h-full max-w-full rounded-md object-contain shadow-md"
           />
         ) : thumbErr ? (
-          <span style={{ fontSize: 12, color: "var(--color-muted)" }}>—</span>
+          <span className="text-xs text-muted-foreground">—</span>
         ) : (
-          <Loader2 size={20} strokeWidth={2} style={{ animation: "spin 1s linear infinite", color: "var(--color-muted)" }} />
+          <Loader2 className="size-5 animate-spin text-muted-foreground" strokeWidth={2} />
         )}
       </div>
 
       {/* Body */}
-      <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="flex flex-col gap-2 px-3.5 pt-3 pb-3.5">
         <div>
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: "var(--color-dark)",
-              fontFamily: "var(--font-heading)",
-            }}
-          >
+          <div className="font-heading text-sm font-bold text-foreground">
             {template.name}
           </div>
-          <div style={{ fontSize: 11.5, color: "var(--color-muted)", marginTop: 2, lineHeight: 1.45 }}>
+          <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
             {template.description}
           </div>
         </div>
 
         {template.customizableHints.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          <div className="flex flex-wrap gap-1">
             {template.customizableHints.map((hint) => (
-              <span
-                key={hint}
-                style={{
-                  fontSize: 10.5,
-                  fontWeight: 600,
-                  padding: "3px 7px",
-                  borderRadius: 999,
-                  background: "var(--color-primary-light)",
-                  color: "var(--color-primary)",
-                }}
-              >
+              <Badge key={hint} className="bg-accent text-accent-foreground">
                 {hint}
-              </span>
+              </Badge>
             ))}
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={onApply}
-          className="btn btn-primary"
-          style={{ marginTop: 4, height: 34, fontSize: 13 }}
-        >
+        <Button type="button" onClick={onApply} className="mt-1">
           {LABELS.apply}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -327,71 +227,20 @@ function ConfirmReplace({
   onConfirm: () => void;
 }) {
   return (
-    <div
-      onClick={onCancel}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15,18,40,0.55)",
-        zIndex: 1100,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "#fff",
-          borderRadius: 14,
-          maxWidth: 420,
-          width: "100%",
-          padding: "22px 24px 20px",
-          boxShadow: "0 24px 64px rgba(0,0,0,0.22)",
-        }}
-      >
-        <div
-          style={{
-            fontSize: 15,
-            fontWeight: 700,
-            fontFamily: "var(--font-heading)",
-            color: "var(--color-dark)",
-            marginBottom: 8,
-          }}
-        >
-          {LABELS.warningTitle}
-        </div>
-        <p style={{ fontSize: 13, color: "var(--color-secondary)", lineHeight: 1.5, margin: 0 }}>
-          {LABELS.warningBody}
-        </p>
-        <p style={{ fontSize: 12.5, color: "var(--color-muted)", margin: "10px 0 0", fontStyle: "italic" }}>
-          {template.name}
-        </p>
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 18 }}>
-          <button onClick={onCancel} className="btn btn-secondary">
+    <Dialog open onOpenChange={(open) => { if (!open) onCancel(); }}>
+      <DialogContent className="max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle>{LABELS.warningTitle}</DialogTitle>
+          <DialogDescription>{LABELS.warningBody}</DialogDescription>
+        </DialogHeader>
+        <p className="text-xs italic text-muted-foreground">{template.name}</p>
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel}>
             {LABELS.cancel}
-          </button>
-          <button onClick={onConfirm} className="btn btn-primary">
-            {LABELS.warningConfirm}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+          <Button onClick={onConfirm}>{LABELS.warningConfirm}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
-}
-
-function iconBtnStyle(): React.CSSProperties {
-  return {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    border: "1.5px solid var(--color-border)",
-    background: "#fff",
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "var(--color-muted)",
-  };
 }

@@ -11,7 +11,14 @@
 import { useState } from "react";
 import { Download, Loader2, AlertTriangle } from "lucide-react";
 import { exportActionHistoryAction } from "@/lib/actions/action-history";
+import { Button } from "@/components/ui/button";
 import type { ActionHistoryFilters } from "@/lib/dal";
+
+const TEXT = {
+  EXPORTING: "Exportando…",
+  EXPORT:    "Exportar CSV",
+  CAP_NOTICE: "Exportación limitada a 10.000 filas. Aplica filtros para reducir el rango.",
+} as const;
 
 interface HistoryExportButtonProps {
   filters: ActionHistoryFilters;
@@ -61,61 +68,33 @@ export default function HistoryExportButton({ filters }: HistoryExportButtonProp
   };
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <button
+    <div className="flex items-center gap-2.5">
+      <Button
+        type="button"
+        variant="outline"
         onClick={handleExport}
         disabled={loading}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "8px 14px",
-          borderRadius: 8,
-          border: "1.5px solid var(--color-border)",
-          background: "#fff",
-          fontSize: 13,
-          fontWeight: 600,
-          color: loading ? "var(--color-muted)" : "var(--color-dark)",
-          cursor: loading ? "not-allowed" : "pointer",
-          transition: "background 0.12s",
-          opacity: loading ? 0.7 : 1,
-          whiteSpace: "nowrap",
-        }}
+        className="whitespace-nowrap"
       >
         {loading ? (
           <>
-            <Loader2 size={14} strokeWidth={2} style={{ animation: "spin 0.8s linear infinite" }} />
-            Exportando…
+            <Loader2 className="animate-spin" strokeWidth={2} />
+            {TEXT.EXPORTING}
           </>
         ) : (
           <>
-            <Download size={14} strokeWidth={2} />
-            Exportar CSV
+            <Download strokeWidth={2} />
+            {TEXT.EXPORT}
           </>
         )}
-      </button>
+      </Button>
 
       {capNotice && (
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 5,
-          padding: "6px 10px",
-          borderRadius: 7,
-          background: "#fffbeb",
-          border: "1px solid #fcd34d",
-          fontSize: 12,
-          color: "#92400e",
-          fontWeight: 500,
-        }}>
-          <AlertTriangle size={13} strokeWidth={2} style={{ flexShrink: 0 }} />
-          Exportación limitada a 10.000 filas. Aplica filtros para reducir el rango.
+        <div className="flex items-center gap-1.5 rounded-md border border-amber-400/50 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+          <AlertTriangle className="size-3.5 shrink-0" strokeWidth={2} />
+          {TEXT.CAP_NOTICE}
         </div>
       )}
-
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      `}</style>
     </div>
   );
 }

@@ -17,6 +17,16 @@ import {
   linkDesignToCardTypeAction,
   unlinkDesignFromCardTypeAction,
 } from "@/lib/actions/card-designs";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 const LABELS = {
   sectionTitle: "Diseños vinculados",
@@ -31,9 +41,20 @@ const LABELS = {
   pickerCancel: "Cancelar",
   loading: "Cargando…",
   conflictHint: "Ya existe un diseño de este tipo vinculado.",
+  unlinkError: "Error al desvincular",
 } as const;
 
 type DesignKind = "card" | "passbook";
+
+/** Decorative kind accent — card = brand, passbook = emerald (not state). */
+const KIND_ICON_CLASS: Record<DesignKind, string> = {
+  card: "bg-accent text-primary",
+  passbook: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+};
+const KIND_LINK_CLASS: Record<DesignKind, string> = {
+  card: "text-primary",
+  passbook: "text-emerald-600 dark:text-emerald-400",
+};
 
 interface Props {
   cardTypeId: string;
@@ -49,41 +70,15 @@ export default function CardTypeLinkedDesigns({
   const router = useRouter();
 
   return (
-    <div className="card animate-fadein" style={{ padding: 0, overflow: "hidden" }}>
-      <div
-        style={{
-          padding: "18px 22px",
-          borderBottom: "1px solid var(--color-border-soft)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <div
-          style={{
-            fontSize: 14,
-            fontWeight: 700,
-            fontFamily: "var(--font-heading)",
-            color: "var(--color-dark)",
-          }}
-        >
+    <div className="animate-fadein overflow-hidden rounded-2xl border bg-card shadow-sm">
+      <div className="flex items-center justify-between border-b px-5 py-4">
+        <div className="font-heading text-sm font-bold text-foreground">
           {LABELS.sectionTitle}
         </div>
-        <span
-          style={{
-            fontSize: 11.5,
-            fontWeight: 600,
-            color: "var(--color-muted)",
-            background: "var(--color-page-bg)",
-            padding: "2px 8px",
-            borderRadius: 5,
-          }}
-        >
-          {linkedDesigns.length}
-        </span>
+        <Badge variant="secondary">{linkedDesigns.length}</Badge>
       </div>
 
-      <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="flex flex-col gap-2 px-3.5 py-3">
         {(["card", "passbook"] as DesignKind[]).map((kind) => {
           const linked = linkedDesigns.find((d) => d.kind === kind) ?? null;
           return (
@@ -124,8 +119,6 @@ function DesignSlot({
 
   const Icon = kind === "card" ? Palette : BookOpen;
   const kindLabel = kind === "card" ? LABELS.kindCard : LABELS.kindPassbook;
-  const kindColor = kind === "card" ? "#4f5bff" : "#059669";
-  const kindBg = kind === "card" ? "#eef0ff" : "#ecfdf5";
 
   async function openPicker() {
     setPickerOpen(true);
@@ -158,186 +151,110 @@ function DesignSlot({
     const result = await unlinkDesignFromCardTypeAction(linked.id, cardTypeId);
     setUnlinkLoading(false);
     if (!result.success) {
-      setActionError(result.error ?? "Error al desvincular");
+      setActionError(result.error ?? LABELS.unlinkError);
     } else {
       onMutated();
     }
   }
 
   return (
-    <div
-      style={{
-        padding: "12px 14px",
-        background: "#fafbfc",
-        border: "1px solid var(--color-border-soft)",
-        borderRadius: 10,
-      }}
-    >
+    <div className="rounded-[10px] border bg-muted/40 px-3.5 py-3">
       {/* Kind label row */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 7,
-          marginBottom: 8,
-        }}
-      >
-        <div
-          style={{
-            width: 26,
-            height: 26,
-            borderRadius: 7,
-            background: kindBg,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: kindColor,
-            flexShrink: 0,
-          }}
-        >
-          <Icon size={13} strokeWidth={1.8} />
+      <div className="mb-2 flex items-center gap-1.5">
+        <div className={cn("flex size-6.5 shrink-0 items-center justify-center rounded-md", KIND_ICON_CLASS[kind])}>
+          <Icon className="size-3.5" strokeWidth={1.8} />
         </div>
-        <span
-          style={{
-            fontSize: 12.5,
-            fontWeight: 700,
-            color: "var(--color-dark)",
-          }}
-        >
-          {kindLabel}
-        </span>
+        <span className="text-sm font-bold text-foreground">{kindLabel}</span>
       </div>
 
       {/* Linked design or empty state */}
       {linked ? (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <Link2 size={12} strokeWidth={2} style={{ color: kindColor, flexShrink: 0 }} />
-          <span
-            style={{
-              flex: 1,
-              fontSize: 12.5,
-              fontWeight: 500,
-              color: "var(--color-dark)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
+        <div className="flex items-center gap-2">
+          <Link2 className={cn("size-3 shrink-0", KIND_LINK_CLASS[kind])} strokeWidth={2} />
+          <span className="flex-1 truncate text-sm font-medium text-foreground">
             {linked.name}
           </span>
           <a
             href={`/card-designs/${linked.id}/edit`}
             title={LABELS.editBtn}
-            style={{ color: "var(--color-primary)", display: "flex", alignItems: "center" }}
+            className="flex items-center text-primary hover:text-primary/80"
           >
-            <ExternalLink size={12} strokeWidth={2} />
+            <ExternalLink className="size-3" strokeWidth={2} />
           </a>
           {isMaster && (
             <button
               onClick={() => void handleUnlink()}
               disabled={unlinkLoading}
               title={LABELS.unlinkBtn}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: unlinkLoading ? "not-allowed" : "pointer",
-                color: "#dc2626",
-                padding: 2,
-                display: "flex",
-                alignItems: "center",
-              }}
+              className="flex items-center p-0.5 text-destructive disabled:cursor-not-allowed disabled:opacity-50"
             >
               {unlinkLoading ? (
-                <Loader2 size={12} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
+                <Loader2 className="size-3 animate-spin" strokeWidth={2} />
               ) : (
-                <Unlink size={12} strokeWidth={2} />
+                <Unlink className="size-3" strokeWidth={2} />
               )}
             </button>
           )}
         </div>
       ) : (
-        <div
-          style={{
-            fontSize: 12,
-            color: "var(--color-muted)",
-            fontStyle: "italic",
-          }}
-        >
+        <div className="text-xs italic text-muted-foreground">
           {LABELS.noDesign}
         </div>
       )}
 
       {/* Error message */}
       {actionError && (
-        <p style={{ fontSize: 11.5, color: "#dc2626", margin: "6px 0 0" }}>{actionError}</p>
+        <p className="mt-1.5 text-xs text-destructive">{actionError}</p>
       )}
 
       {/* Link picker (masters only, when no design linked) */}
       {isMaster && !linked && (
         <>
           {pickerOpen ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+            <div className="mt-2 flex flex-col gap-1.5">
               {pickerLoading && !pickerDesigns.length ? (
-                <span style={{ fontSize: 11.5, color: "var(--color-muted)" }}>{LABELS.loading}</span>
+                <span className="text-xs text-muted-foreground">{LABELS.loading}</span>
               ) : (
-                <select
-                  className="input"
-                  style={{ fontSize: 12 }}
-                  value={selectedId}
-                  onChange={(e) => setSelectedId(e.target.value)}
-                >
-                  <option value="">{LABELS.pickerPlaceholder}</option>
-                  {pickerDesigns.map((d) => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
-                </select>
+                <Select value={selectedId} onValueChange={setSelectedId}>
+                  <SelectTrigger size="sm" className="w-full">
+                    <SelectValue placeholder={LABELS.pickerPlaceholder} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pickerDesigns.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
-              <div style={{ display: "flex", gap: 4 }}>
-                <button
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  size="sm"
                   onClick={() => void confirmLink()}
                   disabled={!selectedId || pickerLoading}
-                  className="btn btn-primary"
-                  style={{ flex: 1, height: 30, fontSize: 12 }}
+                  className="flex-1"
                 >
-                  {pickerLoading
-                    ? <Loader2 size={12} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
-                    : LABELS.pickerConfirm
-                  }
-                </button>
-                <button
+                  {pickerLoading ? (
+                    <Loader2 className="animate-spin" strokeWidth={2} />
+                  ) : (
+                    LABELS.pickerConfirm
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => { setPickerOpen(false); setActionError(null); }}
-                  className="btn btn-secondary"
-                  style={{ flex: 1, height: 30, fontSize: 12 }}
+                  className="flex-1"
                 >
                   {LABELS.pickerCancel}
-                </button>
+                </Button>
               </div>
             </div>
           ) : (
             <button
               onClick={() => void openPicker()}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                padding: "5px 10px",
-                borderRadius: 7,
-                border: "1.5px dashed var(--color-primary)",
-                background: "var(--color-primary-light)",
-                color: "var(--color-primary)",
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: 600,
-                width: "100%",
-                justifyContent: "center",
-                marginTop: 8,
-              }}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-primary bg-accent px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-accent/70"
             >
               {LABELS.linkBtn}
             </button>

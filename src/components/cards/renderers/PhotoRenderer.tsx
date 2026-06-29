@@ -1,7 +1,24 @@
 "use client";
 
+/**
+ * PhotoRenderer — thumbnail + lightbox preview.
+ *
+ * `<img src>` is data — preserved inline. The chrome (border, lightbox surface)
+ * is migrated to tokens + shadcn Dialog.
+ */
+
 import { useState } from "react";
-import { X } from "lucide-react";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+const TEXT = {
+  ALT_DEFAULT:  "Foto",
+  ARIA_PREVIEW: "Ampliar foto",
+} as const;
 
 interface PhotoRendererProps {
   value: unknown;
@@ -9,78 +26,40 @@ interface PhotoRendererProps {
 }
 
 export default function PhotoRenderer({ value, label }: PhotoRendererProps) {
-  const [lightbox, setLightbox] = useState(false);
+  const [open, setOpen] = useState(false);
 
   if (!value) {
-    return (
-      <span style={{ color: "var(--color-muted)", fontStyle: "italic" }}>—</span>
-    );
+    return <span className="italic text-muted-foreground">—</span>;
   }
 
   const src = String(value);
+  const alt = label ?? TEXT.ALT_DEFAULT;
 
   return (
     <>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
-        alt={label ?? "Foto"}
-        onClick={() => setLightbox(true)}
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: 8,
-          objectFit: "cover",
-          cursor: "pointer",
-          border: "1px solid var(--color-border)",
-          display: "block",
-        }}
+        alt={alt}
+        onClick={() => setOpen(true)}
+        aria-label={TEXT.ARIA_PREVIEW}
+        className="block size-12 cursor-pointer rounded-md border border-border object-cover transition-shadow hover:shadow-md"
       />
 
-      {lightbox && (
-        <div
-          onClick={() => setLightbox(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.85)",
-            zIndex: 9999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent
+          showCloseButton
+          className="max-w-[95vw] border-none bg-black/90 p-0 sm:max-w-3xl"
         >
-          <button
-            onClick={() => setLightbox(false)}
-            style={{
-              position: "absolute",
-              top: 20,
-              right: 20,
-              width: 40,
-              height: 40,
-              borderRadius: "50%",
-              background: "rgba(255,255,255,0.15)",
-              border: "none",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "#fff",
-            }}
-          >
-            <X size={20} />
-          </button>
+          <DialogTitle className="sr-only">{alt}</DialogTitle>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={src}
-            alt={label ?? "Foto"}
-            style={{
-              maxWidth: "90vw",
-              maxHeight: "90vh",
-              borderRadius: 12,
-              objectFit: "contain",
-            }}
+            alt={alt}
+            className="block max-h-[90vh] w-auto rounded-md object-contain"
           />
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

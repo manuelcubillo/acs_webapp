@@ -49,6 +49,13 @@ import PropertiesPanel from "./PropertiesPanel";
 import CardDesignPreviewModal from "../CardDesignPreviewModal";
 import { buildMockPreviewData } from "@/lib/card-designs/mock-preview-data";
 import TemplatePicker from "./TemplatePicker";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+
+/** Vertical divider used between toolbar groups. */
+function ToolbarDivider() {
+  return <div className="mx-1 h-6 w-px bg-border" />;
+}
 
 const LABELS = {
   backBtn: "Volver",
@@ -412,198 +419,104 @@ export default function CardDesignEditor({
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        overflow: "hidden",
-      }}
-    >
+    <div className="flex h-full flex-col overflow-hidden">
       {/* Toolbar */}
-      <div
-        style={{
-          height: 52,
-          flexShrink: 0,
-          background: "#fff",
-          borderBottom: "1px solid var(--color-border)",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          padding: "0 16px",
-        }}
-      >
+      <div className="flex h-13 shrink-0 items-center gap-2 border-b bg-card px-4">
         {/* Back */}
-        <button
-          onClick={handleBack}
-          style={toolbarBtnStyle()}
-        >
-          <ArrowLeft size={15} strokeWidth={1.8} />
+        <Button variant="outline" size="sm" onClick={handleBack}>
+          <ArrowLeft strokeWidth={1.8} />
           {LABELS.backBtn}
-        </button>
+        </Button>
 
-        <div style={{ width: 1, height: 24, background: "var(--color-border)", margin: "0 4px" }} />
+        <ToolbarDivider />
 
         {/* Design name */}
-        <span
-          style={{
-            fontSize: 14,
-            fontWeight: 700,
-            fontFamily: "var(--font-heading)",
-            color: "var(--color-dark)",
-            maxWidth: 240,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
+        <span className="max-w-60 truncate font-heading text-sm font-bold text-foreground">
           {design.name}
         </span>
 
-        {isDirty && (
-          <span
-            style={{
-              fontSize: 11,
-              color: "var(--color-muted)",
-              padding: "2px 7px",
-              borderRadius: 5,
-              background: "var(--color-border-soft)",
-            }}
-          >
-            Sin guardar
-          </span>
-        )}
+        {isDirty && <Badge variant="secondary">Sin guardar</Badge>}
 
         {/* Spacer */}
-        <div style={{ flex: 1 }} />
+        <div className="flex-1" />
 
         {/* Undo/Redo */}
-        <button
-          onClick={undo}
-          disabled={!canUndo}
-          title={LABELS.undo}
-          style={toolbarIconBtn(!canUndo)}
-        >
-          <Undo2 size={15} strokeWidth={1.8} />
-        </button>
-        <button
-          onClick={redo}
-          disabled={!canRedo}
-          title={LABELS.redo}
-          style={toolbarIconBtn(!canRedo)}
-        >
-          <Redo2 size={15} strokeWidth={1.8} />
-        </button>
+        <Button variant="outline" size="icon-sm" onClick={undo} disabled={!canUndo} title={LABELS.undo}>
+          <Undo2 strokeWidth={1.8} />
+        </Button>
+        <Button variant="outline" size="icon-sm" onClick={redo} disabled={!canRedo} title={LABELS.redo}>
+          <Redo2 strokeWidth={1.8} />
+        </Button>
 
-        <div style={{ width: 1, height: 24, background: "var(--color-border)", margin: "0 4px" }} />
+        <ToolbarDivider />
 
         {/* Zoom */}
-        <button onClick={zoomOut} title="Alejar" style={toolbarIconBtn(zoom <= ZOOM_LEVELS[0])}>
-          <ZoomOut size={15} strokeWidth={1.8} />
-        </button>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--color-secondary)", minWidth: 38, textAlign: "center" }}>
+        <Button variant="outline" size="icon-sm" onClick={zoomOut} title="Alejar" disabled={zoom <= ZOOM_LEVELS[0]}>
+          <ZoomOut strokeWidth={1.8} />
+        </Button>
+        <span className="min-w-[38px] text-center text-xs font-semibold text-muted-foreground">
           {Math.round(zoom * 100)}%
         </span>
-        <button onClick={zoomIn} title="Acercar" style={toolbarIconBtn(zoom >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1])}>
-          <ZoomIn size={15} strokeWidth={1.8} />
-        </button>
-        <button onClick={fitZoom} title={LABELS.zoomFit} style={toolbarIconBtn(false)}>
-          <Maximize2 size={14} strokeWidth={1.8} />
-        </button>
+        <Button variant="outline" size="icon-sm" onClick={zoomIn} title="Acercar" disabled={zoom >= ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}>
+          <ZoomIn strokeWidth={1.8} />
+        </Button>
+        <Button variant="outline" size="icon-sm" onClick={fitZoom} title={LABELS.zoomFit}>
+          <Maximize2 strokeWidth={1.8} />
+        </Button>
 
-        <div style={{ width: 1, height: 24, background: "var(--color-border)", margin: "0 4px" }} />
+        <ToolbarDivider />
 
         {/* Templates */}
-        <button
-          onClick={() => setTemplatesOpen(true)}
-          title={LABELS.templates}
-          style={{
-            ...toolbarBtnStyle(),
-            padding: "0 12px",
-          }}
-        >
-          <Sparkles size={15} strokeWidth={1.8} />
+        <Button variant="outline" size="sm" onClick={() => setTemplatesOpen(true)} title={LABELS.templates}>
+          <Sparkles strokeWidth={1.8} />
           {LABELS.templates}
-        </button>
+        </Button>
 
         {/* Preview */}
-        <button
-          onClick={() => setPreviewOpen(true)}
-          title={LABELS.preview}
-          style={{
-            ...toolbarBtnStyle(),
-            padding: "0 12px",
-          }}
-        >
-          <Eye size={15} strokeWidth={1.8} />
+        <Button variant="outline" size="sm" onClick={() => setPreviewOpen(true)} title={LABELS.preview}>
+          <Eye strokeWidth={1.8} />
           {LABELS.preview}
-        </button>
+        </Button>
 
-        <div style={{ width: 1, height: 24, background: "var(--color-border)", margin: "0 4px" }} />
+        <ToolbarDivider />
 
         {/* Save */}
-        <button
-          onClick={handleSave}
-          disabled={saveStatus === "saving"}
-          className="btn btn-primary"
-          style={{ height: 34, padding: "0 16px", fontSize: 13 }}
-        >
+        <Button onClick={handleSave} disabled={saveStatus === "saving"}>
           {saveStatus === "saving" ? (
             <>
-              <Loader2 size={14} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
+              <Loader2 className="animate-spin" strokeWidth={2} />
               {LABELS.savingBtn}
             </>
           ) : saveStatus === "saved" ? (
             <>
-              <CheckCircle size={14} strokeWidth={2} />
+              <CheckCircle strokeWidth={2} />
               {LABELS.savedMsg}
             </>
           ) : saveStatus === "error" ? (
             <>
-              <AlertCircle size={14} strokeWidth={2} />
+              <AlertCircle strokeWidth={2} />
               {LABELS.saveError}
             </>
           ) : (
             <>
-              <Save size={14} strokeWidth={1.8} />
+              <Save strokeWidth={1.8} />
               {LABELS.saveBtn}
             </>
           )}
-        </button>
+        </Button>
       </div>
 
       {/* Broken binding banner */}
       {brokenBindingCount > 0 && !bannerDismissed && (
-        <div
-          style={{
-            flexShrink: 0,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "8px 16px",
-            background: "#fff7ed",
-            borderBottom: "1px solid #fed7aa",
-            color: "#c2410c",
-            fontSize: 12.5,
-          }}
-        >
-          <AlertCircle size={14} strokeWidth={2} style={{ flexShrink: 0 }} />
-          <span style={{ flex: 1 }}>
+        <div className="flex shrink-0 items-center gap-2.5 border-b border-amber-400/50 bg-amber-500/10 px-4 py-2 text-xs text-amber-700 dark:text-amber-300">
+          <AlertCircle className="size-3.5 shrink-0" strokeWidth={2} />
+          <span className="flex-1">
             <strong>{LABELS.bindingBannerTitle}:</strong>{" "}
             {LABELS.bindingBannerMsg(brokenBindingCount)}
           </span>
           <button
             onClick={() => setBannerDismissed(true)}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: "#c2410c",
-              fontSize: 11.5,
-              fontWeight: 600,
-              padding: "2px 6px",
-              borderRadius: 4,
-            }}
+            className="rounded px-1.5 py-0.5 text-[11px] font-semibold hover:bg-amber-500/20"
           >
             {LABELS.bindingBannerDismiss}
           </button>
@@ -611,7 +524,7 @@ export default function CardDesignEditor({
       )}
 
       {/* Three-pane body */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+      <div className="flex flex-1 overflow-hidden">
         <ElementPalette onAddCentered={handleAddCentered} />
 
         <EditorCanvas
@@ -745,41 +658,9 @@ function parseLayout(design: CardDesign): CardDesignLayout {
       height: design.heightUnits,
       unit: design.unit,
       safeMargin: { top: 3, right: 3, bottom: 3, left: 3 },
+      // Default canvas background is design DATA (stored in the layout).
       background: "#ffffff",
     },
     nodes: [],
-  };
-}
-
-function toolbarBtnStyle(): React.CSSProperties {
-  return {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "0 12px",
-    height: 34,
-    borderRadius: 8,
-    border: "1.5px solid var(--color-border)",
-    background: "#fff",
-    cursor: "pointer",
-    fontSize: 13,
-    fontWeight: 500,
-    color: "var(--color-secondary)",
-  };
-}
-
-function toolbarIconBtn(disabled: boolean): React.CSSProperties {
-  return {
-    width: 32,
-    height: 32,
-    borderRadius: 7,
-    border: "1.5px solid var(--color-border)",
-    background: "#fff",
-    cursor: disabled ? "not-allowed" : "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: disabled ? "var(--color-border)" : "var(--color-secondary)",
-    opacity: disabled ? 0.5 : 1,
   };
 }

@@ -1,7 +1,23 @@
 "use client";
 
+/**
+ * QRScanner — html5-qrcode camera capture wrapper.
+ *
+ * Behavior preserved: useQRScanner lifecycle, single-start gate via
+ * startedRef, ssr:false dynamic import done by the consumer.
+ *
+ * The viewport is intentionally dark (--neutral-950) so the live camera
+ * preview reads well — this is not a brand surface.
+ */
+
 import { useEffect, useRef } from "react";
+
+import { cn } from "@/lib/utils";
 import { useQRScanner } from "@/hooks/useQRScanner";
+
+const TEXT = {
+  STARTING: "Iniciando cámara…",
+} as const;
 
 const ELEMENT_ID = "qr-scanner-viewport";
 
@@ -29,41 +45,22 @@ export default function QRScanner({ onScan, onError }: QRScannerProps) {
   }, [error, onError]);
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 14,
-        width: "100%",
-      }}
-    >
+    <div className="flex w-full flex-col items-center gap-3.5">
       <div
         id={ELEMENT_ID}
-        style={{
-          width: "100%",
-          maxWidth: 400,
-          borderRadius: 16,
-          overflow: "hidden",
-          background: "#000",
-          minHeight: 300,
-        }}
+        className={cn(
+          "w-full max-w-sm min-h-[300px] overflow-hidden rounded-2xl bg-black",
+        )}
       />
 
       {!isScanning && !error && (
-        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", margin: 0 }}>
-          Iniciando cámara...
-        </p>
+        <p className="text-sm text-white/60">{TEXT.STARTING}</p>
       )}
 
       {error && (
         <p
-          style={{
-            fontSize: 13,
-            color: "#fca5a5",
-            margin: 0,
-            textAlign: "center",
-          }}
+          role="alert"
+          className="text-center text-sm text-state-denied-icon"
         >
           {error}
         </p>

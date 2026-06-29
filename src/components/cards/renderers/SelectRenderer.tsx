@@ -1,28 +1,26 @@
 "use client";
 
+/**
+ * SelectRenderer — chip for a select-field value.
+ *
+ * Uses the shadcn Badge primitive with the brand-tinted accent variant.
+ * Not mapped to --state-* tokens — a select value is not an access-control
+ * outcome, it's just a labelled category.
+ */
+
+import { Badge } from "@/components/ui/badge";
+
 interface SelectRendererProps {
   value: unknown;
 }
 
 export default function SelectRenderer({ value }: SelectRendererProps) {
   if (!value) {
-    return (
-      <span style={{ color: "var(--color-muted)", fontStyle: "italic" }}>—</span>
-    );
+    return <span className="italic text-muted-foreground">—</span>;
   }
   return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "2px 10px",
-        borderRadius: 20,
-        fontSize: 12,
-        fontWeight: 600,
-        background: "#e0e7ff",
-        color: "var(--color-primary)",
-      }}
-    >
+    <Badge className="bg-accent text-accent-foreground hover:bg-accent">
       {String(value)}
-    </span>
+    </Badge>
   );
 }

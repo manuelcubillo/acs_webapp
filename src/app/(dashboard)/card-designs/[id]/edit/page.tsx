@@ -69,7 +69,7 @@ export default async function CardDesignEditPage({ params }: Props) {
   return (
     <DashboardShell title={design.name} role={role}>
       {/* Negate DashboardShell's 24px content padding so the editor fills the pane */}
-      <div style={{ margin: -24, height: "calc(100% + 48px)" }}>
+      <div className="-m-6 h-[calc(100%+48px)]">
         <CardDesignEditorLoader
           design={design}
           linkedCardTypes={linkedCardTypes}

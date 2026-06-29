@@ -6,7 +6,7 @@
  * Single row in the action history table.
  *
  * Left-border color:
- *   - gray for scans
+ *   - neutral for scans
  *   - action color (or type default) for actions
  *
  * Columns: Date/Time | Card Code | Card Type | Action | Executed By | Summary Fields | Details
@@ -14,22 +14,39 @@
 
 import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import type { ActionHistoryEntry } from "@/lib/dal";
 
-// ─── Color helpers ────────────────────────────────────────────────────────────
+const TEXT = {
+  SCAN:     "Escaneo",
+  ACTION:   "Acción",
+  OVERRIDE: "Override",
+  OVERRIDE_TITLE: "Intervención del operador — ejecutado con errores de validación",
+  EMPTY:    "—",
+} as const;
 
-const COLOR_MAP: Record<string, string> = {
-  green: "#059669",
-  red: "#dc2626",
-  blue: "#4f5bff",
-  orange: "#d97706",
-  purple: "#7c3aed",
-  gray: "#6b7280",
+// ─── Color helpers ────────────────────────────────────────────────────────────
+//
+// The action accent color is DATA: it comes from the action definition's
+// configured `color`. This is a data-driven value (like card-designs), so it is
+// resolved at runtime and applied via an inline border color. Named colors map
+// to design-system OKLCH variables (no hex literals); a raw value passes through.
+
+const COLOR_VAR_MAP: Record<string, string> = {
+  green:  "var(--green-600)",
+  red:    "var(--red-600)",
+  blue:   "var(--indigo-600)",
+  orange: "var(--orange-600)",
+  purple: "var(--violet-600)",
+  gray:   "var(--muted-foreground)",
 };
 
-function resolveColor(color: string | null | undefined, fallback = "#6b7280"): string {
-  if (!color) return fallback;
-  return COLOR_MAP[color] ?? color;
+const NEUTRAL_ACCENT = "var(--muted-foreground)";
+
+function resolveColor(color: string | null | undefined): string {
+  if (!color) return NEUTRAL_ACCENT;
+  return COLOR_VAR_MAP[color] ?? color;
 }
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
@@ -85,126 +102,92 @@ interface HistoryTableRowProps {
   isOdd: boolean;
 }
 
+const CELL = "border-b px-3 py-2.5 align-top text-xs leading-relaxed text-foreground";
+
 export default function HistoryTableRow({ entry, isOdd }: HistoryTableRowProps) {
   const isScan = entry.logType === "scan";
-  const accentColor = isScan ? "#9ca3af" : resolveColor(entry.actionColor);
+  const accentColor = isScan ? NEUTRAL_ACCENT : resolveColor(entry.actionColor);
   const { relative, absolute } = formatDateTime(entry.executedAt);
   const details = formatDetails(entry);
 
-  const cellStyle: React.CSSProperties = {
-    padding: "10px 12px",
-    fontSize: 12.5,
-    color: "var(--color-dark)",
-    borderBottom: "1px solid var(--color-border-soft)",
-    verticalAlign: "top",
-    lineHeight: 1.4,
-  };
-
   return (
     <tr
-      style={{
-        background: isOdd ? "#fafafa" : "#fff",
-        borderLeft: `3px solid ${accentColor}`,
-        transition: "background 0.1s",
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLTableRowElement).style.background = "#f0f4ff";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLTableRowElement).style.background = isOdd ? "#fafafa" : "#fff";
-      }}
+      // borderLeftColor is data-driven (action's configured color) — preserved inline.
+      style={{ borderLeftColor: accentColor }}
+      className={cn(
+        "border-l-[3px] transition-colors hover:bg-accent/50",
+        isOdd ? "bg-muted/30" : "bg-card",
+      )}
     >
       {/* Date/Time */}
-      <td style={cellStyle}>
-        <div style={{ fontWeight: 600, color: "var(--color-dark)" }}>{relative}</div>
-        <div style={{ fontSize: 11, color: "var(--color-muted)", marginTop: 2 }}>{absolute}</div>
+      <td className={CELL}>
+        <div className="font-semibold text-foreground">{relative}</div>
+        <div className="mt-0.5 text-[11px] text-muted-foreground">{absolute}</div>
       </td>
 
       {/* Card Code */}
-      <td style={cellStyle}>
+      <td className={CELL}>
         <Link
           href={`/cards/${encodeURIComponent(entry.cardCode)}`}
-          style={{
-            fontFamily: "monospace",
-            fontWeight: 700,
-            fontSize: 12.5,
-            color: "var(--color-primary)",
-            textDecoration: "none",
-          }}
+          className="font-mono text-xs font-bold text-primary hover:underline"
         >
           {entry.cardCode}
         </Link>
       </td>
 
       {/* Card Type */}
-      <td style={cellStyle}>
-        <span style={{
-          display: "inline-block",
-          fontSize: 11,
-          fontWeight: 600,
-          padding: "2px 8px",
-          borderRadius: 6,
-          background: "var(--color-subtle-bg)",
-          border: "1px solid var(--color-border-soft)",
-          color: "var(--color-secondary)",
-        }}>
-          {entry.cardTypeName}
-        </span>
+      <td className={CELL}>
+        <Badge variant="secondary">{entry.cardTypeName}</Badge>
       </td>
 
       {/* Action */}
-      <td style={cellStyle}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          <span style={{
-            width: 8, height: 8, borderRadius: "50%",
-            background: accentColor, flexShrink: 0,
-          }} />
-          <span style={{ fontWeight: 600 }}>
-            {isScan ? "Escaneo" : (entry.actionName ?? "Acción")}
+      <td className={CELL}>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span
+            // Dot uses the same data-driven action color.
+            style={{ backgroundColor: accentColor }}
+            className="size-2 shrink-0 rounded-full"
+          />
+          <span className="font-semibold">
+            {isScan ? TEXT.SCAN : (entry.actionName ?? TEXT.ACTION)}
           </span>
           {entry.operatorOverride && (
-            <span
-              title="Intervención del operador — ejecutado con errores de validación"
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 3,
-                fontSize: 10, fontWeight: 600,
-                color: "#d97706", background: "#fffbeb",
-                border: "1px solid #fde68a",
-                borderRadius: 5, padding: "1px 6px",
-              }}
+            <Badge
+              title={TEXT.OVERRIDE_TITLE}
+              className="bg-state-override border-state-override-border text-state-override-foreground"
             >
-              <ShieldAlert size={10} strokeWidth={2} />
-              Override
-            </span>
+              <ShieldAlert strokeWidth={2} />
+              {TEXT.OVERRIDE}
+            </Badge>
           )}
         </div>
       </td>
 
       {/* Executed By */}
-      <td style={cellStyle}>
-        <span style={{ color: entry.executedByName ? "var(--color-dark)" : "var(--color-muted)" }}>
-          {entry.executedByName ?? "—"}
+      <td className={CELL}>
+        <span className={entry.executedByName ? "text-foreground" : "text-muted-foreground"}>
+          {entry.executedByName ?? TEXT.EMPTY}
         </span>
       </td>
 
       {/* Summary Fields */}
-      <td style={cellStyle}>
+      <td className={CELL}>
         {entry.summaryFields.length > 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <div className="flex flex-col gap-0.5">
             {entry.summaryFields.slice(0, 3).map((sf, i) => (
-              <div key={i} style={{ fontSize: 11.5 }}>
-                <span style={{ color: "var(--color-muted)", marginRight: 3 }}>{sf.label}:</span>
-                <span style={{ fontWeight: 600 }}>{formatValue(sf.value)}</span>
+              <div key={i} className="text-[11px]">
+                <span className="mr-1 text-muted-foreground">{sf.label}:</span>
+                <span className="font-semibold">{formatValue(sf.value)}</span>
               </div>
             ))}
           </div>
         ) : (
-          <span style={{ color: "var(--color-muted)" }}>—</span>
+          <span className="text-muted-foreground">{TEXT.EMPTY}</span>
         )}
       </td>
 
       {/* Details */}
-      <td style={{ ...cellStyle, color: "var(--color-secondary)", fontFamily: isScan ? undefined : "monospace", fontSize: 11.5 }}>
+      <td className={cn(CELL, "text-[11px] text-muted-foreground", !isScan && "font-mono")}>
         {details}
       </td>
     </tr>

@@ -1,6 +1,19 @@
 "use client";
 
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import type { ValidationRules } from "@/lib/validation/types";
+
+const TEXT = {
+  PLACEHOLDER: "— Seleccionar —",
+} as const;
 
 interface SelectInputProps {
   fieldId: string;
@@ -14,6 +27,7 @@ interface SelectInputProps {
 }
 
 export default function SelectInput({
+  fieldId,
   label,
   value,
   onChange,
@@ -31,42 +45,38 @@ export default function SelectInput({
     }
   }
 
+  const current = value === null || value === undefined ? "" : String(value);
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <label
-        style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}
-      >
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={fieldId} className="text-sm font-semibold text-foreground">
         {label}
-        {isRequired && (
-          <span style={{ color: "#ef4444", marginLeft: 2 }}>*</span>
-        )}
-      </label>
-      <select
-        value={value === null || value === undefined ? "" : String(value)}
-        onChange={(e) => onChange(e.target.value || null)}
+        {isRequired && <span className="ml-1 text-destructive">*</span>}
+      </Label>
+      <Select
+        value={current || undefined}
+        onValueChange={(v) => onChange(v || null)}
         disabled={disabled}
-        style={{
-          padding: "9px 12px",
-          borderRadius: 8,
-          border: `1.5px solid ${error ? "#ef4444" : "var(--color-border)"}`,
-          fontSize: 14,
-          outline: "none",
-          background: disabled ? "var(--color-page-bg)" : "#fff",
-          color: "var(--color-dark)",
-          width: "100%",
-          boxSizing: "border-box",
-        }}
       >
-        <option value="">— Seleccionar —</option>
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
-          </option>
-        ))}
-      </select>
-      {error && (
-        <span style={{ fontSize: 12, color: "#ef4444" }}>{error}</span>
-      )}
+        <SelectTrigger
+          id={fieldId}
+          aria-invalid={error ? true : undefined}
+          className={cn(
+            "w-full",
+            error && "border-destructive focus-visible:ring-destructive/40",
+          )}
+        >
+          <SelectValue placeholder={TEXT.PLACEHOLDER} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((opt) => (
+            <SelectItem key={opt} value={opt}>
+              {opt}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }

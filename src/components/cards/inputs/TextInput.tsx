@@ -1,5 +1,9 @@
 "use client";
 
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+
 interface TextInputProps {
   fieldId: string;
   label: string;
@@ -11,6 +15,7 @@ interface TextInputProps {
 }
 
 export default function TextInput({
+  fieldId,
   label,
   value,
   onChange,
@@ -19,35 +24,21 @@ export default function TextInput({
   disabled,
 }: TextInputProps) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <label
-        style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}
-      >
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={fieldId} className="text-sm font-semibold text-foreground">
         {label}
-        {isRequired && (
-          <span style={{ color: "#ef4444", marginLeft: 2 }}>*</span>
-        )}
-      </label>
-      <input
+        {isRequired && <span className="ml-1 text-destructive">*</span>}
+      </Label>
+      <Input
+        id={fieldId}
         type="text"
         value={value === null || value === undefined ? "" : String(value)}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        style={{
-          padding: "9px 12px",
-          borderRadius: 8,
-          border: `1.5px solid ${error ? "#ef4444" : "var(--color-border)"}`,
-          fontSize: 14,
-          outline: "none",
-          background: disabled ? "var(--color-page-bg)" : "#fff",
-          color: "var(--color-dark)",
-          width: "100%",
-          boxSizing: "border-box",
-        }}
+        aria-invalid={error ? true : undefined}
+        className={cn(error && "border-destructive focus-visible:ring-destructive/40")}
       />
-      {error && (
-        <span style={{ fontSize: 12, color: "#ef4444" }}>{error}</span>
-      )}
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }

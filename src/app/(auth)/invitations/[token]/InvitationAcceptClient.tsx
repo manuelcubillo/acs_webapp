@@ -19,6 +19,11 @@ import { Eye, EyeOff, Loader2, LogIn } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { acceptInvitationAction } from "@/lib/actions/invitations";
 import type { MemberInvitation } from "@/lib/dal";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const LABELS = {
   title: "Aceptar invitación",
@@ -110,157 +115,119 @@ export default function InvitationAcceptClient({
   }
 
   return (
-    <div
-      className="relative flex min-h-screen items-center justify-center"
-      style={{ background: "var(--color-page-bg)", padding: "16px" }}
-    >
-      <div style={{ width: "100%", maxWidth: 420 }}>
-        <div
-          className="card"
-          style={{
-            padding: "36px 32px 28px",
-            background: "rgba(255,255,255,0.9)",
-          }}
-        >
-          {/* Logo */}
-          <div className="mb-5 flex flex-col items-center gap-2">
-            <div
-              className="flex h-12 w-12 items-center justify-center rounded-2xl"
-              style={{ background: "var(--color-primary-light)" }}
-            >
-              <LogIn size={22} style={{ color: "var(--color-primary)" }} />
-            </div>
-            <h1
-              style={{
-                fontSize: 20,
-                fontWeight: 700,
-                fontFamily: "var(--font-heading)",
-                color: "var(--color-dark)",
-                margin: "4px 0 0",
-                textAlign: "center",
-              }}
-            >
-              {LABELS.title}
-            </h1>
-            <div style={{ textAlign: "center" }}>
-              <p style={{ fontSize: 13.5, color: "var(--color-secondary)", margin: 0 }}>
-                {existingAccount ? LABELS.subtitleExisting : LABELS.subtitleNew}
-              </p>
-              <p style={{ fontSize: 13, color: "var(--color-muted)", margin: "4px 0 0" }}>
-                Organización: <strong style={{ color: "var(--color-dark)" }}>{tenantName}</strong>
-                {" · "}Rol: <strong style={{ color: "var(--color-dark)" }}>{roleLabel}</strong>
-              </p>
-            </div>
-          </div>
+    <AuthShell maxWidthClassName="max-w-md">
+      {/* Logo */}
+      <div className="mb-5 flex flex-col items-center gap-2">
+        <div className="flex size-12 items-center justify-center rounded-2xl bg-accent">
+          <LogIn className="size-5.5 text-primary" />
+        </div>
+        <h1 className="mt-1 text-center font-heading text-xl font-bold text-foreground">
+          {LABELS.title}
+        </h1>
+        <div className="text-center">
+          <p className="text-sm text-muted-foreground">
+            {existingAccount ? LABELS.subtitleExisting : LABELS.subtitleNew}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Organización: <strong className="text-foreground">{tenantName}</strong>
+            {" · "}Rol: <strong className="text-foreground">{roleLabel}</strong>
+          </p>
+        </div>
+      </div>
 
-          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {/* Email (read-only) */}
-            <div>
-              <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--color-dark)", marginBottom: 5 }}>
-                {LABELS.emailLabel}
-              </label>
-              <input
-                type="email"
-                value={invitation.email}
-                readOnly
-                className="form-input"
-                style={{ background: "#f9fafb", color: "var(--color-muted)", cursor: "default" }}
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
+        {/* Email (read-only) */}
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="inv-email">{LABELS.emailLabel}</Label>
+          <Input
+            id="inv-email"
+            type="email"
+            value={invitation.email}
+            readOnly
+            className="cursor-default bg-muted text-muted-foreground"
+          />
+        </div>
+
+        {!existingAccount && (
+          <>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="inv-name">{LABELS.nameLabel}</Label>
+              <Input
+                id="inv-name"
+                type="text"
+                required
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={LABELS.namePlaceholder}
               />
             </div>
 
-            {!existingAccount && (
-              <>
-                <div>
-                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--color-dark)", marginBottom: 5 }}>
-                    {LABELS.nameLabel}
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    autoFocus
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="form-input"
-                    placeholder={LABELS.namePlaceholder}
-                  />
-                </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="inv-username">{LABELS.usernameLabel}</Label>
+              <Input
+                id="inv-username"
+                type="text"
+                required
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder={LABELS.usernamePlaceholder}
+              />
+            </div>
 
-                <div>
-                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--color-dark)", marginBottom: 5 }}>
-                    {LABELS.usernameLabel}
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="form-input"
-                    placeholder={LABELS.usernamePlaceholder}
-                  />
-                </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="inv-password">{LABELS.passwordLabel}</Label>
+              <div className="relative">
+                <Input
+                  id="inv-password"
+                  type={showPass ? "text" : "password"}
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="pr-10"
+                  placeholder={LABELS.passwordPlaceholder}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPass((v) => !v)}
+                  className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground"
+                  tabIndex={-1}
+                  aria-label={showPass ? LABELS.hidePass : LABELS.showPass}
+                >
+                  {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
 
-                <div>
-                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--color-dark)", marginBottom: 5 }}>
-                    {LABELS.passwordLabel}
-                  </label>
-                  <div style={{ position: "relative" }}>
-                    <input
-                      type={showPass ? "text" : "password"}
-                      required
-                      minLength={8}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="form-input"
-                      style={{ paddingRight: 40 }}
-                      placeholder={LABELS.passwordPlaceholder}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPass((v) => !v)}
-                      style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--color-muted)", lineHeight: 0 }}
-                      tabIndex={-1}
-                      aria-label={showPass ? LABELS.hidePass : LABELS.showPass}
-                    >
-                      {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        {success && (
+          <Alert>
+            <AlertDescription className="text-card-foreground">{success}</AlertDescription>
+          </Alert>
+        )}
 
-            {error && (
-              <p style={{ margin: 0, padding: "10px 12px", background: "#fef2f2", color: "#dc2626", borderRadius: 8, fontSize: 13, border: "1px solid #fecaca" }}>
-                {error}
-              </p>
-            )}
-            {success && (
-              <p style={{ margin: 0, padding: "10px 12px", background: "#f0fdf4", color: "#16a34a", borderRadius: 8, fontSize: 13, border: "1px solid #bbf7d0" }}>
-                {success}
-              </p>
-            )}
+        <Button type="submit" disabled={loading} className="w-full">
+          {loading
+            ? <><Loader2 className="animate-spin" />{existingAccount ? LABELS.submittingExisting : LABELS.submittingNew}</>
+            : existingAccount ? LABELS.submitExisting : LABELS.submitNew
+          }
+        </Button>
+      </form>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="btn btn-primary w-full"
-              style={{ fontSize: 14, padding: "11px" }}
-            >
-              {loading
-                ? <><Loader2 size={16} className="animate-spin" />{existingAccount ? LABELS.submittingExisting : LABELS.submittingNew}</>
-                : existingAccount ? LABELS.submitExisting : LABELS.submitNew
-              }
-            </button>
-          </form>
-
-          {existingAccount && (
-            <p style={{ marginTop: 16, textAlign: "center", fontSize: 13, color: "var(--color-muted)" }}>
-              <Link href="/login" style={{ color: "var(--color-primary)", fontWeight: 600 }}>
-                {LABELS.backToLogin}
-              </Link>
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
+      {existingAccount && (
+        <p className="mt-4 text-center text-sm text-muted-foreground">
+          <Link href="/login" className="font-semibold text-primary hover:underline">
+            {LABELS.backToLogin}
+          </Link>
+        </p>
+      )}
+    </AuthShell>
   );
 }

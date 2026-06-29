@@ -19,6 +19,11 @@ import type { ValidationRules } from "@/lib/validation/types";
 
 export const dynamic = "force-dynamic";
 
+const TEXT = {
+  TITLE:     "Editar carnet",
+  CODE:      "Código:",
+} as const;
+
 interface EditCardPageProps {
   params: Promise<{ code: string }>;
 }
@@ -75,39 +80,14 @@ export default async function EditCardPage({ params }: EditCardPageProps) {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <DashboardShell title="Editar carnet" role={role}>
-      <div
-        style={{
-          maxWidth: 600,
-          margin: "0 auto",
-          background: "#fff",
-          borderRadius: 14,
-          border: "1px solid var(--color-border)",
-          padding: 28,
-        }}
-      >
-        <h1
-          style={{
-            fontSize: 20,
-            fontWeight: 800,
-            fontFamily: "var(--font-heading)",
-            color: "var(--color-dark)",
-            margin: "0 0 4px",
-          }}
-        >
-          Editar carnet
+    <DashboardShell title={TEXT.TITLE} role={role}>
+      <div className="mx-auto max-w-[600px] rounded-2xl border bg-card p-7">
+        <h1 className="mb-1 font-heading text-xl font-extrabold text-foreground">
+          {TEXT.TITLE}
         </h1>
-        <p
-          style={{
-            fontSize: 13,
-            color: "var(--color-muted)",
-            marginBottom: 24,
-          }}
-        >
-          Código:{" "}
-          <span style={{ fontFamily: "monospace", fontWeight: 700 }}>
-            {decodedCode}
-          </span>
+        <p className="mb-6 text-sm text-muted-foreground">
+          {TEXT.CODE}{" "}
+          <span className="font-mono font-bold">{decodedCode}</span>
         </p>
 
         <CardEditClient

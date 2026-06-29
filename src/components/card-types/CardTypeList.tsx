@@ -9,7 +9,15 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import CardTypeCard from "./CardTypeCard";
+import { Button } from "@/components/ui/button";
 import type { CardTypeWithFullSchema } from "@/lib/dal";
+
+const TEXT = {
+  EMPTY_TITLE: "Sin tipos de tarjeta",
+  EMPTY_BODY:
+    "Todavía no hay tipos de tarjeta definidos para este tenant. Crea el primero para empezar a gestionar tarjetas.",
+  BTN_CREATE: "Crear tipo de tarjeta",
+} as const;
 
 interface CardTypeListProps {
   cardTypes: CardTypeWithFullSchema[];
@@ -23,70 +31,32 @@ export default function CardTypeList({
 }: CardTypeListProps) {
   if (cardTypes.length === 0) {
     return (
-      <div
-        className="card animate-fadein"
-        style={{
-          padding: "60px 24px",
-          textAlign: "center",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 16,
-        }}
-      >
-        <div
-          style={{
-            width: 72,
-            height: 72,
-            borderRadius: 20,
-            background: "var(--color-primary-light)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 32,
-          }}
-        >
+      <div className="animate-fadein flex flex-col items-center gap-4 rounded-2xl border bg-card px-6 py-16 text-center shadow-sm">
+        <div className="flex size-18 items-center justify-center rounded-[20px] bg-accent text-3xl">
           🗂️
         </div>
         <div>
-          <div
-            style={{
-              fontSize: 18,
-              fontWeight: 700,
-              fontFamily: "var(--font-heading)",
-              color: "var(--color-dark)",
-              marginBottom: 6,
-            }}
-          >
-            Sin tipos de tarjeta
+          <div className="mb-1.5 font-heading text-lg font-bold text-foreground">
+            {TEXT.EMPTY_TITLE}
           </div>
-          <div style={{ fontSize: 13.5, color: "var(--color-secondary)", maxWidth: 360 }}>
-            Todavía no hay tipos de tarjeta definidos para este tenant. Crea el
-            primero para empezar a gestionar tarjetas.
+          <div className="max-w-[360px] text-sm text-muted-foreground">
+            {TEXT.EMPTY_BODY}
           </div>
         </div>
         {canEdit && (
-          <Link
-            href="/card-types/new"
-            className="btn btn-primary"
-            style={{ marginTop: 8 }}
-          >
-            <Plus size={16} strokeWidth={2} />
-            Crear tipo de tarjeta
-          </Link>
+          <Button asChild className="mt-2">
+            <Link href="/card-types/new">
+              <Plus className="size-4" strokeWidth={2} />
+              {TEXT.BTN_CREATE}
+            </Link>
+          </Button>
         )}
       </div>
     );
   }
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
-        gap: 16,
-      }}
-    >
+    <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(340px,1fr))]">
       {cardTypes.map((ct) => (
         <CardTypeCard key={ct.id} cardType={ct} showEditButton={canEdit} />
       ))}

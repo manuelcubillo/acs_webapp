@@ -49,12 +49,12 @@ export default async function SettingsLayout({ children }: SettingsLayoutProps) 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <DashboardShell title="Configuración" role={role} userName={userName}>
-      <div className="settings-layout">
+      <div className="flex min-h-full flex-col sm:flex-row">
         {/* Secondary settings nav */}
         <SettingsNav role={role} />
 
         {/* Page content */}
-        <div className="settings-content">
+        <div className="min-w-0 flex-1">
           {children}
         </div>
       </div>

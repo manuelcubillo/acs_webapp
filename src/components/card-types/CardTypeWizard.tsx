@@ -19,7 +19,22 @@ import FieldDefinitionsStep from "./steps/FieldDefinitionsStep";
 import ActionsStep from "./steps/ActionsStep";
 import ScanValidationsStep from "./steps/ScanValidationsStep";
 import ReviewStep from "./steps/ReviewStep";
+import { Button } from "@/components/ui/button";
 import type { WizardInitialData } from "@/hooks/useCardTypeWizard";
+
+const TEXT = {
+  TITLE_EDIT:   "Editar tipo de tarjeta",
+  TITLE_NEW:    "Nuevo tipo de tarjeta",
+  SUBTITLE_NEW: "Sigue los pasos para crear el esquema del nuevo tipo.",
+  CANCEL:       "Cancelar",
+  PREV:         "Anterior",
+  NEXT:         "Siguiente",
+  SAVING:       "Guardando…",
+  SAVE_EDIT:    "Guardar cambios",
+  SAVE_NEW:     "Crear tipo de tarjeta",
+  STEP_COUNTER: (current: number, total: number) => `Paso ${current} de ${total}`,
+  MODIFYING:    (name: string) => `Modificando: ${name}`,
+} as const;
 
 interface CardTypeWizardProps {
   initialData?: WizardInitialData;
@@ -66,39 +81,16 @@ export default function CardTypeWizard({ initialData }: CardTypeWizardProps) {
   const isFirstStep = step === 0;
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 0,
-        height: "100%",
-      }}
-    >
+    <div className="flex h-full flex-col">
       {/* ─── Header card: step indicator ─────────────────────────────────── */}
-      <div
-        className="card animate-fadein"
-        style={{
-          padding: "28px 32px",
-          marginBottom: 24,
-        }}
-      >
+      <div className="animate-fadein mb-6 rounded-2xl border bg-card px-8 py-7 shadow-sm">
         {/* Title */}
-        <div style={{ marginBottom: 28 }}>
-          <div
-            style={{
-              fontSize: 22,
-              fontWeight: 800,
-              fontFamily: "var(--font-heading)",
-              color: "var(--color-dark)",
-              marginBottom: 4,
-            }}
-          >
-            {isEdit ? "Editar tipo de tarjeta" : "Nuevo tipo de tarjeta"}
+        <div className="mb-7">
+          <div className="mb-1 font-heading text-[22px] font-extrabold text-foreground">
+            {isEdit ? TEXT.TITLE_EDIT : TEXT.TITLE_NEW}
           </div>
-          <div style={{ fontSize: 13.5, color: "var(--color-secondary)" }}>
-            {isEdit
-              ? `Modificando: ${initialData!.basicInfo.name}`
-              : "Sigue los pasos para crear el esquema del nuevo tipo."}
+          <div className="text-sm text-muted-foreground">
+            {isEdit ? TEXT.MODIFYING(initialData!.basicInfo.name) : TEXT.SUBTITLE_NEW}
           </div>
         </div>
 
@@ -107,13 +99,7 @@ export default function CardTypeWizard({ initialData }: CardTypeWizardProps) {
 
       {/* ─── Step content ─────────────────────────────────────────────────── */}
       <div
-        className="card animate-fadein"
-        style={{
-          flex: 1,
-          padding: "28px 32px",
-          overflow: "auto",
-          marginBottom: 24,
-        }}
+        className="animate-fadein mb-6 flex-1 overflow-auto rounded-2xl border bg-card px-8 py-7 shadow-sm"
         key={step} // remount on step change to trigger animation
       >
         {step === 0 && (
@@ -157,80 +143,53 @@ export default function CardTypeWizard({ initialData }: CardTypeWizardProps) {
       </div>
 
       {/* ─── Navigation footer ────────────────────────────────────────────── */}
-      <div
-        className="card"
-        style={{
-          padding: "16px 32px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 16,
-        }}
-      >
+      <div className="flex items-center justify-between gap-4 rounded-2xl border bg-card px-8 py-4 shadow-sm">
         {/* Left: Back or Cancel */}
-        <div style={{ display: "flex", gap: 10 }}>
+        <div className="flex gap-2.5">
           {isFirstStep ? (
-            <button
-              className="btn btn-ghost"
-              onClick={() => router.push("/card-types")}
-            >
-              Cancelar
-            </button>
+            <Button variant="ghost" onClick={() => router.push("/card-types")}>
+              {TEXT.CANCEL}
+            </Button>
           ) : (
-            <button className="btn btn-ghost" onClick={prevStep}>
-              <ChevronLeft size={16} strokeWidth={2} />
-              Anterior
-            </button>
+            <Button variant="ghost" onClick={prevStep}>
+              <ChevronLeft strokeWidth={2} />
+              {TEXT.PREV}
+            </Button>
           )}
         </div>
 
         {/* Center: step counter */}
-        <div
-          style={{
-            fontSize: 12.5,
-            color: "var(--color-muted)",
-            fontWeight: 500,
-          }}
-        >
-          Paso {step + 1} de {TOTAL_STEPS}
+        <div className="text-xs font-medium text-muted-foreground">
+          {TEXT.STEP_COUNTER(step + 1, TOTAL_STEPS)}
         </div>
 
         {/* Right: Next or Submit */}
         <div>
           {isLastStep ? (
-            <button
-              className="btn btn-primary"
+            <Button
               onClick={handleSubmit}
               disabled={isSubmitting}
-              style={{ minWidth: 180 }}
+              className="min-w-45"
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 size={16} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
-                  Guardando…
+                  <Loader2 className="animate-spin" strokeWidth={2} />
+                  {TEXT.SAVING}
                 </>
               ) : isEdit ? (
-                "Guardar cambios"
+                TEXT.SAVE_EDIT
               ) : (
-                "Crear tipo de tarjeta"
+                TEXT.SAVE_NEW
               )}
-            </button>
+            </Button>
           ) : (
-            <button
-              className="btn btn-primary"
-              onClick={nextStep}
-              disabled={!canAdvance}
-            >
-              Siguiente
-              <ChevronRight size={16} strokeWidth={2} />
-            </button>
+            <Button onClick={nextStep} disabled={!canAdvance}>
+              {TEXT.NEXT}
+              <ChevronRight strokeWidth={2} />
+            </Button>
           )}
         </div>
       </div>
-
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      `}</style>
     </div>
   );
 }

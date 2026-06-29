@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ShieldOff, Loader2 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
+import { Button } from "@/components/ui/button";
 
 const LABELS = {
   title: "Cuenta desactivada",
@@ -27,76 +28,28 @@ export default function AccountDeactivatedPage() {
   }, []);
 
   return (
-    <div
-      className="relative flex min-h-screen items-center justify-center"
-      style={{ background: "var(--color-page-bg)" }}
-    >
-      <div
-        className="card flex flex-col items-center gap-6 text-center"
-        style={{
-          padding: "48px 40px",
-          maxWidth: 420,
-          margin: "0 16px",
-        }}
-      >
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: 14,
-            background: "#fef2f2",
-            border: "1.5px solid #fca5a5",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <ShieldOff size={26} color="#dc2626" strokeWidth={1.8} />
+    <div className="relative flex min-h-screen items-center justify-center bg-background">
+      <div className="mx-4 flex max-w-[420px] flex-col items-center gap-6 rounded-2xl border bg-card px-10 py-12 text-center shadow-sm">
+        <div className="flex size-14 items-center justify-center rounded-2xl border border-destructive/30 bg-destructive/10">
+          <ShieldOff className="size-6.5 text-destructive" strokeWidth={1.8} />
         </div>
 
         <div>
-          <h1
-            style={{
-              fontSize: 20,
-              fontWeight: 700,
-              fontFamily: "var(--font-heading)",
-              color: "var(--color-dark)",
-              margin: "0 0 8px",
-            }}
-          >
+          <h1 className="mb-2 font-heading text-xl font-bold text-foreground">
             {LABELS.title}
           </h1>
-          <p
-            style={{
-              fontSize: 14,
-              color: "var(--color-secondary)",
-              lineHeight: 1.6,
-              margin: 0,
-            }}
-          >
+          <p className="text-sm leading-relaxed text-muted-foreground">
             {LABELS.body}
           </p>
         </div>
 
         {done ? (
-          <Link
-            href="/login"
-            className="btn btn-primary"
-            style={{ fontSize: 14 }}
-          >
-            {LABELS.backToLogin}
-          </Link>
+          <Button asChild>
+            <Link href="/login">{LABELS.backToLogin}</Link>
+          </Button>
         ) : (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 13,
-              color: "var(--color-muted)",
-            }}
-          >
-            <Loader2 size={14} strokeWidth={2} className="animate-spin" />
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" strokeWidth={2} />
             {LABELS.signingOut}
           </div>
         )}

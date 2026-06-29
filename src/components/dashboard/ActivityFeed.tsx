@@ -1,35 +1,48 @@
 "use client";
 
 /**
- * ActivityFeed
+ * ActivityFeed — live operational feed (scans + actions).
  *
- * Displays the tenant's operational activity feed (scans + action executions)
- * on the dashboard. Supports auto-refresh via polling.
+ * Behavior preserved EXACTLY:
+ *   - Server-rendered initial entries for zero-flicker first paint.
+ *   - 15s polling via getActivityFeedAction (or whatever refreshIntervalMs is).
+ *   - All filtering driven by dashboard settings; no changes.
  *
- * Shows a loading skeleton on initial mount, then polls `getActivityFeedAction`
- * every `refreshIntervalMs` milliseconds to surface new events.
+ * Presentation rebuilt: token-driven Card-like surface, refresh affordance on
+ * the right, empty state polished.
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { RefreshCw } from "lucide-react";
+import { Inbox, RefreshCw } from "lucide-react";
+
 import ActivityFeedEntryRow from "./ActivityFeedEntryRow";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { getActivityFeedAction } from "@/lib/actions/dashboard-settings";
 import type { ActivityFeedEntry, DashboardSettings } from "@/lib/dal";
 
-interface ActivityFeedProps {
-  /** Initial entries loaded server-side for zero-flicker first paint. */
-  initialEntries: ActivityFeedEntry[];
-  settings: DashboardSettings | null;
-  /** Polling interval in ms. Set to 0 to disable auto-refresh. */
-  refreshIntervalMs?: number;
-}
+const TEXT = {
+  HEADING:        "Actividad reciente",
+  ONLY_ACTIONS:   "Solo acciones",
+  ONLY_SCANS:     "Solo escaneos",
+  UPDATED_PREFIX: "Actualizado",
+  BTN_REFRESH:    "Refrescar",
+  EMPTY_TITLE:    "Sin actividad aún",
+  EMPTY_BODY:     "Los escaneos y acciones de carnets aparecerán aquí.",
+} as const;
 
-/** Default settings used when no row exists yet. */
 const DEFAULT_SETTINGS = {
   feedLimit: 20,
   showScanEntries: true,
   showActionEntries: true,
 };
+
+interface ActivityFeedProps {
+  initialEntries: ActivityFeedEntry[];
+  settings: DashboardSettings | null;
+  /** Polling interval in ms. Set to 0 to disable auto-refresh. */
+  refreshIntervalMs?: number;
+}
 
 export default function ActivityFeed({
   initialEntries,
@@ -62,7 +75,6 @@ export default function ActivityFeed({
     }
   }, [feedLimit, showScan, showAction]);
 
-  // Auto-refresh polling
   useEffect(() => {
     if (!refreshIntervalMs) return;
     intervalRef.current = setInterval(refresh, refreshIntervalMs);
@@ -71,84 +83,74 @@ export default function ActivityFeed({
     };
   }, [refresh, refreshIntervalMs]);
 
+  const filterHint =
+    !showScan && showAction
+      ? `${TEXT.ONLY_ACTIONS} · `
+      : showScan && !showAction
+        ? `${TEXT.ONLY_SCANS} · `
+        : "";
+
+  const updatedTime = lastRefresh.toLocaleTimeString("es-ES", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-      {/* Section header */}
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        marginBottom: 12,
-      }}>
+    <section
+      aria-label={TEXT.HEADING}
+      className="flex flex-col gap-3"
+    >
+      <header className="flex items-end justify-between gap-3">
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--color-dark)" }}>
-            Actividad reciente
-          </div>
-          <div style={{ fontSize: 12, color: "var(--color-muted)", marginTop: 2 }}>
-            {!showScan && showAction && "Solo acciones · "}
-            {showScan && !showAction && "Solo escaneos · "}
-            Actualizado {lastRefresh.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
-          </div>
+          <h2 className="font-heading text-base font-bold text-foreground">
+            {TEXT.HEADING}
+          </h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {filterHint}
+            {TEXT.UPDATED_PREFIX} {updatedTime}
+          </p>
         </div>
-        <button
-          onClick={refresh}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
           disabled={isRefreshing}
-          title="Refrescar"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 12,
-            fontWeight: 600,
-            color: isRefreshing ? "var(--color-muted)" : "var(--color-primary)",
-            background: "none",
-            border: "none",
-            cursor: isRefreshing ? "default" : "pointer",
-            padding: "4px 8px",
-            borderRadius: 6,
-          }}
+          onClick={refresh}
+          aria-label={TEXT.BTN_REFRESH}
+          className="gap-1.5 text-primary hover:text-primary"
         >
-          <RefreshCw
-            size={14}
-            strokeWidth={2}
-            style={{ animation: isRefreshing ? "spin 1s linear infinite" : "none" }}
-          />
-          Refrescar
-        </button>
-      </div>
+          <RefreshCw className={cn(isRefreshing && "animate-spin")} />
+          {TEXT.BTN_REFRESH}
+        </Button>
+      </header>
 
-      {/* Feed entries */}
       {entries.length === 0 ? (
-        <div style={{
-          textAlign: "center",
-          padding: "48px 24px",
-          background: "var(--color-subtle-bg)",
-          borderRadius: 12,
-          border: "1.5px dashed var(--color-border)",
-        }}>
-          <div style={{ fontSize: 32, marginBottom: 10 }}>📋</div>
-          <div style={{ fontWeight: 600, color: "var(--color-secondary)", fontSize: 14 }}>
-            Sin actividad aún
-          </div>
-          <div style={{ fontSize: 12.5, color: "var(--color-muted)", marginTop: 4 }}>
-            Los escaneos y acciones de carnets aparecerán aquí.
-          </div>
-        </div>
+        <FeedEmptyState />
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <ul className="flex flex-col gap-2">
           {entries.map((entry) => (
-            <ActivityFeedEntryRow key={entry.id} entry={entry} />
+            <li key={entry.id}>
+              <ActivityFeedEntryRow entry={entry} />
+            </li>
           ))}
-        </div>
+        </ul>
       )}
+    </section>
+  );
+}
 
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .feed-entry-row:hover {
-          box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-          border-color: var(--color-primary) !important;
-        }
-      `}</style>
+function FeedEmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/40 px-6 py-12 text-center">
+      <div className="mb-1 flex size-12 items-center justify-center rounded-full bg-card text-muted-foreground">
+        <Inbox aria-hidden className="size-6" strokeWidth={1.6} />
+      </div>
+      <div className="font-heading text-base font-semibold text-foreground">
+        {TEXT.EMPTY_TITLE}
+      </div>
+      <p className="max-w-sm text-sm text-muted-foreground">
+        {TEXT.EMPTY_BODY}
+      </p>
     </div>
   );
 }

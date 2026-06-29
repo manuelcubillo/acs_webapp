@@ -15,6 +15,19 @@
 
 import { useState } from "react";
 import { Plus, Trash2, AlertCircle, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import type {
   ScanValidationDraft,
   ScanValidationSeverity,
@@ -47,6 +60,68 @@ const RULE_META: Record<string, RuleMeta> = {
 // Field types allowed in scan validations
 const SCANNABLE_FIELD_TYPES: FieldType[] = ["boolean", "number", "date"];
 
+// Severity presentation — these ARE access-control validation outcomes, so they
+// use the reserved --state-denied / --state-warning tokens.
+const SEVERITY_META: Record<ScanValidationSeverity, {
+  label: string;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  chip: string;
+  iconColor: string;
+  text: string;
+  card: string;
+  accent: string;
+  hint: string;
+}> = {
+  error: {
+    label: "Error",
+    icon: AlertCircle,
+    chip: "bg-state-denied text-state-denied-icon",
+    iconColor: "text-state-denied-icon",
+    text: "text-state-denied-foreground",
+    card: "border-state-denied-border bg-state-denied",
+    accent: "accent-[var(--state-denied-icon)]",
+    hint: "— bloquea visualmente",
+  },
+  warning: {
+    label: "Aviso",
+    icon: AlertTriangle,
+    chip: "bg-state-warning text-state-warning-icon",
+    iconColor: "text-state-warning-icon",
+    text: "text-state-warning-foreground",
+    card: "border-state-warning-border bg-state-warning",
+    accent: "accent-[var(--state-warning-icon)]",
+    hint: "— solo informativo",
+  },
+};
+
+const TEXT = {
+  HEADING:     "Validaciones de escaneo",
+  HEADING_SUB:
+    "Define reglas que se evalúan automáticamente al escanear una tarjeta. Si una regla no se cumple, se muestra una alerta informativa al operador. Las validaciones nunca bloquean las acciones.",
+  DELETE:      "Eliminar validación",
+  NEW_TITLE:   "Nueva validación",
+  FIELD_LABEL: "Campo a evaluar",
+  FIELD_PLACEHOLDER: "— Selecciona un campo —",
+  NO_FIELDS:   "No hay campos de tipo número, Sí/No o fecha. Añade un campo compatible en el paso anterior.",
+  RULE_LABEL:  "Condición de alerta",
+  RULE_PLACEHOLDER: "— Selecciona una condición —",
+  RULE_HINT_PRE: "La alerta se activará cuando el campo",
+  RULE_HINT_STRONG: "no",
+  RULE_HINT_POST: "cumpla esta condición.",
+  NUM_REF:     "Valor de referencia",
+  MIN:         "Mínimo",
+  MAX:         "Máximo",
+  DATE_REF:    "Fecha de referencia",
+  USE_TODAY:   "Usar «hoy» (fecha dinámica al escanear)",
+  MSG_LABEL:   "Mensaje de alerta",
+  MSG_PLACEHOLDER: "Ej: La fecha de caducidad ha expirado",
+  SEVERITY_LABEL: "Nivel de alerta",
+  CANCEL:      "Cancelar",
+  ADD:         "Añadir validación",
+  EMPTY_TITLE: "Sin validaciones definidas",
+  EMPTY_BODY:  "Puedes continuar sin validaciones y añadirlas después.",
+} as const;
+
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
 function rulesForFieldType(fieldType: FieldType): string[] {
@@ -66,8 +141,8 @@ function buildRuleValue(shape: RuleMeta["valueShape"], target: string, min: stri
   return null;
 }
 
-function severityLabel(severity: ScanValidationSeverity) {
-  return severity === "error" ? "Error" : "Aviso";
+function fieldTypeLabel(fieldType: FieldType): string {
+  return fieldType === "number" ? "número" : fieldType === "boolean" ? "Sí/No" : "fecha";
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────────
@@ -126,77 +201,55 @@ export default function ScanValidationsStep({
     setErrorMessage(""); setSeverity("error");
   }
 
-  const canAdd = fieldTempId && rule && errorMessage.trim();
+  const canAdd = !!fieldTempId && !!rule && !!errorMessage.trim();
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="flex flex-col gap-5">
       {/* Header */}
       <div>
-        <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--color-dark)", marginBottom: 6 }}>
-          Validaciones de escaneo
+        <div className="mb-1.5 font-heading text-xl font-bold text-foreground">
+          {TEXT.HEADING}
         </div>
-        <div style={{ fontSize: 13.5, color: "var(--color-secondary)" }}>
-          Define reglas que se evalúan automáticamente al escanear una tarjeta.
-          Si una regla no se cumple, se muestra una alerta informativa al operador.
-          Las validaciones nunca bloquean las acciones.
-        </div>
+        <div className="text-sm text-muted-foreground">{TEXT.HEADING_SUB}</div>
       </div>
 
       {/* Existing validations */}
       {scanValidations.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div className="flex flex-col gap-2">
           {scanValidations.map((sv) => {
             const targetField = scannableFields.find((f) => f.tempId === sv.fieldTempId);
-            const isError = sv.severity === "error";
-            const color = isError ? "#dc2626" : "#d97706";
-            const bg = isError ? "#fef2f2" : "#fffbeb";
-            const Icon = isError ? AlertCircle : AlertTriangle;
+            const sm = SEVERITY_META[sv.severity];
+            const Icon = sm.icon;
             return (
               <div
                 key={sv.tempId}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 12,
-                  padding: "13px 16px",
-                  background: "#fff",
-                  border: "1.5px solid var(--color-border)",
-                  borderRadius: 12,
-                }}
+                className="flex items-start gap-3 rounded-xl border bg-card px-4 py-3"
               >
-                <div style={{
-                  width: 34, height: 34, borderRadius: 9,
-                  background: bg, display: "flex",
-                  alignItems: "center", justifyContent: "center",
-                  color, flexShrink: 0, marginTop: 1,
-                }}>
-                  <Icon size={16} strokeWidth={1.8} />
+                <div className={cn("mt-px flex size-8.5 shrink-0 items-center justify-center rounded-[9px]", sm.chip)}>
+                  <Icon className="size-4" strokeWidth={1.8} />
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-foreground">
                     {sv.errorMessage}
                   </div>
-                  <div style={{ fontSize: 11.5, color: "var(--color-muted)", marginTop: 3 }}>
+                  <div className="mt-0.5 text-xs text-muted-foreground">
                     {targetField?.label ?? sv.fieldTempId}
                     {" · "}
                     {RULE_META[sv.rule]?.label ?? sv.rule}
                     {" · "}
-                    <span style={{ color, fontWeight: 600 }}>{severityLabel(sv.severity)}</span>
+                    <span className={cn("font-semibold", sm.text)}>{sm.label}</span>
                   </div>
                 </div>
-                <button
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
                   onClick={() => onRemove(sv.tempId)}
-                  title="Eliminar validación"
-                  style={{
-                    width: 32, height: 32, borderRadius: 8,
-                    border: "1.5px solid #fecaca", background: "#fef2f2",
-                    cursor: "pointer", display: "flex",
-                    alignItems: "center", justifyContent: "center",
-                    color: "#dc2626", flexShrink: 0,
-                  }}
+                  title={TEXT.DELETE}
+                  className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                 >
-                  <Trash2 size={14} strokeWidth={1.8} />
-                </button>
+                  <Trash2 strokeWidth={1.8} />
+                </Button>
               </div>
             );
           })}
@@ -205,142 +258,126 @@ export default function ScanValidationsStep({
 
       {/* Add form */}
       {showForm ? (
-        <div style={{
-          padding: "20px",
-          background: "#fafbfc",
-          border: "1.5px solid var(--color-border)",
-          borderRadius: 14,
-        }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-dark)", marginBottom: 16 }}>
-            Nueva validación
+        <div className="rounded-2xl border bg-muted/40 p-5">
+          <div className="mb-4 text-sm font-semibold text-foreground">
+            {TEXT.NEW_TITLE}
           </div>
 
           {/* Field selector */}
-          <div style={{ marginBottom: 14 }}>
-            <label style={labelStyle}>
-              Campo a evaluar <span style={{ color: "#dc2626" }}>*</span>
-            </label>
+          <div className="mb-3.5">
+            <Label>
+              {TEXT.FIELD_LABEL} <span className="text-destructive">*</span>
+            </Label>
             {scannableFields.length === 0 ? (
-              <div style={{
-                marginTop: 8, padding: "10px 14px",
-                background: "#fff3cd", border: "1px solid #ffc107",
-                borderRadius: 8, fontSize: 12.5, color: "#856404",
-              }}>
-                No hay campos de tipo número, Sí/No o fecha.
-                Añade un campo compatible en el paso anterior.
+              <div className="mt-2 rounded-md border border-amber-400/50 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-700 dark:text-amber-300">
+                {TEXT.NO_FIELDS}
               </div>
             ) : (
-              <select
-                className="form-input"
-                value={fieldTempId}
-                onChange={(e) => handleFieldChange(e.target.value)}
-                style={{ marginTop: 6 }}
-              >
-                <option value="">— Selecciona un campo —</option>
-                {scannableFields.map((f) => (
-                  <option key={f.tempId} value={f.tempId}>
-                    {f.label} ({f.fieldType === "number" ? "número" : f.fieldType === "boolean" ? "Sí/No" : "fecha"})
-                  </option>
-                ))}
-              </select>
+              <Select value={fieldTempId} onValueChange={handleFieldChange}>
+                <SelectTrigger className="mt-1.5 w-full">
+                  <SelectValue placeholder={TEXT.FIELD_PLACEHOLDER} />
+                </SelectTrigger>
+                <SelectContent>
+                  {scannableFields.map((f) => (
+                    <SelectItem key={f.tempId} value={f.tempId}>
+                      {f.label} ({fieldTypeLabel(f.fieldType)})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           </div>
 
           {/* Rule selector */}
           {selectedField && (
-            <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>
-                Condición de alerta <span style={{ color: "#dc2626" }}>*</span>
-              </label>
-              <select
-                className="form-input"
-                value={rule}
-                onChange={(e) => setRule(e.target.value)}
-                style={{ marginTop: 6 }}
-              >
-                <option value="">— Selecciona una condición —</option>
-                {availableRules.map((r) => (
-                  <option key={r} value={r}>
-                    {selectedField.label} {RULE_META[r].label}
-                  </option>
-                ))}
-              </select>
-              <div style={{ fontSize: 11.5, color: "var(--color-muted)", marginTop: 4 }}>
-                La alerta se activará cuando el campo <strong>no</strong> cumpla esta condición.
+            <div className="mb-3.5">
+              <Label>
+                {TEXT.RULE_LABEL} <span className="text-destructive">*</span>
+              </Label>
+              <Select value={rule} onValueChange={setRule}>
+                <SelectTrigger className="mt-1.5 w-full">
+                  <SelectValue placeholder={TEXT.RULE_PLACEHOLDER} />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableRules.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {selectedField.label} {RULE_META[r].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {TEXT.RULE_HINT_PRE} <strong>{TEXT.RULE_HINT_STRONG}</strong> {TEXT.RULE_HINT_POST}
               </div>
             </div>
           )}
 
           {/* Value inputs */}
           {rule && valueShape !== "none" && (
-            <div style={{ marginBottom: 14 }}>
+            <div className="mb-3.5">
               {valueShape === "number" && (
                 <>
-                  <label style={labelStyle}>Valor de referencia</label>
-                  <input
-                    className="form-input"
+                  <Label htmlFor="sv-num">{TEXT.NUM_REF}</Label>
+                  <Input
+                    id="sv-num"
                     type="number"
                     step="any"
                     value={numTarget}
                     onChange={(e) => setNumTarget(e.target.value)}
                     placeholder="0"
-                    style={{ marginTop: 6, maxWidth: 180 }}
+                    className="mt-1.5 max-w-45"
                   />
                 </>
               )}
               {valueShape === "number_range" && (
-                <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
+                <div className="flex items-end gap-3">
                   <div>
-                    <label style={labelStyle}>Mínimo</label>
-                    <input
-                      className="form-input"
+                    <Label htmlFor="sv-min">{TEXT.MIN}</Label>
+                    <Input
+                      id="sv-min"
                       type="number"
                       step="any"
                       value={numMin}
                       onChange={(e) => setNumMin(e.target.value)}
                       placeholder="0"
-                      style={{ marginTop: 6, maxWidth: 140 }}
+                      className="mt-1.5 max-w-35"
                     />
                   </div>
                   <div>
-                    <label style={labelStyle}>Máximo</label>
-                    <input
-                      className="form-input"
+                    <Label htmlFor="sv-max">{TEXT.MAX}</Label>
+                    <Input
+                      id="sv-max"
                       type="number"
                       step="any"
                       value={numMax}
                       onChange={(e) => setNumMax(e.target.value)}
                       placeholder="100"
-                      style={{ marginTop: 6, maxWidth: 140 }}
+                      className="mt-1.5 max-w-35"
                     />
                   </div>
                 </div>
               )}
               {valueShape === "date" && (
                 <>
-                  <label style={labelStyle}>Fecha de referencia</label>
-                  <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 8 }}>
-                    <label style={{
-                      display: "flex", alignItems: "center", gap: 8,
-                      fontSize: 13, cursor: "pointer",
-                    }}>
-                      <input
-                        type="checkbox"
+                  <Label>{TEXT.DATE_REF}</Label>
+                  <div className="mt-1.5 flex flex-col gap-2">
+                    <label className="flex cursor-pointer items-center gap-2 text-sm">
+                      <Checkbox
                         checked={relativeToday}
-                        onChange={(e) => {
-                          setRelativeToday(e.target.checked);
-                          if (e.target.checked) setDateTarget("");
+                        onCheckedChange={(checked) => {
+                          const on = checked === true;
+                          setRelativeToday(on);
+                          if (on) setDateTarget("");
                         }}
                       />
-                      Usar «hoy» (fecha dinámica al escanear)
+                      {TEXT.USE_TODAY}
                     </label>
                     {!relativeToday && (
-                      <input
-                        className="form-input"
+                      <Input
                         type="date"
                         value={dateTarget}
                         onChange={(e) => setDateTarget(e.target.value)}
-                        style={{ maxWidth: 200 }}
+                        className="max-w-50"
                       />
                     )}
                   </div>
@@ -351,43 +388,37 @@ export default function ScanValidationsStep({
 
           {/* Error message */}
           {rule && (
-            <div style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>
-                Mensaje de alerta <span style={{ color: "#dc2626" }}>*</span>
-              </label>
-              <textarea
-                className="form-input"
+            <div className="mb-3.5">
+              <Label htmlFor="sv-msg">
+                {TEXT.MSG_LABEL} <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                id="sv-msg"
                 value={errorMessage}
                 onChange={(e) => setErrorMessage(e.target.value)}
-                placeholder="Ej: La fecha de caducidad ha expirado"
+                placeholder={TEXT.MSG_PLACEHOLDER}
                 rows={2}
-                style={{ marginTop: 6, resize: "vertical", minHeight: 60 }}
+                className="mt-1.5 min-h-15 resize-y"
               />
             </div>
           )}
 
           {/* Severity */}
           {rule && (
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>Nivel de alerta</label>
-              <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+            <div className="mb-4">
+              <Label>{TEXT.SEVERITY_LABEL}</Label>
+              <div className="mt-2 flex gap-2.5">
                 {(["error", "warning"] as const).map((s) => {
+                  const sm = SEVERITY_META[s];
                   const selected = severity === s;
-                  const sColor = s === "error" ? "#dc2626" : "#d97706";
-                  const sBg = s === "error" ? "#fef2f2" : "#fffbeb";
-                  const Icon = s === "error" ? AlertCircle : AlertTriangle;
+                  const Icon = sm.icon;
                   return (
                     <label
                       key={s}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 8,
-                        padding: "8px 14px",
-                        border: `1.5px solid ${selected ? sColor : "var(--color-border)"}`,
-                        borderRadius: 8,
-                        background: selected ? sBg : "#fff",
-                        cursor: "pointer",
-                        fontSize: 13,
-                      }}
+                      className={cn(
+                        "flex cursor-pointer items-center gap-2 rounded-md border px-3.5 py-2 text-sm",
+                        selected ? sm.card : "border-border bg-card",
+                      )}
                     >
                       <input
                         type="radio"
@@ -395,15 +426,11 @@ export default function ScanValidationsStep({
                         value={s}
                         checked={selected}
                         onChange={() => setSeverity(s)}
-                        style={{ accentColor: sColor }}
+                        className={cn("size-4", sm.accent)}
                       />
-                      <Icon size={14} strokeWidth={1.8} style={{ color: sColor }} />
-                      <span style={{ fontWeight: 600, color: sColor }}>
-                        {severityLabel(s)}
-                      </span>
-                      <span style={{ color: "var(--color-muted)", fontSize: 11.5 }}>
-                        {s === "error" ? "— bloquea visualmente" : "— solo informativo"}
-                      </span>
+                      <Icon className={cn("size-3.5", sm.iconColor)} strokeWidth={1.8} />
+                      <span className={cn("font-semibold", sm.text)}>{sm.label}</span>
+                      <span className="text-xs text-muted-foreground">{sm.hint}</span>
                     </label>
                   );
                 })}
@@ -411,54 +438,34 @@ export default function ScanValidationsStep({
             </div>
           )}
 
-          <div style={{ display: "flex", gap: 10 }}>
-            <button className="btn btn-ghost" onClick={resetForm}>
-              Cancelar
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={handleAdd}
-              disabled={!canAdd}
-            >
-              Añadir validación
-            </button>
+          <div className="flex gap-2.5">
+            <Button variant="ghost" onClick={resetForm}>
+              {TEXT.CANCEL}
+            </Button>
+            <Button onClick={handleAdd} disabled={!canAdd}>
+              {TEXT.ADD}
+            </Button>
           </div>
         </div>
       ) : (
-        <button
-          className="btn btn-ghost"
+        <Button
+          variant="ghost"
           onClick={() => setShowForm(true)}
-          style={{ alignSelf: "flex-start" }}
+          className="self-start"
         >
-          <Plus size={16} strokeWidth={2} />
-          Añadir validación
-        </button>
+          <Plus strokeWidth={2} />
+          {TEXT.ADD}
+        </Button>
       )}
 
       {/* Empty state */}
       {scanValidations.length === 0 && !showForm && (
-        <div style={{
-          textAlign: "center",
-          padding: "36px 24px",
-          background: "var(--color-subtle-bg)",
-          borderRadius: 12,
-          border: "1.5px dashed var(--color-border)",
-          color: "var(--color-muted)",
-        }}>
-          <div style={{ fontSize: 30, marginBottom: 8 }}>🔍</div>
-          <div style={{ fontWeight: 600, color: "var(--color-secondary)", fontSize: 13.5 }}>Sin validaciones definidas</div>
-          <div style={{ marginTop: 4, fontSize: 12.5 }}>
-            Puedes continuar sin validaciones y añadirlas después.
-          </div>
+        <div className="rounded-xl border border-dashed bg-muted px-6 py-9 text-center text-muted-foreground">
+          <div className="mb-2 text-3xl">🔍</div>
+          <div className="text-sm font-semibold text-foreground">{TEXT.EMPTY_TITLE}</div>
+          <div className="mt-1 text-xs">{TEXT.EMPTY_BODY}</div>
         </div>
       )}
     </div>
   );
 }
-
-const labelStyle: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: "var(--color-dark)",
-  display: "block",
-};

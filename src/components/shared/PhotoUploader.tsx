@@ -13,10 +13,16 @@
  * responsibility of the surface that owns the kind (card form, settings page,
  * card design editor). The parent receives the key + signed read URL via
  * `onChange` and decides what to write where.
+ *
+ * The `<img>` src and dimensions are runtime data — preserved inline. All
+ * other chrome migrates to tokens.
  */
 
 import { useRef, useState } from "react";
-import { Upload, X, Loader2 } from "lucide-react";
+import { Loader2, Upload, X } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   CARD_DESIGN_IMAGE_PROFILE,
   CARD_PHOTO_PROFILE,
@@ -32,19 +38,19 @@ import {
 import type { PhotoKind } from "@/lib/storage/types";
 
 const TEXT = {
-  uploadCta: "Subir foto",
-  uploading: "Subiendo…",
-  optimizing: "Optimizando…",
-  remove: "Quitar",
-  uploadFailed: "No se pudo subir la imagen",
-  optimizeFailed: "No se pudo optimizar la imagen",
+  uploadCta:       "Subir foto",
+  uploading:       "Subiendo…",
+  optimizing:      "Optimizando…",
+  remove:          "Quitar",
+  uploadFailed:    "No se pudo subir la imagen",
+  defaultAlt:      "Foto",
 } as const;
 
 const PROFILE_BY_KIND: Record<PhotoKind, ImageOptimizationProfile> = {
-  "card-photo": CARD_PHOTO_PROFILE,
-  "card-design-image": CARD_DESIGN_IMAGE_PROFILE,
-  "member-avatar": MEMBER_AVATAR_PROFILE,
-  "tenant-logo": TENANT_LOGO_PROFILE,
+  "card-photo":         CARD_PHOTO_PROFILE,
+  "card-design-image":  CARD_DESIGN_IMAGE_PROFILE,
+  "member-avatar":      MEMBER_AVATAR_PROFILE,
+  "tenant-logo":        TENANT_LOGO_PROFILE,
 };
 
 export interface PhotoUploaderValue {
@@ -58,7 +64,7 @@ interface Props {
   kind: PhotoKind;
   /** UUID of the entity that owns the photo (cardId, designId, userId, tenantId). */
   ownerId: string;
-  /** Current persisted object key (for re-upload state) — purely informational. */
+  /** Current persisted object key (informational only). */
   currentObjectKey?: string | null;
   /** Current signed read URL to preview alongside the upload control. */
   currentReadUrl?: string | null;
@@ -146,13 +152,19 @@ export default function PhotoUploader({
   const isBusy = busy !== "idle";
   const previewWidth = Math.round(previewSize * previewAspect);
 
+  // data-driven — preview tile dimensions come from per-call props at runtime.
+  const previewDimensionStyle: React.CSSProperties = {
+    width: previewWidth,
+    height: previewSize,
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+    <div className="flex flex-col gap-1.5">
       <input
         ref={inputRef}
         type="file"
         accept="image/jpeg,image/png,image/webp,image/gif"
-        style={{ display: "none" }}
+        className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) void handleFile(f);
@@ -161,20 +173,16 @@ export default function PhotoUploader({
       />
 
       {currentReadUrl ? (
-        <div style={{ position: "relative", display: "inline-block" }}>
+        <div className="relative inline-block">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={currentReadUrl}
-            alt={alt ?? "Foto"}
-            style={{
-              width: previewWidth,
-              height: previewSize,
-              objectFit: "cover",
-              borderRadius: 10,
-              border: "1px solid var(--color-border)",
-              display: "block",
-              opacity: isBusy ? 0.5 : 1,
-            }}
+            alt={alt ?? TEXT.defaultAlt}
+            style={previewDimensionStyle}
+            className={cn(
+              "block rounded-xl border border-border object-cover",
+              isBusy && "opacity-50",
+            )}
           />
           {allowRemove && !disabled && !isBusy && (
             <button
@@ -182,110 +190,55 @@ export default function PhotoUploader({
               onClick={() => onChange(null)}
               aria-label={TEXT.remove}
               title={TEXT.remove}
-              style={{
-                position: "absolute",
-                top: -8,
-                right: -8,
-                width: 24,
-                height: 24,
-                borderRadius: "50%",
-                background: "#ef4444",
-                color: "#fff",
-                border: "none",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
+              className="absolute -right-2 -top-2 flex size-6 items-center justify-center rounded-full bg-destructive text-destructive-foreground shadow-sm transition-shadow hover:shadow-md"
             >
-              <X size={13} />
+              <X className="size-3" strokeWidth={2.5} />
             </button>
           )}
           {!disabled && !isBusy && (
             <button
               type="button"
               onClick={() => inputRef.current?.click()}
-              style={{
-                position: "absolute",
-                bottom: 4,
-                right: 4,
-                padding: "4px 8px",
-                borderRadius: 6,
-                background: "rgba(0,0,0,0.65)",
-                color: "#fff",
-                border: "none",
-                cursor: "pointer",
-                fontSize: 11,
-                fontWeight: 600,
-              }}
+              className="absolute bottom-1.5 right-1.5 rounded-md bg-neutral-950/65 px-2.5 py-1 text-[11px] font-semibold text-white"
             >
               {TEXT.uploadCta}
             </button>
           )}
           {isBusy && (
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#fff",
-                gap: 6,
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              <Loader2
-                size={16}
-                style={{ animation: "spin 1s linear infinite" }}
-              />
+            <div className="absolute inset-0 flex items-center justify-center gap-1.5 rounded-xl bg-neutral-950/40 text-xs font-semibold text-white">
+              <Loader2 className="size-4 animate-spin" />
               {busy === "optimizing" ? TEXT.optimizing : TEXT.uploading}
             </div>
           )}
         </div>
       ) : (
-        <button
+        <Button
           type="button"
+          variant="outline"
           onClick={() => !disabled && !isBusy && inputRef.current?.click()}
           disabled={disabled || isBusy}
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-            width: previewWidth,
-            height: previewSize,
-            borderRadius: 10,
-            border: `2px dashed ${error ? "#ef4444" : "var(--color-border)"}`,
-            background: "var(--color-page-bg)",
-            cursor: disabled || isBusy ? "default" : "pointer",
-            color: "var(--color-muted)",
-            fontSize: 12,
-            fontWeight: 500,
-          }}
+          style={previewDimensionStyle}
+          className={cn(
+            "flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed",
+            "bg-muted/40 text-xs font-medium text-muted-foreground hover:bg-muted",
+            error && "border-destructive",
+          )}
         >
           {isBusy ? (
             <>
-              <Loader2
-                size={20}
-                style={{ animation: "spin 1s linear infinite" }}
-              />
+              <Loader2 className="size-5 animate-spin" />
               {busy === "optimizing" ? TEXT.optimizing : TEXT.uploading}
             </>
           ) : (
             <>
-              <Upload size={20} />
+              <Upload className="size-5" />
               {TEXT.uploadCta}
             </>
           )}
-        </button>
+        </Button>
       )}
 
-      {error && (
-        <span style={{ fontSize: 12, color: "#ef4444" }}>{error}</span>
-      )}
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }

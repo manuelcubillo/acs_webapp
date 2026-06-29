@@ -1,6 +1,6 @@
 # 04 · Non-negotiable Constraints
 
-**Last updated**: 2026-04-26
+**Last updated**: 2026-06-06
 
 These rules are **non-negotiable**. Any proposed change to one of them requires an ADR in `decisions/` that explicitly supersedes this document.
 
@@ -30,19 +30,23 @@ These rules are **non-negotiable**. Any proposed change to one of them requires 
 
 14. Responsive-first. Operators use tablets and phones. Test layouts at mobile widths before desktop.
 15. **All text displayed on pages must live in constants or message objects.** No inline strings in JSX. ❌ `<p>Delete account</p>` → ✅ `<p>{TEXT.DELETE_ACCOUNT}</p>`. This enables i18n, testability, and consistency.
-16. No shadcn/ui. UI is custom Tailwind. Do not introduce a new component library without a preceding ADR.
+16. **shadcn/ui is the primitive layer.** Every interactive component (button, input, dialog, badge, card, alert, tabs, etc.) imports from `@/components/ui/*`. Do not hand-roll a primitive that shadcn already provides. New primitives are added via `pnpm dlx shadcn@latest add <name>` and live in `src/components/ui/`. (Supersedes the previous "no shadcn/ui" rule per ADR `2026-06-06-adopt-shadcn-ui.md`.)
+17. **Color comes from semantic tokens only.** Components MUST consume Layer 2 tokens (`bg-primary`, `text-foreground`, `border-state-warning-border`, `var(--state-denied-icon)`, etc.). Never reference a Layer 1 primitive (`--indigo-600`, `--red-50`) inside a component. Never inline a hex or `oklch()` literal in a component. See ADR `2026-06-06-design-system-tokens.md`.
+18. **Reserved state colors.** `--state-granted` = green / `--state-denied` = red / `--state-warning` = amber / `--state-override` = orange (visually distinct from amber) / `--state-info` = slate. These tokens are RESERVED for scan-, action-, and validation-outcome surfaces. They are NEVER used decoratively. The brand accent (`--primary`) is always blue-violet and MUST NOT take a state hue.
+19. **Inline `style={{...}}` is deprecated** for component styling. Use Tailwind utilities + the `cn()` helper. The remaining legacy `style` blocks are migrated module-by-module; any file touched after `2026-06-06` must not introduce new inline-style color or layout.
+20. **Legacy `--color-*` CSS variables are deprecated.** They alias to Layer 2 tokens as a temporary bridge for un-migrated screens. New code must use Layer 2 names directly (`--primary`, `--foreground`, etc.) or the equivalent Tailwind utility.
 
 ## Code organization
 
-17. All comments and JSDoc in English.
-18. Each component and significant function in its own file.
-19. Barrel exports in `src/lib/api/index.ts` and `src/lib/dal/index.ts` must include every new public helper.
-20. Shared components (used by 2+ domains) live in `src/components/shared/`.
+21. All comments and JSDoc in English.
+22. Each component and significant function in its own file.
+23. Barrel exports in `src/lib/api/index.ts` and `src/lib/dal/index.ts` must include every new public helper.
+24. Shared components (used by 2+ domains) live in `src/components/shared/`. Shadcn primitives live in `src/components/ui/`. Do not mix the two folders.
 
 ## Storage
 
-21. Photo I/O goes through the `CardPhotoStorage` interface in `src/lib/storage/`. Cloudflare R2 is the production driver, MinIO the self-hosted / local driver — both reached via the AWS S3 SDK. Uploads are presigned PUTs scoped per kind (`card-photo`, `card-design-image`, `member-avatar`, `tenant-logo`); reads return 15-minute signed GETs. The DB stores **object keys**, not URLs. Tenant prefix is the security primitive — every read/confirm refuses keys outside the caller's tenant. Optimization (resize, recompress, EXIF strip) runs client-side in `src/lib/images/` against per-kind profiles. See ADR `2026-04-27-photo-storage-r2-minio.md`.
+25. Photo I/O goes through the `CardPhotoStorage` interface in `src/lib/storage/`. Cloudflare R2 is the production driver, MinIO the self-hosted / local driver — both reached via the AWS S3 SDK. Uploads are presigned PUTs scoped per kind (`card-photo`, `card-design-image`, `member-avatar`, `tenant-logo`); reads return 15-minute signed GETs. The DB stores **object keys**, not URLs. Tenant prefix is the security primitive — every read/confirm refuses keys outside the caller's tenant. Optimization (resize, recompress, EXIF strip) runs client-side in `src/lib/images/` against per-kind profiles. See ADR `2026-04-27-photo-storage-r2-minio.md`.
 
 ## Invitation flow
 
-22. Member invitations use a `member_invitations` table with a cryptographically random token. Emails are sent via Resend. Tokens expire in 7 days. The accept route (`/invitations/[token]`) is public — the token is the authentication. The `TODO: INVITATIONS` marker has been resolved.
+26. Member invitations use a `member_invitations` table with a cryptographically random token. Emails are sent via Resend. Tokens expire in 7 days. The accept route (`/invitations/[token]`) is public — the token is the authentication. The `TODO: INVITATIONS` marker has been resolved.

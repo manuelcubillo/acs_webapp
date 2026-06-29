@@ -13,7 +13,17 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import FieldList from "../fields/FieldList";
 import FieldEditor from "../fields/FieldEditor";
+import { Button } from "@/components/ui/button";
 import type { FieldDefinitionDraft } from "@/hooks/useCardTypeWizard";
+
+const TEXT = {
+  HEADING:     "Campos del esquema",
+  HEADING_SUB: "Define los datos que almacenará cada tarjeta. Arrastra para reordenar.",
+  ADD:         "Añadir campo",
+  STAT_TOTAL:  "Total",
+  STAT_REQ:    "Obligatorios",
+  STAT_VALID:  "Con validación",
+} as const;
 
 interface FieldDefinitionsStepProps {
   fields: FieldDefinitionDraft[];
@@ -57,36 +67,27 @@ export default function FieldDefinitionsStep({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="flex flex-col gap-5">
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--color-dark)", marginBottom: 6 }}>
-            Campos del esquema
+          <div className="mb-1.5 font-heading text-xl font-bold text-foreground">
+            {TEXT.HEADING}
           </div>
-          <div style={{ fontSize: 13.5, color: "var(--color-secondary)" }}>
-            Define los datos que almacenará cada tarjeta. Arrastra para reordenar.
-          </div>
+          <div className="text-sm text-muted-foreground">{TEXT.HEADING_SUB}</div>
         </div>
-        <button className="btn btn-primary" onClick={openNew} style={{ flexShrink: 0 }}>
-          <Plus size={16} strokeWidth={2} />
-          Añadir campo
-        </button>
+        <Button onClick={openNew} className="shrink-0">
+          <Plus strokeWidth={2} />
+          {TEXT.ADD}
+        </Button>
       </div>
 
       {/* Stats row */}
       {fields.length > 0 && (
-        <div style={{
-          display: "flex",
-          gap: 20,
-          padding: "12px 16px",
-          background: "var(--color-subtle-bg)",
-          borderRadius: 10,
-          border: "1px solid var(--color-border-soft)",
-        }}>
-          <Stat label="Total" value={fields.length} />
-          <Stat label="Obligatorios" value={fields.filter((f) => f.isRequired).length} color="#dc2626" />
-          <Stat label="Con validación" value={fields.filter((f) => f.validationRules?.rules.length).length} color="#059669" />
+        <div className="flex gap-5 rounded-[10px] border bg-muted px-4 py-3">
+          <Stat label={TEXT.STAT_TOTAL} value={fields.length} />
+          <Stat label={TEXT.STAT_REQ} value={fields.filter((f) => f.isRequired).length} />
+          <Stat label={TEXT.STAT_VALID} value={fields.filter((f) => f.validationRules?.rules.length).length} />
         </div>
       )}
 
@@ -110,15 +111,13 @@ export default function FieldDefinitionsStep({
   );
 }
 
-function Stat({ label, value, color }: { label: string; value: number; color?: string }) {
+function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div>
-      <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "var(--font-heading)", color: color ?? "var(--color-dark)" }}>
+      <div className="font-heading text-lg font-extrabold text-foreground">
         {value}
       </div>
-      <div style={{ fontSize: 11, color: "var(--color-muted)", fontWeight: 500 }}>
-        {label}
-      </div>
+      <div className="text-[11px] font-medium text-muted-foreground">{label}</div>
     </div>
   );
 }

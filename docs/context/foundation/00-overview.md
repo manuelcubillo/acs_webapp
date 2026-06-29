@@ -1,6 +1,6 @@
 # 00 · Project Overview
 
-**Last updated**: 2026-04-19
+**Last updated**: 2026-06-06
 
 ## What this is
 
@@ -30,7 +30,11 @@ Out of scope (for now):
 | -------------- | ----------------------------------------------------------- |
 | Framework      | Next.js (App Router, Turbopack)                             |
 | UI runtime     | React 19, TypeScript                                        |
-| Styling        | Tailwind CSS 4 (custom inline styles — no shadcn/ui)        |
+| Styling        | Tailwind CSS 4 (CSS-first config, no `tailwind.config.js`)  |
+| Design system  | 3-layer OKLCH tokens (primitives → semantic → density); brand swap via `data-brand` on `<html>` (indigo / cobalt / violet); dark mode via `.dark` class |
+| Primitives     | shadcn/ui in `src/components/ui/` (Radix-backed, copy-in, edited freely) |
+| Theming        | `next-themes` for mode, custom Brand context for `data-brand` |
+| Variants       | `class-variance-authority` + `clsx` + `tailwind-merge` (via `cn()` in `src/lib/utils.ts`) |
 | Auth           | Better Auth (email + password + username)                   |
 | ORM            | Drizzle ORM                                                 |
 | Database       | PostgreSQL on Neon (HTTP driver, no interactive tx)         |

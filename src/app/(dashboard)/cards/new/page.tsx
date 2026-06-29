@@ -8,6 +8,7 @@
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { requireAdmin, AuthenticationError, AuthorizationError } from "@/lib/api";
 import {
   listCardTypes,
@@ -15,10 +16,20 @@ import {
 } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardNewClient from "./CardNewClient";
+import { Button } from "@/components/ui/button";
 import type { FieldDefinitionShape } from "@/lib/validation/types";
 import type { ValidationRules } from "@/lib/validation/types";
 
 export const dynamic = "force-dynamic";
+
+const TEXT = {
+  TITLE:        "Nuevo carnet",
+  PICK_TYPE:    "Selecciona el tipo de tarjeta:",
+  NO_TYPES_PRE: "No hay tipos de tarjeta. Crea uno primero en",
+  TYPES_LINK:   "Tipos de Tarjeta",
+  TYPE_LABEL:   "Tipo:",
+  BACK_TO_CARDS: "Volver a Carnets",
+} as const;
 
 interface NewCardPageProps {
   searchParams: Promise<{ cardTypeId?: string }>;
@@ -42,60 +53,42 @@ export default async function NewCardPage({ searchParams }: NewCardPageProps) {
   if (!cardTypeId) {
     const cardTypes = await listCardTypes(tenantId).catch(() => []);
     return (
-      <DashboardShell title="Nuevo carnet" role={role}>
-        <div style={{ maxWidth: 480, margin: "0 auto" }}>
-          <h1
-            style={{
-              fontSize: 22,
-              fontWeight: 800,
-              fontFamily: "var(--font-heading)",
-              color: "var(--color-dark)",
-              marginBottom: 6,
-            }}
+      <DashboardShell title={TEXT.TITLE} role={role}>
+        <div className="mx-auto max-w-[480px]">
+          <Link
+            href="/cards"
+            className="mb-5 flex w-fit items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
           >
-            Nuevo carnet
+            <ArrowLeft className="size-3.5" />
+            {TEXT.BACK_TO_CARDS}
+          </Link>
+
+          <h1 className="mb-1.5 font-heading text-[22px] font-extrabold text-foreground">
+            {TEXT.TITLE}
           </h1>
-          <p
-            style={{
-              fontSize: 14,
-              color: "var(--color-muted)",
-              marginBottom: 24,
-            }}
-          >
-            Selecciona el tipo de tarjeta:
+          <p className="mb-6 text-sm text-muted-foreground">
+            {TEXT.PICK_TYPE}
           </p>
 
           {cardTypes.length === 0 ? (
-            <div style={{ color: "var(--color-muted)", fontSize: 14 }}>
-              No hay tipos de tarjeta. Crea uno primero en{" "}
-              <Link
-                href="/card-types/new"
-                style={{ color: "var(--color-primary)" }}
-              >
-                Tipos de Tarjeta
+            <div className="text-sm text-muted-foreground">
+              {TEXT.NO_TYPES_PRE}{" "}
+              <Link href="/card-types/new" className="text-primary hover:underline">
+                {TEXT.TYPES_LINK}
               </Link>
               .
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="flex flex-col gap-2.5">
               {cardTypes.map((ct) => (
-                <Link
+                <Button
                   key={ct.id}
-                  href={`/cards/new?cardTypeId=${ct.id}`}
-                  style={{
-                    display: "block",
-                    padding: "14px 18px",
-                    borderRadius: 10,
-                    border: "1.5px solid var(--color-border)",
-                    background: "#fff",
-                    textDecoration: "none",
-                    color: "var(--color-dark)",
-                    fontWeight: 600,
-                    fontSize: 14,
-                  }}
+                  asChild
+                  variant="outline"
+                  className="h-auto w-full justify-start px-4.5 py-3.5 text-sm font-semibold"
                 >
-                  {ct.name}
-                </Link>
+                  <Link href={`/cards/new?cardTypeId=${ct.id}`}>{ct.name}</Link>
+                </Button>
               ))}
             </div>
           )}
@@ -124,36 +117,13 @@ export default async function NewCardPage({ searchParams }: NewCardPageProps) {
     }));
 
   return (
-    <DashboardShell title="Nuevo carnet" role={role}>
-      <div
-        style={{
-          maxWidth: 600,
-          margin: "0 auto",
-          background: "#fff",
-          borderRadius: 14,
-          border: "1px solid var(--color-border)",
-          padding: 28,
-        }}
-      >
-        <h1
-          style={{
-            fontSize: 20,
-            fontWeight: 800,
-            fontFamily: "var(--font-heading)",
-            color: "var(--color-dark)",
-            margin: "0 0 4px",
-          }}
-        >
-          Nuevo carnet
+    <DashboardShell title={TEXT.TITLE} role={role}>
+      <div className="mx-auto max-w-[600px] rounded-2xl border bg-card p-7">
+        <h1 className="mb-1 font-heading text-xl font-extrabold text-foreground">
+          {TEXT.TITLE}
         </h1>
-        <p
-          style={{
-            fontSize: 13,
-            color: "var(--color-muted)",
-            marginBottom: 24,
-          }}
-        >
-          Tipo: <strong>{schema.name}</strong>
+        <p className="mb-6 text-sm text-muted-foreground">
+          {TEXT.TYPE_LABEL} <strong>{schema.name}</strong>
         </p>
 
         <CardNewClient cardTypeId={cardTypeId} fields={fields} />

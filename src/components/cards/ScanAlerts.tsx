@@ -1,16 +1,26 @@
 "use client";
 
 /**
- * ScanAlerts
+ * ScanAlerts — dismissible banners for failing scan validation checks.
  *
- * Displays dismissible alert banners for failing scan validation checks.
- * Errors are shown in red, warnings in amber.
- * If all checks pass, nothing is rendered.
+ * Token-driven. Severity → state token:
+ *   - "error"   → state-denied  (red)
+ *   - "warning" → state-warning (amber)
+ *
+ * Each row = icon + field label + message (color is never the only cue).
+ * If all checks pass, the component renders nothing.
  */
 
 import { useState } from "react";
-import { X, AlertCircle, AlertTriangle } from "lucide-react";
+import { AlertCircle, AlertTriangle, X } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { ScanValidationResult } from "@/lib/validation/scan-validator";
+
+const TEXT = {
+  ARIA_DISMISS: "Descartar alerta",
+} as const;
 
 interface ScanAlertsProps {
   scanResult: ScanValidationResult;
@@ -32,54 +42,48 @@ export default function ScanAlerts({ scanResult }: ScanAlertsProps) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+    <div className="flex flex-col gap-2" role="status" aria-live="polite">
       {visible.map((check) => {
         const isError = check.severity === "error";
-        const color  = isError ? "#dc2626" : "#d97706";
-        const bg     = isError ? "#fef2f2" : "#fffbeb";
-        const border = isError ? "#fecaca" : "#fde68a";
-        const Icon   = isError ? AlertCircle : AlertTriangle;
+        const Icon = isError ? AlertCircle : AlertTriangle;
 
         return (
           <div
             key={check.scanValidationId}
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: 12,
-              padding: "12px 16px",
-              background: bg,
-              border: `1.5px solid ${border}`,
-              borderRadius: 10,
-            }}
+            className={cn(
+              "flex items-start gap-3 rounded-lg border-2 px-4 py-3 text-sm",
+              isError
+                ? "bg-state-denied border-state-denied-border text-state-denied-foreground"
+                : "bg-state-warning border-state-warning-border text-state-warning-foreground",
+            )}
           >
-            <Icon size={16} strokeWidth={1.8} style={{ color, flexShrink: 0, marginTop: 2 }} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color }}>
-                {check.fieldLabel}
-              </span>
-              <span style={{ fontSize: 13, color, marginLeft: 6 }}>
-                {check.message}
-              </span>
+            <Icon
+              aria-hidden
+              strokeWidth={1.8}
+              className={cn(
+                "mt-0.5 size-5 shrink-0",
+                isError ? "text-state-denied-icon" : "text-state-warning-icon",
+              )}
+            />
+            <div className="min-w-0 flex-1">
+              <span className="font-semibold">{check.fieldLabel}</span>
+              <span className="ml-1.5 opacity-90">{check.message}</span>
             </div>
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={TEXT.ARIA_DISMISS}
               onClick={() => dismiss(check.scanValidationId)}
-              title="Descartar alerta"
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color,
-                padding: 2,
-                flexShrink: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: 0.7,
-              }}
+              className={cn(
+                "shrink-0",
+                isError
+                  ? "text-state-denied-foreground hover:bg-state-denied-border/40"
+                  : "text-state-warning-foreground hover:bg-state-warning-border/40",
+              )}
             >
-              <X size={14} strokeWidth={2} />
-            </button>
+              <X />
+            </Button>
           </div>
         );
       })}

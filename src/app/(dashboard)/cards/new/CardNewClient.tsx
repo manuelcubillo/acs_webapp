@@ -6,7 +6,15 @@ import { useRouter } from "next/navigation";
 import { CheckCircle } from "lucide-react";
 import { createCardAction } from "@/lib/actions/cards";
 import CardForm from "@/components/cards/CardForm";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import type { FieldDefinitionShape } from "@/lib/validation/types";
+
+const TEXT = {
+  CREATED_PRE:  "Carnet",
+  CREATED_POST: "creado.",
+  VIEW_CARD:    "Ver carnet →",
+  SUBMIT:       "Crear carnet",
+} as const;
 
 interface CardNewClientProps {
   cardTypeId: string;
@@ -34,37 +42,26 @@ export default function CardNewClient({
 
   return (
     <div>
-      {/* Success banner — shown after a card is created */}
+      {/* Success banner — shown after a card is created.
+          Neutral Alert: card creation is a CRUD confirmation, not an
+          access-control outcome, so the reserved --state-granted token is
+          intentionally NOT used here. */}
       {createdCode && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "12px 16px",
-            borderRadius: 8,
-            background: "#dcfce7",
-            color: "#166534",
-            fontSize: 13,
-            fontWeight: 500,
-            marginBottom: 20,
-          }}
-        >
-          <CheckCircle size={16} strokeWidth={2} style={{ flexShrink: 0 }} />
-          <span>
-            Carnet <strong>{createdCode}</strong> creado.{" "}
-            <Link
-              href={`/cards/${encodeURIComponent(createdCode)}`}
-              style={{
-                color: "#166534",
-                fontWeight: 700,
-                textDecoration: "underline",
-              }}
-            >
-              Ver carnet →
-            </Link>
-          </span>
-        </div>
+        <Alert className="mb-5">
+          <CheckCircle strokeWidth={2} />
+          <AlertDescription className="text-card-foreground">
+            <span>
+              {TEXT.CREATED_PRE} <strong>{createdCode}</strong>{" "}
+              {TEXT.CREATED_POST}{" "}
+              <Link
+                href={`/cards/${encodeURIComponent(createdCode)}`}
+                className="font-bold text-primary underline"
+              >
+                {TEXT.VIEW_CARD}
+              </Link>
+            </span>
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* key={resetKey} forces a full remount (clearing state) after each success */}
@@ -72,8 +69,8 @@ export default function CardNewClient({
         key={resetKey}
         fields={fields}
         onSubmit={handleSubmit}
-        onCancel={() => router.back()}
-        submitLabel="Crear carnet"
+        onCancel={() => router.push("/cards")}
+        submitLabel={TEXT.SUBMIT}
       />
     </div>
   );

@@ -5,9 +5,14 @@
  *
  * Visual progress indicator for the 4-step card type wizard.
  * Shows step number, label, and connection lines between steps.
+ *
+ * Progress states (done/active/pending) are decorative UI, not access-control
+ * outcomes — they use the brand + neutral tokens. The Check icon distinguishes
+ * a completed step from the active one.
  */
 
 import { Check } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { WizardStep } from "@/hooks/useCardTypeWizard";
 
 const STEPS: { label: string; sublabel: string }[] = [
@@ -28,7 +33,7 @@ export default function WizardStepIndicator({
   onGoToStep,
 }: WizardStepIndicatorProps) {
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 0 }}>
+    <div className="flex items-start">
       {STEPS.map((step, index) => {
         const state =
           index < currentStep ? "done" : index === currentStep ? "active" : "pending";
@@ -38,80 +43,44 @@ export default function WizardStepIndicator({
         return (
           <div
             key={index}
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              flex: isLast ? "none" : 1,
-            }}
+            className={cn("flex items-start", !isLast && "flex-1")}
           >
             {/* Step circle + label */}
             <div
-              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}
+              className="flex flex-col items-center gap-2"
               onClick={() => isClickable && onGoToStep(index as WizardStep)}
               title={isClickable ? `Volver a "${step.label}"` : undefined}
             >
               {/* Circle */}
               <div
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: "50%",
-                  border:
-                    state === "active"
-                      ? "2px solid var(--color-primary)"
-                      : state === "done"
-                      ? "2px solid #059669"
-                      : "2px solid var(--color-border)",
-                  background:
-                    state === "done"
-                      ? "#059669"
-                      : state === "active"
-                      ? "var(--color-primary)"
-                      : "#fff",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 14,
-                  fontWeight: 700,
-                  color:
-                    state === "pending" ? "var(--color-muted)" : "#fff",
-                  transition: "all 0.2s ease",
-                  cursor: isClickable ? "pointer" : "default",
-                  flexShrink: 0,
-                }}
+                className={cn(
+                  "flex size-9 shrink-0 items-center justify-center rounded-full border-2 text-sm font-bold transition-all",
+                  state === "done" && "border-primary bg-primary text-primary-foreground",
+                  state === "active" && "border-primary bg-card text-primary",
+                  state === "pending" && "border-border bg-card text-muted-foreground",
+                  isClickable ? "cursor-pointer" : "cursor-default",
+                )}
               >
                 {state === "done" ? (
-                  <Check size={16} strokeWidth={2.5} />
+                  <Check className="size-4" strokeWidth={2.5} />
                 ) : (
-                  <span style={{ fontFamily: "var(--font-heading)" }}>{index + 1}</span>
+                  <span className="font-heading">{index + 1}</span>
                 )}
               </div>
 
               {/* Label */}
-              <div style={{ textAlign: "center" }}>
+              <div className="text-center">
                 <div
-                  style={{
-                    fontSize: 12.5,
-                    fontWeight: state === "active" ? 700 : state === "done" ? 600 : 500,
-                    color:
-                      state === "active"
-                        ? "var(--color-primary)"
-                        : state === "done"
-                        ? "#059669"
-                        : "var(--color-muted)",
-                    whiteSpace: "nowrap",
-                  }}
+                  className={cn(
+                    "whitespace-nowrap text-xs",
+                    state === "active" && "font-bold text-primary",
+                    state === "done" && "font-semibold text-primary",
+                    state === "pending" && "font-medium text-muted-foreground",
+                  )}
                 >
                   {step.label}
                 </div>
-                <div
-                  style={{
-                    fontSize: 10.5,
-                    color: "var(--color-muted)",
-                    marginTop: 2,
-                    whiteSpace: "nowrap",
-                  }}
-                >
+                <div className="mt-0.5 whitespace-nowrap text-[10.5px] text-muted-foreground">
                   {step.sublabel}
                 </div>
               </div>
@@ -119,14 +88,12 @@ export default function WizardStepIndicator({
 
             {/* Connector line */}
             {!isLast && (
-              <div style={{
-                flex: 1,
-                height: 2,
-                marginTop: 17,
-                background: index < currentStep ? "#059669" : "var(--color-border)",
-                transition: "background 0.3s ease",
-                minWidth: 20,
-              }} />
+              <div
+                className={cn(
+                  "mt-[17px] h-0.5 min-w-5 flex-1 transition-colors",
+                  index < currentStep ? "bg-primary" : "bg-border",
+                )}
+              />
             )}
           </div>
         );

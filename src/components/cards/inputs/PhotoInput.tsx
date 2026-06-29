@@ -15,6 +15,8 @@
  */
 
 import { useRef, useState } from "react";
+
+import { Label } from "@/components/ui/label";
 import PhotoUploader from "@/components/shared/PhotoUploader";
 
 interface PhotoInputProps {
@@ -32,6 +34,7 @@ interface PhotoInputProps {
 }
 
 export default function PhotoInput({
+  fieldId,
   label,
   value,
   onChange,
@@ -41,7 +44,6 @@ export default function PhotoInput({
   cardId,
   initialReadUrl,
 }: PhotoInputProps) {
-  // Stable owner id for the lifetime of this form.
   const draftOwnerRef = useRef<string>(
     cardId ?? (typeof crypto !== "undefined" ? crypto.randomUUID() : "draft"),
   );
@@ -53,15 +55,11 @@ export default function PhotoInput({
   const objectKey = typeof value === "string" && value.length > 0 ? value : null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <label
-        style={{ fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}
-      >
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={fieldId} className="text-sm font-semibold text-foreground">
         {label}
-        {isRequired && (
-          <span style={{ color: "#ef4444", marginLeft: 2 }}>*</span>
-        )}
-      </label>
+        {isRequired && <span className="ml-1 text-destructive">*</span>}
+      </Label>
 
       <PhotoUploader
         kind="card-photo"
@@ -81,9 +79,7 @@ export default function PhotoInput({
         }}
       />
 
-      {error && (
-        <span style={{ fontSize: 12, color: "#ef4444" }}>{error}</span>
-      )}
+      {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
   );
 }

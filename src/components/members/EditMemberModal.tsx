@@ -5,7 +5,7 @@
  */
 
 import { useState } from "react";
-import { X, Loader2, Key } from "lucide-react";
+import { Loader2, Key } from "lucide-react";
 import {
   updateMemberProfileAction,
   updateMemberRoleAction,
@@ -14,6 +14,23 @@ import {
 import type { MemberWithUser } from "@/lib/dal";
 import type { TenantRole } from "@/lib/api";
 import { canAssignRole } from "@/lib/auth/role-hierarchy";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const LABELS = {
   title: "Editar miembro",
@@ -22,6 +39,9 @@ const LABELS = {
   emailLabel: "Email",
   emailPlaceholder: "usuario@ejemplo.com",
   roleLabel: "Rol",
+  sectionProfile: "Perfil",
+  sectionRole: "Rol",
+  sectionPassword: "Contraseña",
   saveProfile: "Guardar perfil",
   savingProfile: "Guardando…",
   saveRole: "Cambiar rol",
@@ -29,6 +49,11 @@ const LABELS = {
   passwordReset: "Enviar email de recuperación de contraseña",
   sendingReset: "Enviando…",
   cancel: "Cancelar",
+  errProfile: "Error al guardar.",
+  errRole: "Error al cambiar rol.",
+  errReset: "Error al enviar email.",
+  okProfile: "Perfil actualizado.",
+  okRole: "Rol actualizado.",
   roles: {
     operator: "Operador",
     admin: "Administrador",
@@ -75,8 +100,8 @@ export default function EditMemberModal({ isOpen, member, actorRole, onClose, on
     setLoadingProfile(true);
     const result = await updateMemberProfileAction(member.id, { name, email });
     setLoadingProfile(false);
-    if (!result.success) { setError(result.error ?? "Error al guardar."); return; }
-    showToast("Perfil actualizado.");
+    if (!result.success) { setError(result.error ?? LABELS.errProfile); return; }
+    showToast(LABELS.okProfile);
     onSuccess();
   }
 
@@ -86,8 +111,8 @@ export default function EditMemberModal({ isOpen, member, actorRole, onClose, on
     setLoadingRole(true);
     const result = await updateMemberRoleAction(member.id, { role });
     setLoadingRole(false);
-    if (!result.success) { setError(result.error ?? "Error al cambiar rol."); return; }
-    showToast("Rol actualizado.");
+    if (!result.success) { setError(result.error ?? LABELS.errRole); return; }
+    showToast(LABELS.okRole);
     onSuccess();
   }
 
@@ -96,112 +121,115 @@ export default function EditMemberModal({ isOpen, member, actorRole, onClose, on
     setLoadingReset(true);
     const result = await triggerPasswordResetForMemberAction(member.id);
     setLoadingReset(false);
-    if (!result.success) { setError(result.error ?? "Error al enviar email."); return; }
+    if (!result.success) { setError(result.error ?? LABELS.errReset); return; }
     showToast(`Email enviado a ${result.data.email}.`);
   }
 
-  if (!isOpen) return null;
+  const handleOpenChange = (open: boolean) => {
+    if (!open && !loadingProfile && !loadingRole) handleClose();
+  };
 
   return (
-    <>
-      <div onClick={() => !loadingProfile && !loadingRole && handleClose()} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9998 }} aria-hidden="true" />
-      <div role="dialog" aria-modal="true" style={{
-        position: "fixed", top: "50%", left: "50%",
-        transform: "translate(-50%,-50%)", zIndex: 9999,
-        width: "min(520px, calc(100vw - 32px))",
-        background: "#fff", borderRadius: 16,
-        boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
-        overflow: "hidden", maxHeight: "90vh", overflowY: "auto",
-      }}>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 20px 16px", borderBottom: "1px solid var(--color-border-soft)" }}>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "var(--color-dark)" }}>{LABELS.title}</h2>
-          <button onClick={handleClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af" }}>
-            <X size={18} />
-          </button>
-        </div>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-h-[90vh] max-w-[520px] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{LABELS.title}</DialogTitle>
+        </DialogHeader>
 
-        <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 20 }}>
+        <div className="flex flex-col gap-5">
           {error && (
-            <p style={{ margin: 0, padding: "10px 12px", background: "#fef2f2", color: "#dc2626", borderRadius: 8, fontSize: 13, border: "1px solid #fecaca" }}>
-              {error}
-            </p>
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
           {toast && (
-            <p style={{ margin: 0, padding: "10px 12px", background: "#f0fdf4", color: "#16a34a", borderRadius: 8, fontSize: 13, border: "1px solid #bbf7d0" }}>
-              {toast}
-            </p>
+            <Alert>
+              <AlertDescription className="text-card-foreground">
+                {toast}
+              </AlertDescription>
+            </Alert>
           )}
 
           {/* Profile section */}
           <section>
-            <h3 style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 600, color: "var(--color-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Perfil
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {LABELS.sectionProfile}
             </h3>
-            <form onSubmit={handleSaveProfile} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div>
-                <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--color-dark)", marginBottom: 5 }}>{LABELS.nameLabel}</label>
-                <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className="form-input" placeholder={LABELS.namePlaceholder} />
+            <form onSubmit={handleSaveProfile} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-member-name">{LABELS.nameLabel}</Label>
+                <Input
+                  id="edit-member-name"
+                  type="text"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={LABELS.namePlaceholder}
+                />
               </div>
-              <div>
-                <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--color-dark)", marginBottom: 5 }}>{LABELS.emailLabel}</label>
-                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="form-input" placeholder={LABELS.emailPlaceholder} />
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="edit-member-email">{LABELS.emailLabel}</Label>
+                <Input
+                  id="edit-member-email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder={LABELS.emailPlaceholder}
+                />
               </div>
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <button type="submit" disabled={loadingProfile} className="btn btn-primary" style={{ fontSize: 13 }}>
-                  {loadingProfile ? <><Loader2 size={13} style={{ animation: "spin 0.8s linear infinite" }} />{LABELS.savingProfile}</> : LABELS.saveProfile}
-                </button>
+              <div className="flex justify-end">
+                <Button type="submit" disabled={loadingProfile}>
+                  {loadingProfile && <Loader2 className="animate-spin" />}
+                  {loadingProfile ? LABELS.savingProfile : LABELS.saveProfile}
+                </Button>
               </div>
             </form>
           </section>
 
           {/* Role section */}
-          <section style={{ borderTop: "1px solid var(--color-border-soft)", paddingTop: 20 }}>
-            <h3 style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 600, color: "var(--color-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Rol
+          <section className="border-t pt-5">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {LABELS.sectionRole}
             </h3>
-            <form onSubmit={handleSaveRole} style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--color-dark)", marginBottom: 5 }}>{LABELS.roleLabel}</label>
-                <select value={role} onChange={(e) => setRole(e.target.value as TenantRole)} className="form-input">
-                  {assignableRoles.map((r) => (
-                    <option key={r} value={r}>{LABELS.roles[r]}</option>
-                  ))}
-                </select>
+            <form onSubmit={handleSaveRole} className="flex items-end gap-2.5">
+              <div className="flex flex-1 flex-col gap-1.5">
+                <Label htmlFor="edit-member-role">{LABELS.roleLabel}</Label>
+                <Select value={role} onValueChange={(v) => setRole(v as TenantRole)}>
+                  <SelectTrigger id="edit-member-role" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {assignableRoles.map((r) => (
+                      <SelectItem key={r} value={r}>{LABELS.roles[r]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <button type="submit" disabled={loadingRole || role === member.role} className="btn btn-primary" style={{ fontSize: 13, flexShrink: 0 }}>
-                {loadingRole ? <><Loader2 size={13} style={{ animation: "spin 0.8s linear infinite" }} />{LABELS.savingRole}</> : LABELS.saveRole}
-              </button>
+              <Button type="submit" disabled={loadingRole || role === member.role}>
+                {loadingRole && <Loader2 className="animate-spin" />}
+                {loadingRole ? LABELS.savingRole : LABELS.saveRole}
+              </Button>
             </form>
           </section>
 
           {/* Password reset */}
-          <section style={{ borderTop: "1px solid var(--color-border-soft)", paddingTop: 20 }}>
-            <h3 style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 600, color: "var(--color-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Contraseña
+          <section className="border-t pt-5">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {LABELS.sectionPassword}
             </h3>
-            <button
+            <Button
+              type="button"
+              variant="outline"
               onClick={handlePasswordReset}
               disabled={loadingReset}
-              style={{
-                display: "flex", alignItems: "center", gap: 7,
-                padding: "9px 16px", borderRadius: 9,
-                border: "1.5px solid var(--color-border)",
-                background: "#fff", cursor: loadingReset ? "not-allowed" : "pointer",
-                fontSize: 13, fontWeight: 500, color: "var(--color-dark)",
-                opacity: loadingReset ? 0.7 : 1,
-              }}
             >
-              {loadingReset
-                ? <Loader2 size={13} style={{ animation: "spin 0.8s linear infinite" }} />
-                : <Key size={13} />
-              }
+              {loadingReset ? <Loader2 className="animate-spin" /> : <Key />}
               {loadingReset ? LABELS.sendingReset : LABELS.passwordReset}
-            </button>
+            </Button>
           </section>
         </div>
-      </div>
-      <style>{`@keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }`}</style>
-    </>
+      </DialogContent>
+    </Dialog>
   );
 }

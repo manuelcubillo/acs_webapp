@@ -8,6 +8,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Edit, ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { requireOperator, AuthenticationError, AuthorizationError } from "@/lib/api";
 import {
   getCardByCode,
@@ -25,6 +26,15 @@ import CardDetailClient from "@/components/cards/CardDetailClient";
 import CardDesignPreviewButton from "@/components/card-designs/CardDesignPreviewButton";
 
 export const dynamic = "force-dynamic";
+
+const TEXT = {
+  SHELL_TITLE:    "Detalle de carnet",
+  BACK_CARDS:     "Todos los carnets",
+  BACK_DASHBOARD: "Vista principal",
+  BTN_EDIT:       "Editar",
+  CREATED:        "Creado:",
+  UPDATED:        "Modificado:",
+} as const;
 
 interface CardDetailPageProps {
   params: Promise<{ code: string }>;
@@ -48,7 +58,7 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
 
   // Dynamic back link based on where the user navigated from
   const backHref = from === "cards" ? "/cards" : "/dashboard";
-  const backLabel = from === "cards" ? "Todos los carnets" : "Vista principal";
+  const backLabel = from === "cards" ? TEXT.BACK_CARDS : TEXT.BACK_DASHBOARD;
   const isAdmin = role === "admin" || role === "master";
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -124,28 +134,19 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <DashboardShell title="Detalle de carnet" role={role}>
-      <div style={{ maxWidth: 720, margin: "0 auto" }}>
+    <DashboardShell title={TEXT.SHELL_TITLE} role={role}>
+      <div className="mx-auto max-w-[720px]">
         {/* Back + edit — static, no state needed */}
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 20,
-        }}>
+        <div className="mb-5 flex items-center justify-between">
           <Link
             href={backHref}
-            style={{
-              display: "flex", alignItems: "center", gap: 6,
-              color: "var(--color-muted)", textDecoration: "none",
-              fontSize: 13, fontWeight: 500,
-            }}
+            className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
           >
-            <ArrowLeft size={15} />
+            <ArrowLeft className="size-3.5" />
             {backLabel}
           </Link>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div className="flex items-center gap-2">
             {previewLayout && (
               <CardDesignPreviewButton
                 layout={previewLayout}
@@ -157,20 +158,12 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
               />
             )}
             {isAdmin && (
-              <Link
-                href={`/cards/${encodeURIComponent(decodedCode)}/edit`}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  padding: "8px 14px", borderRadius: 8,
-                  border: "1.5px solid var(--color-border)",
-                  background: "#fff", textDecoration: "none",
-                  fontSize: 13, fontWeight: 600,
-                  color: "var(--color-dark)",
-                }}
-              >
-                <Edit size={14} strokeWidth={1.8} />
-                Editar
-              </Link>
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/cards/${encodeURIComponent(decodedCode)}/edit`}>
+                  <Edit className="size-3.5" strokeWidth={1.8} />
+                  {TEXT.BTN_EDIT}
+                </Link>
+              </Button>
             )}
           </div>
         </div>
@@ -191,20 +184,16 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
         />
 
         {/* Metadata footer — static */}
-        <div style={{
-          marginTop: 16, fontSize: 12,
-          color: "var(--color-muted)",
-          display: "flex", gap: 20,
-        }}>
+        <div className="mt-4 flex gap-5 text-xs text-muted-foreground">
           <span>
-            Creado:{" "}
+            {TEXT.CREATED}{" "}
             {new Date(card.createdAt).toLocaleDateString("es-ES", {
               day: "2-digit", month: "2-digit", year: "numeric",
             })}
           </span>
           {card.updatedAt && card.updatedAt !== card.createdAt && (
             <span>
-              Modificado:{" "}
+              {TEXT.UPDATED}{" "}
               {new Date(card.updatedAt).toLocaleDateString("es-ES", {
                 day: "2-digit", month: "2-digit", year: "numeric",
               })}

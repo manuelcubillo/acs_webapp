@@ -13,6 +13,19 @@
 
 import { useState } from "react";
 import { Plus, Trash2, TrendingUp, TrendingDown, CheckSquare, Square, Zap } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import type {
   ActionDefinitionDraft,
   ActionType,
@@ -20,26 +33,32 @@ import type {
 } from "@/hooks/useCardTypeWizard";
 
 // ─── Action type metadata ──────────────────────────────────────────────────────
+// Colors are decorative category accents (NOT access-control state) — Tailwind
+// palette + brand/neutral tokens, consistent with CardActions.tsx.
 
-const ACTION_TYPE_META: Record<
-  ActionType,
-  {
-    label: string;
-    description: string;
-    fieldFilter: "number" | "boolean";
-    icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
-    color: string;
-    bg: string;
-    hasAmount: boolean;
-  }
-> = {
+interface ActionTypeMeta {
+  label: string;
+  description: string;
+  fieldFilter: "number" | "boolean";
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  /** Subtle icon chip (bg + text). */
+  chip: string;
+  /** Solid icon chip when its option is selected. */
+  chipSolid: string;
+  /** Border + bg of the option card when selected. */
+  cardSelected: string;
+  hasAmount: boolean;
+}
+
+const ACTION_TYPE_META: Record<ActionType, ActionTypeMeta> = {
   increment: {
     label: "Incrementar",
     description: "Suma una cantidad a un campo numérico",
     fieldFilter: "number",
     icon: TrendingUp,
-    color: "#059669",
-    bg: "#ecfdf5",
+    chip: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+    chipSolid: "bg-emerald-600 text-white",
+    cardSelected: "border-emerald-500 bg-emerald-500/10",
     hasAmount: true,
   },
   decrement: {
@@ -47,8 +66,9 @@ const ACTION_TYPE_META: Record<
     description: "Resta una cantidad a un campo numérico",
     fieldFilter: "number",
     icon: TrendingDown,
-    color: "#dc2626",
-    bg: "#fef2f2",
+    chip: "bg-rose-500/15 text-rose-600 dark:text-rose-400",
+    chipSolid: "bg-rose-600 text-white",
+    cardSelected: "border-rose-500 bg-rose-500/10",
     hasAmount: true,
   },
   check: {
@@ -56,8 +76,9 @@ const ACTION_TYPE_META: Record<
     description: "Establece un campo Sí/No a verdadero",
     fieldFilter: "boolean",
     icon: CheckSquare,
-    color: "#4f5bff",
-    bg: "#eef0ff",
+    chip: "bg-accent text-primary",
+    chipSolid: "bg-primary text-primary-foreground",
+    cardSelected: "border-primary bg-accent",
     hasAmount: false,
   },
   uncheck: {
@@ -65,13 +86,41 @@ const ACTION_TYPE_META: Record<
     description: "Establece un campo Sí/No a falso",
     fieldFilter: "boolean",
     icon: Square,
-    color: "#6b7094",
-    bg: "#f3f4f6",
+    chip: "bg-muted text-muted-foreground",
+    chipSolid: "bg-muted-foreground text-background",
+    cardSelected: "border-border bg-muted",
     hasAmount: false,
   },
 };
 
 const ACTION_TYPE_ORDER: ActionType[] = ["increment", "decrement", "check", "uncheck"];
+
+const TEXT = {
+  HEADING:     "Acciones de tarjeta",
+  HEADING_SUB:
+    "Las acciones modifican campos específicos de la tarjeta cuando el operador las ejecuta. Por ejemplo: incrementar un contador de asistencia o marcar un campo como completado.",
+  AUTO:        "Auto",
+  AUTO_TITLE:  "Auto-ejecutar al escanear",
+  DELETE:      "Eliminar acción",
+  NEW_TITLE:   "Nueva acción",
+  TYPE_LABEL:  "Tipo de acción",
+  TARGET_LABEL: "Campo destino",
+  TARGET_PLACEHOLDER: "— Selecciona un campo —",
+  NO_FIELDS_PRE: "No hay campos de tipo",
+  NO_FIELDS_POST: "definidos. Añade un campo compatible en el paso anterior.",
+  AMOUNT_LABEL: "Cantidad",
+  AMOUNT_HINT: "(por defecto: 1)",
+  NAME_LABEL:  "Nombre del botón",
+  NAME_PLACEHOLDER: "Ej: Registrar asistencia",
+  AUTO_DESC:
+    "Esta acción se ejecutará automáticamente cada vez que un operador realice un escaneo operacional. Útil para registrar entradas/salidas o contadores de visitas.",
+  CANCEL:      "Cancelar",
+  ADD:         "Añadir acción",
+  EMPTY_TITLE: "Sin acciones definidas",
+  EMPTY_BODY:  "Puedes continuar sin acciones y añadirlas después.",
+  FIELD_NUMBER: "número",
+  FIELD_BOOLEAN: "Sí/No",
+} as const;
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
@@ -93,6 +142,7 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
   const [newIsAutoExecute, setNewIsAutoExecute] = useState(false);
 
   const meta = ACTION_TYPE_META[newType];
+  const fieldTypeLabel = meta.fieldFilter === "number" ? TEXT.FIELD_NUMBER : TEXT.FIELD_BOOLEAN;
 
   // Filter fields compatible with selected action type
   const compatibleFields = fields.filter((f) => f.fieldType === meta.fieldFilter);
@@ -130,25 +180,21 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
   const canAdd = newName.trim().length > 0 && newTargetTempId.length > 0;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="flex flex-col gap-5">
       {/* Header */}
       <div>
-        <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--color-dark)", marginBottom: 6 }}>
-          Acciones de tarjeta
+        <div className="mb-1.5 font-heading text-xl font-bold text-foreground">
+          {TEXT.HEADING}
         </div>
-        <div style={{ fontSize: 13.5, color: "var(--color-secondary)" }}>
-          Las acciones modifican campos específicos de la tarjeta cuando el operador las ejecuta.
-          Por ejemplo: incrementar un contador de asistencia o marcar un campo como completado.
-        </div>
+        <div className="text-sm text-muted-foreground">{TEXT.HEADING_SUB}</div>
       </div>
 
       {/* Existing actions list */}
       {actions.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div className="flex flex-col gap-2">
           {actions.map((action) => {
             const m = ACTION_TYPE_META[action.actionType];
             const Icon = m.icon;
-            // Find the target field name
             const targetField = fields.find((f) => f.tempId === action.targetFieldTempId);
             const amountLabel = m.hasAmount && action.config?.amount != null
               ? ` · ${action.config.amount}`
@@ -156,76 +202,42 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
             return (
               <div
                 key={action.tempId}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "13px 16px",
-                  background: "#fff",
-                  border: "1.5px solid var(--color-border)",
-                  borderRadius: 12,
-                }}
+                className="flex items-center gap-3 rounded-xl border bg-card px-4 py-3"
               >
-                <div style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 10,
-                  background: m.bg,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: m.color,
-                  flexShrink: 0,
-                }}>
-                  <Icon size={18} strokeWidth={1.8} />
+                <div className={cn("flex size-9.5 shrink-0 items-center justify-center rounded-[10px]", m.chip)}>
+                  <Icon className="size-4.5" strokeWidth={1.8} />
                 </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--color-dark)", fontFamily: "var(--font-heading)", display: "flex", alignItems: "center", gap: 6 }}>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 font-heading text-sm font-semibold text-foreground">
                     {action.name}
                     {action.isAutoExecute && (
-                      <span title="Auto-ejecutar al escanear" style={{
-                        display: "inline-flex", alignItems: "center", gap: 3,
-                        fontSize: 10.5, fontWeight: 600,
-                        color: "#d97706", background: "#fffbeb",
-                        border: "1px solid #fcd34d", borderRadius: 5,
-                        padding: "1px 6px", lineHeight: 1.4,
-                      }}>
-                        <Zap size={10} strokeWidth={2} />
-                        Auto
-                      </span>
+                      <Badge
+                        title={TEXT.AUTO_TITLE}
+                        className="border-amber-400 bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                      >
+                        <Zap strokeWidth={2} />
+                        {TEXT.AUTO}
+                      </Badge>
                     )}
                   </div>
-                  <div style={{ fontSize: 12, color: "var(--color-muted)", marginTop: 2 }}>
+                  <div className="mt-0.5 text-xs text-muted-foreground">
                     {m.label}{amountLabel}
                     {targetField && (
-                      <> · <span style={{ color: "var(--color-secondary)" }}>{targetField.label}</span></>
+                      <> · <span className="text-foreground/80">{targetField.label}</span></>
                     )}
                   </div>
                 </div>
-                <span style={{
-                  fontSize: 10.5,
-                  fontWeight: 600,
-                  padding: "2px 8px",
-                  borderRadius: 5,
-                  background: m.bg,
-                  color: m.color,
-                  border: `1px solid ${m.color}30`,
-                  flexShrink: 0,
-                }}>
-                  {m.label}
-                </span>
-                <button
+                <Badge className={cn("shrink-0", m.chip)}>{m.label}</Badge>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
                   onClick={() => onRemove(action.tempId)}
-                  title="Eliminar acción"
-                  style={{
-                    width: 32, height: 32, borderRadius: 8,
-                    border: "1.5px solid #fecaca", background: "#fef2f2",
-                    cursor: "pointer", display: "flex", alignItems: "center",
-                    justifyContent: "center", color: "#dc2626", flexShrink: 0,
-                  }}
+                  title={TEXT.DELETE}
+                  className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                 >
-                  <Trash2 size={14} strokeWidth={1.8} />
-                </button>
+                  <Trash2 strokeWidth={1.8} />
+                </Button>
               </div>
             );
           })}
@@ -234,20 +246,15 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
 
       {/* Add form */}
       {showForm ? (
-        <div style={{
-          padding: "20px",
-          background: "#fafbfc",
-          border: "1.5px solid var(--color-border)",
-          borderRadius: 14,
-        }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-dark)", marginBottom: 16 }}>
-            Nueva acción
+        <div className="rounded-2xl border bg-muted/40 p-5">
+          <div className="mb-4 text-sm font-semibold text-foreground">
+            {TEXT.NEW_TITLE}
           </div>
 
           {/* Action type */}
-          <div style={{ marginBottom: 16 }}>
-            <label style={labelStyle}>Tipo de acción</label>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+          <div className="mb-4">
+            <Label>{TEXT.TYPE_LABEL}</Label>
+            <div className="mt-2 grid grid-cols-2 gap-2">
               {ACTION_TYPE_ORDER.map((type) => {
                 const m = ACTION_TYPE_META[type];
                 const Icon = m.icon;
@@ -255,17 +262,10 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
                 return (
                   <label
                     key={type}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: "10px 12px",
-                      border: `1.5px solid ${selected ? m.color : "var(--color-border)"}`,
-                      borderRadius: 10,
-                      background: selected ? m.bg : "#fff",
-                      cursor: "pointer",
-                      transition: "all 0.15s",
-                    }}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-2.5 rounded-[10px] border-2 px-3 py-2.5 transition-all",
+                      selected ? m.cardSelected : "border-border bg-card",
+                    )}
                   >
                     <input
                       type="radio"
@@ -273,19 +273,14 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
                       value={type}
                       checked={selected}
                       onChange={() => handleTypeChange(type)}
-                      style={{ accentColor: m.color, flexShrink: 0 }}
+                      className="size-4 shrink-0 accent-primary"
                     />
-                    <div style={{
-                      width: 28, height: 28, borderRadius: 7,
-                      background: selected ? m.color : "#f3f4f6",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      color: selected ? "#fff" : "#6b7094", flexShrink: 0,
-                    }}>
-                      <Icon size={14} strokeWidth={1.8} />
+                    <div className={cn("flex size-7 shrink-0 items-center justify-center rounded-md", selected ? m.chipSolid : "bg-muted text-muted-foreground")}>
+                      <Icon className="size-3.5" strokeWidth={1.8} />
                     </div>
                     <div>
-                      <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--color-dark)" }}>{m.label}</div>
-                      <div style={{ fontSize: 11, color: "var(--color-muted)", lineHeight: 1.3 }}>{m.description}</div>
+                      <div className="text-xs font-semibold text-foreground">{m.label}</div>
+                      <div className="text-[11px] leading-tight text-muted-foreground">{m.description}</div>
                     </div>
                   </label>
                 );
@@ -294,155 +289,125 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
           </div>
 
           {/* Target field */}
-          <div style={{ marginBottom: 16 }}>
-            <label style={labelStyle}>
-              Campo destino <span style={{ color: "#dc2626" }}>*</span>
-              <span style={{ fontWeight: 400, color: "var(--color-muted)", marginLeft: 6 }}>
-                (campos de tipo {meta.fieldFilter === "number" ? "número" : "Sí/No"})
+          <div className="mb-4">
+            <Label>
+              {TEXT.TARGET_LABEL} <span className="text-destructive">*</span>
+              <span className="ml-1.5 font-normal text-muted-foreground">
+                (campos de tipo {fieldTypeLabel})
               </span>
-            </label>
+            </Label>
             {compatibleFields.length === 0 ? (
-              <div style={{
-                marginTop: 8, padding: "10px 14px",
-                background: "#fff3cd", border: "1px solid #ffc107",
-                borderRadius: 8, fontSize: 12.5, color: "#856404",
-              }}>
-                No hay campos de tipo {meta.fieldFilter === "number" ? "número" : "Sí/No"} definidos.
-                Añade un campo compatible en el paso anterior.
+              <div className="mt-2 rounded-md border border-amber-400/50 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-700 dark:text-amber-300">
+                {TEXT.NO_FIELDS_PRE} {fieldTypeLabel} {TEXT.NO_FIELDS_POST}
               </div>
             ) : (
-              <select
-                className="form-input"
-                value={newTargetTempId}
-                onChange={(e) => setNewTargetTempId(e.target.value)}
-                style={{ marginTop: 6 }}
-              >
-                <option value="">— Selecciona un campo —</option>
-                {compatibleFields.map((f) => (
-                  <option key={f.tempId} value={f.tempId}>
-                    {f.label} ({f.name})
-                  </option>
-                ))}
-              </select>
+              <Select value={newTargetTempId} onValueChange={setNewTargetTempId}>
+                <SelectTrigger className="mt-1.5 w-full">
+                  <SelectValue placeholder={TEXT.TARGET_PLACEHOLDER} />
+                </SelectTrigger>
+                <SelectContent>
+                  {compatibleFields.map((f) => (
+                    <SelectItem key={f.tempId} value={f.tempId}>
+                      {f.label} ({f.name})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           </div>
 
           {/* Amount (increment/decrement only) */}
           {meta.hasAmount && (
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>
-                Cantidad <span style={{ fontWeight: 400, color: "var(--color-muted)" }}>(por defecto: 1)</span>
-              </label>
-              <input
-                className="form-input"
+            <div className="mb-4">
+              <Label>
+                {TEXT.AMOUNT_LABEL}{" "}
+                <span className="font-normal text-muted-foreground">{TEXT.AMOUNT_HINT}</span>
+              </Label>
+              <Input
                 type="number"
                 min="0.01"
                 step="any"
                 value={newAmount}
                 onChange={(e) => setNewAmount(e.target.value)}
                 placeholder="1"
-                style={{ marginTop: 6, maxWidth: 160 }}
+                className="mt-1.5 max-w-40"
               />
             </div>
           )}
 
           {/* Action name */}
-          <div style={{ marginBottom: 16 }}>
-            <label style={labelStyle}>
-              Nombre del botón <span style={{ color: "#dc2626" }}>*</span>
-            </label>
-            <input
-              className="form-input"
+          <div className="mb-4">
+            <Label htmlFor="action-name">
+              {TEXT.NAME_LABEL} <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="action-name"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="Ej: Registrar asistencia"
-              style={{ marginTop: 6 }}
+              placeholder={TEXT.NAME_PLACEHOLDER}
+              className="mt-1.5"
               autoFocus
             />
           </div>
 
           {/* Auto-execute toggle */}
-          <div style={{ marginBottom: 20 }}>
+          <div className="mb-5">
             <label
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 12,
-                padding: "12px 14px",
-                background: newIsAutoExecute ? "#fffbeb" : "#f8f9fa",
-                border: `1.5px solid ${newIsAutoExecute ? "#fcd34d" : "var(--color-border)"}`,
-                borderRadius: 10,
-                cursor: "pointer",
-                transition: "all 0.15s",
-              }}
+              className={cn(
+                "flex cursor-pointer items-start gap-3 rounded-[10px] border px-3.5 py-3 transition-colors",
+                newIsAutoExecute
+                  ? "border-amber-400 bg-amber-500/10"
+                  : "border-border bg-muted/40",
+              )}
             >
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={newIsAutoExecute}
-                onChange={(e) => setNewIsAutoExecute(e.target.checked)}
-                style={{ marginTop: 2, accentColor: "#d97706", flexShrink: 0 }}
+                onCheckedChange={(checked) => setNewIsAutoExecute(checked === true)}
+                className="mt-0.5"
               />
               <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--color-dark)" }}>
-                  <Zap size={14} strokeWidth={2} color={newIsAutoExecute ? "#d97706" : "#9ca3af"} />
-                  Auto-ejecutar al escanear
+                <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                  <Zap
+                    className={cn("size-3.5", newIsAutoExecute ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground")}
+                    strokeWidth={2}
+                  />
+                  {TEXT.AUTO_TITLE}
                 </div>
-                <div style={{ fontSize: 12, color: "var(--color-muted)", marginTop: 3, lineHeight: 1.4 }}>
-                  Esta acción se ejecutará automáticamente cada vez que un operador realice un escaneo operacional.
-                  Útil para registrar entradas/salidas o contadores de visitas.
+                <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                  {TEXT.AUTO_DESC}
                 </div>
               </div>
             </label>
           </div>
 
-          <div style={{ display: "flex", gap: 10 }}>
-            <button className="btn btn-ghost" onClick={resetForm}>
-              Cancelar
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={handleAdd}
-              disabled={!canAdd}
-            >
-              Añadir acción
-            </button>
+          <div className="flex gap-2.5">
+            <Button variant="ghost" onClick={resetForm}>
+              {TEXT.CANCEL}
+            </Button>
+            <Button onClick={handleAdd} disabled={!canAdd}>
+              {TEXT.ADD}
+            </Button>
           </div>
         </div>
       ) : (
-        <button
-          className="btn btn-ghost"
+        <Button
+          variant="ghost"
           onClick={() => setShowForm(true)}
-          style={{ alignSelf: "flex-start" }}
+          className="self-start"
         >
-          <Plus size={16} strokeWidth={2} />
-          Añadir acción
-        </button>
+          <Plus strokeWidth={2} />
+          {TEXT.ADD}
+        </Button>
       )}
 
       {/* Empty state */}
       {actions.length === 0 && !showForm && (
-        <div style={{
-          textAlign: "center",
-          padding: "36px 24px",
-          background: "var(--color-subtle-bg)",
-          borderRadius: 12,
-          border: "1.5px dashed var(--color-border)",
-          color: "var(--color-muted)",
-        }}>
-          <div style={{ fontSize: 30, marginBottom: 8 }}>⚡</div>
-          <div style={{ fontWeight: 600, color: "var(--color-secondary)", fontSize: 13.5 }}>Sin acciones definidas</div>
-          <div style={{ marginTop: 4, fontSize: 12.5 }}>
-            Puedes continuar sin acciones y añadirlas después.
-          </div>
+        <div className="rounded-xl border border-dashed bg-muted px-6 py-9 text-center text-muted-foreground">
+          <div className="mb-2 text-3xl">⚡</div>
+          <div className="text-sm font-semibold text-foreground">{TEXT.EMPTY_TITLE}</div>
+          <div className="mt-1 text-xs">{TEXT.EMPTY_BODY}</div>
         </div>
       )}
     </div>
   );
 }
-
-const labelStyle: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: "var(--color-dark)",
-  display: "block",
-};

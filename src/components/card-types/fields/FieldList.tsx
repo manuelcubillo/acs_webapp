@@ -36,20 +36,34 @@ import {
   Camera,
   List,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { FieldDefinitionDraft, FieldType } from "@/hooks/useCardTypeWizard";
 
+const TEXT = {
+  REQUIRED:    "Obligatorio",
+  EDIT:        "Editar campo",
+  DELETE:      "Eliminar campo",
+  DEFAULT:     "Defecto:",
+  EMPTY_TITLE: "Sin campos todavía",
+  EMPTY_BODY:  "Pulsa «Añadir campo» para definir los datos de la tarjeta.",
+} as const;
+
 // ─── Field type icon helpers ──────────────────────────────────────────────────
+// Decorative category accents (NOT access-control state) — Tailwind palette +
+// brand/neutral tokens, consistent with FieldTypeSelector.tsx.
 
 const FIELD_TYPE_META: Record<
   FieldType,
-  { icon: React.ComponentType<{ size?: number; strokeWidth?: number }>; color: string; bg: string; label: string }
+  { icon: React.ComponentType<{ className?: string; strokeWidth?: number }>; iconClass: string; label: string }
 > = {
-  text:    { icon: Type,       color: "#4f5bff", bg: "#eef0ff",  label: "Texto" },
-  number:  { icon: Hash,       color: "#059669", bg: "#ecfdf5",  label: "Número" },
-  boolean: { icon: ToggleLeft, color: "#d97706", bg: "#fffbeb",  label: "Sí/No" },
-  date:    { icon: Calendar,   color: "#7c3aed", bg: "#f5f3ff",  label: "Fecha" },
-  photo:   { icon: Camera,     color: "#db2777", bg: "#fdf2f8",  label: "Foto" },
-  select:  { icon: List,       color: "#0284c7", bg: "#f0f9ff",  label: "Selección" },
+  text:    { icon: Type,       iconClass: "bg-accent text-primary", label: "Texto" },
+  number:  { icon: Hash,       iconClass: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400", label: "Número" },
+  boolean: { icon: ToggleLeft, iconClass: "bg-amber-500/15 text-amber-600 dark:text-amber-400", label: "Sí/No" },
+  date:    { icon: Calendar,   iconClass: "bg-violet-500/15 text-violet-600 dark:text-violet-400", label: "Fecha" },
+  photo:   { icon: Camera,     iconClass: "bg-pink-500/15 text-pink-600 dark:text-pink-400", label: "Foto" },
+  select:  { icon: List,       iconClass: "bg-sky-500/15 text-sky-600 dark:text-sky-400", label: "Selección" },
 };
 
 // ─── Sortable row ─────────────────────────────────────────────────────────────
@@ -70,6 +84,7 @@ function SortableFieldRow({ field, onEdit, onRemove }: SortableFieldRowProps) {
     isDragging,
   } = useSortable({ id: field.tempId });
 
+  // Data-driven transform from dnd-kit — must remain inline.
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -83,153 +98,77 @@ function SortableFieldRow({ field, onEdit, onRemove }: SortableFieldRowProps) {
   return (
     <div
       ref={setNodeRef}
-      style={{
-        ...style,
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        padding: "12px 16px",
-        background: isDragging ? "#f8f9ff" : "#fff",
-        border: `1.5px solid ${isDragging ? "var(--color-primary)" : "var(--color-border)"}`,
-        borderRadius: 12,
-        transition: isDragging ? undefined : "border-color 0.15s, box-shadow 0.15s",
-        boxShadow: isDragging ? "0 8px 24px rgba(79,91,255,0.15)" : "0 1px 3px rgba(0,0,0,0.04)",
-      }}
+      style={style}
+      className={cn(
+        "flex items-center gap-3 rounded-xl border bg-card px-4 py-3 shadow-sm transition-shadow",
+        isDragging && "border-primary bg-accent shadow-lg",
+      )}
     >
       {/* Drag handle */}
       <div
         {...attributes}
         {...listeners}
-        style={{
-          color: "#c7c9d9",
-          cursor: "grab",
-          flexShrink: 0,
-          display: "flex",
-          alignItems: "center",
-          touchAction: "none",
-        }}
+        className="flex shrink-0 cursor-grab touch-none items-center text-muted-foreground/60"
       >
-        <GripVertical size={18} strokeWidth={1.5} />
+        <GripVertical className="size-4.5" strokeWidth={1.5} />
       </div>
 
       {/* Position badge */}
-      <div style={{
-        width: 24,
-        height: 24,
-        borderRadius: 6,
-        background: "var(--color-page-bg)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: 11,
-        fontWeight: 700,
-        color: "var(--color-muted)",
-        flexShrink: 0,
-      }}>
+      <div className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground">
         {field.position + 1}
       </div>
 
       {/* Type icon */}
-      <div style={{
-        width: 34,
-        height: 34,
-        borderRadius: 9,
-        background: meta.bg,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: meta.color,
-        flexShrink: 0,
-      }}>
-        <Icon size={17} strokeWidth={1.8} />
+      <div className={cn("flex size-8.5 shrink-0 items-center justify-center rounded-[9px]", meta.iconClass)}>
+        <Icon className="size-4" strokeWidth={1.8} />
       </div>
 
       {/* Info */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--color-dark)", fontFamily: "var(--font-heading)" }}>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-heading text-sm font-semibold text-foreground">
             {field.label}
           </span>
-          <span style={{ fontSize: 11.5, fontWeight: 400, color: "var(--color-muted)" }}>
+          <span className="text-xs text-muted-foreground">
             ({field.name})
           </span>
           {field.isRequired && (
-            <span style={{
-              fontSize: 10.5,
-              fontWeight: 700,
-              color: "#dc2626",
-              background: "#fef2f2",
-              border: "1px solid #fecaca",
-              padding: "1px 6px",
-              borderRadius: 4,
-            }}>
-              Obligatorio
-            </span>
+            <Badge variant="secondary">{TEXT.REQUIRED}</Badge>
           )}
           {field.validationRules && field.validationRules.rules.length > 0 && (
-            <span style={{
-              fontSize: 10.5,
-              fontWeight: 600,
-              color: "#059669",
-              background: "#ecfdf5",
-              border: "1px solid #a7f3d0",
-              padding: "1px 6px",
-              borderRadius: 4,
-            }}>
-              {field.validationRules.rules.length} regla{field.validationRules.rules.length !== 1 ? "s" : ""}
-            </span>
+            <Badge variant="secondary">
+              {field.validationRules.rules.length} regla
+              {field.validationRules.rules.length !== 1 ? "s" : ""}
+            </Badge>
           )}
         </div>
-        <div style={{ fontSize: 12, color: "var(--color-muted)", marginTop: 2 }}>
+        <div className="mt-0.5 text-xs text-muted-foreground">
           {meta.label}
-          {field.defaultValue != null && ` · Defecto: ${field.defaultValue}`}
+          {field.defaultValue != null && ` · ${TEXT.DEFAULT} ${field.defaultValue}`}
         </div>
       </div>
 
       {/* Actions */}
-      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-        <button
+      <div className="flex shrink-0 gap-1.5">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
           onClick={() => onEdit(field)}
-          title="Editar campo"
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            border: "1.5px solid var(--color-border)",
-            background: "#fff",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "var(--color-secondary)",
-            transition: "all 0.15s",
-          }}
-          onMouseOver={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#f0f1f5"; }}
-          onMouseOut={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#fff"; }}
+          title={TEXT.EDIT}
         >
-          <Pencil size={14} strokeWidth={1.8} />
-        </button>
-        <button
+          <Pencil strokeWidth={1.8} />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
           onClick={() => onRemove(field.tempId)}
-          title="Eliminar campo"
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            border: "1.5px solid #fecaca",
-            background: "#fef2f2",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#dc2626",
-            transition: "all 0.15s",
-          }}
-          onMouseOver={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#fee2e2"; }}
-          onMouseOut={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#fef2f2"; }}
+          title={TEXT.DELETE}
+          className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
         >
-          <Trash2 size={14} strokeWidth={1.8} />
-        </button>
+          <Trash2 strokeWidth={1.8} />
+        </Button>
       </div>
     </div>
   );
@@ -267,20 +206,10 @@ export default function FieldList({ fields, onEdit, onRemove, onReorder }: Field
 
   if (fields.length === 0) {
     return (
-      <div style={{
-        textAlign: "center",
-        padding: "40px 24px",
-        background: "var(--color-subtle-bg)",
-        borderRadius: 12,
-        border: "1.5px dashed var(--color-border)",
-        color: "var(--color-muted)",
-        fontSize: 13.5,
-      }}>
-        <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
-        <div style={{ fontWeight: 600, color: "var(--color-secondary)" }}>Sin campos todavía</div>
-        <div style={{ marginTop: 4, fontSize: 12.5 }}>
-          Pulsa «Añadir campo» para definir los datos de la tarjeta.
-        </div>
+      <div className="rounded-xl border border-dashed bg-muted px-6 py-10 text-center text-sm text-muted-foreground">
+        <div className="mb-2 text-3xl">📋</div>
+        <div className="font-semibold text-foreground">{TEXT.EMPTY_TITLE}</div>
+        <div className="mt-1 text-xs">{TEXT.EMPTY_BODY}</div>
       </div>
     );
   }
@@ -295,7 +224,7 @@ export default function FieldList({ fields, onEdit, onRemove, onReorder }: Field
         items={fields.map((f) => f.tempId)}
         strategy={verticalListSortingStrategy}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div className="flex flex-col gap-2">
           {fields.map((field) => (
             <SortableFieldRow
               key={field.tempId}

@@ -1,6 +1,6 @@
 # Module: dashboard
 
-**Last updated**: 2026-04-19 · **Last feature**: documentation sync against source code
+**Last updated**: 2026-06-07 · **Last feature**: Phase 3 token/shadcn migration of settings screens (account, dashboard, reader; SettingsCard/Nav off legacy classes) — ADR `2026-06-07-phase3-inline-style-migration.md`
 
 ## Responsibility
 
@@ -10,15 +10,18 @@ Does not own action execution (see `actions`) or card lookup (see `cards`).
 
 ## Key files
 
-- `src/app/(dashboard)/dashboard/page.tsx` — Dashboard page (OPERATOR+). Parallel fetch of `getDashboardSettings` + `getTenantById`, then sequential `getActivityFeed` (uses `feedLimit` from settings).
+- `src/app/(dashboard)/dashboard/page.tsx` — Dashboard page (OPERATOR+). Parallel fetch of `getDashboardSettings` + `getTenantById`, then parallel `getActivityFeed` + 2 × `getActionHistory` (KPI counts) + `listCardTypes` (active-types KPI). Constructs `DashboardKpiData` and passes to `DashboardView`.
 - `src/app/(dashboard)/dashboard/actions.ts` — Dashboard route-level Server Actions (wraps `getActivityFeed` etc.).
-- `src/app/(dashboard)/dashboard/QuickCodeInput.tsx` — Informational code lookup widget: navigates to `/cards/[code]` without triggering an operational scan. Distinct from `DashboardSearchBar`.
-- `src/components/dashboard/DashboardView.tsx` — Primary client container. On scan code received: calls `executeScanWithAutoActionsAction` (operational scan pipeline). Mounts `DashboardSearchBar`, `ActiveCardZone`, `ActivityFeed`.
-- `src/components/dashboard/DashboardSearchBar.tsx` — **Operational scan input**: manual code entry + external reader. Calls `onScan(code)` → `executeScanWithAutoActionsAction` in parent. Focused on mount for immediate barcode capture.
-- `src/components/dashboard/ActiveCardZone.tsx` — Currently scanned card + inline action execution.
-- `src/components/dashboard/ActivityFeed.tsx` — Recent entries list.
-- `src/components/dashboard/ActivityFeedEntryRow.tsx` — Single row renderer (scan vs action).
-- `src/components/dashboard/AutoActionFeedback.tsx` — Toast for auto-executed actions.
+- `src/app/(dashboard)/dashboard/QuickCodeInput.tsx` — Informational code lookup widget: navigates to `/cards/[code]` without triggering an operational scan. Distinct from `DashboardSearchBar`. (Still pre-Phase-2 styling — Phase 3 target.)
+- `src/components/dashboard/DashboardView.tsx` — Primary client container. On scan code received: calls `executeScanWithAutoActionsAction` (operational scan pipeline). Composes `DashboardSearchBar` (focal point) + `DashboardKpis` + two-column area of `ActiveCardZone` and `ActivityFeed`. Token-driven; zero inline styles.
+- `src/components/dashboard/DashboardSearchBar.tsx` — **Operational scan input**: manual code entry + external reader. Calls `onScan(code)` → `executeScanWithAutoActionsAction` in parent. Focused on mount for immediate barcode capture. Visually the focal point of the page.
+- `src/components/dashboard/DashboardKpis.tsx` — Read-only KPI strip: scans today, actions today, active card types, last activity. Pure presentation — values come from props.
+- `src/components/dashboard/ActiveCardZone.tsx` — Currently scanned card + inline action execution. State → token mapping: granted=green / warning=amber / denied=red, each with icon + label.
+- `src/components/dashboard/ActivityFeed.tsx` — Recent entries list with 15s polling.
+- `src/components/dashboard/ActivityFeedEntryRow.tsx` — Single row renderer. Scan icon = `--state-info` (neutral slate, NOT grant-green). Override badge = `--state-override` (orange, distinct from amber warning).
+- `src/components/dashboard/AutoActionFeedback.tsx` — Per-result feedback for auto-executed actions. Success = state-granted, failure = state-denied.
+- `src/components/layout/DashboardShell.tsx` — Sidebar + topbar shell. Token-driven, includes `ThemeToggle` icon button and `Avatar` primitive.
+- `src/components/shared/ThemeToggle.tsx` — Binary light ↔ dark switch, wired to `next-themes` via `useThemeContext()`.
 - `src/app/(dashboard)/settings/dashboard/page.tsx` — Dashboard settings (MASTER). Feed options + summary fields config.
 - `src/components/settings/dashboard/DashboardSettingsView.tsx` — Wrapper.
 - `src/components/settings/dashboard/FeedSettingsSection.tsx` — Activity feed display options.
@@ -73,5 +76,6 @@ Does not own action execution (see `actions`) or card lookup (see `cards`).
 
 ## Recent changes
 
-- 2026-04-19 — Initial extraction from technical handoff.
-- 2026-04-19 — Synchronized documentation against source code: added `QuickCodeInput`, corrected `DashboardSearchBar` as operational scan input, added `DashboardView` → `executeScanWithAutoActionsAction` interaction, fixed data-fetch sequence, cross-referenced `history` module.
+- 2026-06-06 — Dashboard rebuild: every dashboard file rewritten on shadcn primitives + Layer 2 tokens. Zero inline styles, zero hex left in the rebuilt surface. Override and warning are now visually distinct (orange vs amber). Scan-feed icon is now neutral (`--state-info`), not grant-green. ThemeToggle added in topbar. KPI strip introduced (4 cards from existing DAL only — no new queries). See `decisions/2026-06-06-dashboard-rebuild.md`.
+- 2026-06-06 — Design system foundation landed (Phase 1) — OKLCH tokens, shadcn primitives, `next-themes`, brand swap via `data-brand`. See `decisions/2026-06-06-design-system-tokens.md` + `decisions/2026-06-06-adopt-shadcn-ui.md`.
+- 2026-04-19 — Initial extraction from technical handoff + documentation sync against source code.

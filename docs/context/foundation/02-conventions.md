@@ -1,6 +1,6 @@
 # 02 · Conventions
 
-**Last updated**: 2026-04-19
+**Last updated**: 2026-06-06
 
 ## Code style
 
@@ -92,6 +92,26 @@ All user-facing strings are declared in constants or message objects, prepared f
 
 When a function has non-obvious reasoning (tempId mapping, auto-action sequencing, scan-validation re-evaluation), add a short JSDoc block explaining **why**, not just **what**. The code tells the what.
 
+## UI primitives + tokens
+
+- Every interactive primitive (button, input, dialog, badge, card, alert, tabs, separator, label, …) is imported from `@/components/ui/*`. Do NOT hand-roll a primitive that shadcn already provides — see ADR `2026-06-06-adopt-shadcn-ui.md`.
+- Add new primitives via `pnpm dlx shadcn@latest add <name>`. They land in `src/components/ui/`.
+- Compose className strings with `cn()` from `@/lib/utils`. Do not import `clsx` or `tailwind-merge` directly elsewhere.
+- Use `cva` (`class-variance-authority`) for variant typing on new components that mirror shadcn's pattern.
+
+## Color usage
+
+Source of truth: ADR `2026-06-06-design-system-tokens.md`. Three layers — primitives → semantic → density.
+
+- **Components consume Layer 2 only.** Tailwind utilities: `bg-primary`, `text-foreground`, `border-state-warning-border`, `text-muted-foreground`, etc. CSS vars: `var(--state-denied-icon)`, `var(--surface-2)`. Never reference a Layer 1 primitive (`--indigo-600`, `--red-50`) inside a component.
+- **Never hardcode.** No `#hex`, no `oklch(...)` literals in components or in CSS class bodies. If you need a color that does not have a semantic token, propose adding one to Layer 2 first.
+- **Reserved state semantics.** `--state-granted` (green) / `--state-denied` (red) / `--state-warning` (amber) / `--state-override` (orange) / `--state-info` (slate). These are RESERVED for scan / action / validation outcomes only. They are NEVER used decoratively. The brand accent (`--primary`) is always blue-violet (one of indigo / cobalt / violet) and MUST NOT take a state hue.
+- **Every state communicates via color + icon + label.** Color alone is never sufficient — colorblind users must be able to read the state.
+- **Inline `style={{...}}` is deprecated** for color and layout. Use Tailwind utilities. Inline `style` survives only for one-off dynamic values that have no token (e.g. computed transforms, Konva positions).
+- **Dark mode is automatic** — every semantic token has a `.dark` value. Components never branch on theme.
+- **Brand swap is automatic** — `data-brand` on `<html>` rewrites the `--brand-*` namespace; semantic tokens that reference `--brand-*` (`--primary`, `--ring`, `--accent`) update without component edits.
+- **Legacy `--color-*` variables are deprecated.** They still resolve for screens not yet migrated, but new code MUST use Layer 2 names.
+
 ## Forbidden patterns
 
 - Hard-deleting `field_definitions` (never — only soft delete).
@@ -99,3 +119,7 @@ When a function has non-obvious reasoning (tempId mapping, auto-action sequencin
 - Reading `tenantId` from headers or request body outside the external API route.
 - Inventing a new auth flow that bypasses the Better Auth session.
 - Adding middleware (`src/middleware.ts`) without coordinating a broader auth-architecture change.
+- Re-implementing a shadcn primitive locally.
+- Using a hardcoded hex / `oklch()` in a component.
+- Using `--state-*` tokens for decorative purposes.
+- Using `--color-*` legacy aliases in new code.

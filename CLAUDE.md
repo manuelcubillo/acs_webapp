@@ -19,7 +19,7 @@ Follow `docs/context/UPDATE-PROTOCOL.md` strictly. The protocol is deterministic
 
 ## Non-negotiable rules (full list in `docs/context/foundation/04-constraints.md`)
 
-- **Node v20 only.** Node 22 is broken (icu4c ABI mismatch). Use `/opt/homebrew/opt/node@20/bin/node` or prefix with `PATH="/opt/homebrew/opt/node@20/bin:$PATH"`.
+- **Node v24.** `engines.node: ">=24"`. Older notes about Node v20 are stale.
 - `tenant_id` is always derived from the authenticated session via `getCurrentTenant()`. Never from client input, URL, or body — except the external API (`/api/cards/...`), which has a documented `TODO: API_AUTH`.
 - Card UUIDs are never exposed to the client. The public Card identifier is `code`, unique per `(tenant_id, code)`.
 - Soft delete everywhere. Never hard-delete `field_definitions`, `card_types`, `action_definitions`, `scan_validations`, or `cards`.
@@ -30,6 +30,12 @@ Follow `docs/context/UPDATE-PROTOCOL.md` strictly. The protocol is deterministic
 - No middleware — `src/middleware.ts` does not exist. Auth is page-level via `requireOperator()` / `requireAdmin()` / `requireMaster()` guards.
 - Operational scans and informational consultations are distinct entry paths. Never blur them. See `docs/context/decisions/2026-03-20-operational-vs-informational.md`.
 - **All text displayed on pages must be in constants, not inline strings.** ❌ `<p>Delete account</p>` → ✅ `<p>{TEXT.DELETE_ACCOUNT}</p>`. This enables i18n and consistency.
+- **UI primitives come from shadcn/ui in `src/components/ui/`** — never hand-roll a primitive that exists there. Add new ones via `pnpm dlx shadcn@latest add <name>`. See ADR `2026-06-06-adopt-shadcn-ui.md`.
+- **Color = semantic token only.** Tailwind utilities like `bg-primary`, `text-muted-foreground`, `border-state-warning-border` or CSS vars like `var(--state-denied-icon)`. NEVER hex, NEVER `oklch()` literals, NEVER Layer 1 primitives (`--indigo-600`) in components. See ADR `2026-06-06-design-system-tokens.md`.
+- **Reserved state semantics**: `--state-granted` (green) / `--state-denied` (red) / `--state-warning` (amber) / `--state-override` (orange, distinct from amber) / `--state-info` (slate). RESERVED for scan/action/validation outcomes — NEVER decorative. Brand accent is blue-violet only.
+- **Every state uses color + icon + label** — color alone is insufficient.
+- **Inline `style={{...}}` is deprecated** for color and layout. Use Tailwind utilities + `cn()` from `@/lib/utils`. Files touched after 2026-06-06 must not introduce new inline-style color or layout.
+- **Legacy `--color-*` aliases are deprecated.** New code uses Layer 2 names (`--primary`, `--foreground`, `--border`, …).
 
 ## Code conventions (full list in `docs/context/foundation/02-conventions.md`)
 
@@ -38,13 +44,16 @@ Follow `docs/context/UPDATE-PROTOCOL.md` strictly. The protocol is deterministic
 - All Server Actions wrapped by `actionHandler<T>` (`src/lib/api/response.ts`).
 - DAL functions accept `tenantId` explicitly and throw typed errors from `src/lib/dal/errors.ts`.
 - Field values use type-specific columns via `mapValueToColumn` / `extractValue` — never access typed columns directly.
-- Shared components (used by 2+ domains) go in `src/components/shared/`.
+- Shared components (used by 2+ domains) go in `src/components/shared/`. Shadcn primitives go in `src/components/ui/`. Theme provider + brand context live in `src/components/providers/`.
 - All dashboard pages: `export const dynamic = "force-dynamic"`.
 - Zod validates at the Server Action boundary. Same validation engine runs on backend as source of truth.
+- Compose className strings with `cn()` from `@/lib/utils`. Use `cva` for variant typing on new component primitives.
 
 ## Stack
 
-Next.js 16 (App Router, Turbopack) · React 19 · TypeScript · Tailwind CSS 4 (custom, no shadcn) · Better Auth · Drizzle ORM · PostgreSQL on Neon (HTTP driver, no interactive transactions) · pnpm · Vercel · Vitest.
+Next.js 16 (App Router, Turbopack) · React 19 · TypeScript · Tailwind CSS 4 (CSS-first config) · shadcn/ui primitives (Radix-backed, in `src/components/ui/`) · `next-themes` (mode) + custom brand context (`data-brand`) · `class-variance-authority` + `clsx` + `tailwind-merge` via `cn()` · Better Auth · Drizzle ORM · PostgreSQL on Neon (HTTP driver, no interactive transactions) · pnpm · Vercel · Vitest.
+
+Three-layer OKLCH design tokens — see `docs/context/decisions/2026-06-06-design-system-tokens.md`. Live reference at `/styleguide` in dev (404 in production).
 
 Full detail in `docs/context/foundation/00-overview.md`.
 
