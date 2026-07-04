@@ -142,7 +142,7 @@ export default function MembersClient({
 
       {/* Pending invitations */}
       <section>
-        <h2 className="mb-3 text-[15px] font-bold text-foreground">
+        <h2 className="mb-3 font-heading text-base font-bold text-foreground">
           {LABELS.invitationsTitle}
         </h2>
         <PendingInvitationsList

@@ -47,7 +47,7 @@ export default function CardTypeCard({
 
   return (
     <div
-      className="animate-fadein flex cursor-pointer flex-col gap-3.5 rounded-2xl border bg-card px-6 py-5 shadow-sm transition-shadow hover:shadow-md"
+      className="animate-fadein flex cursor-pointer flex-col gap-3.5 rounded-xl border border-border bg-card px-6 py-5 shadow-sm transition-shadow hover:shadow-md"
       onClick={() => router.push(`/card-types/${cardType.id}`)}
     >
       {/* Top row: icon + name + status + edit */}
@@ -57,8 +57,8 @@ export default function CardTypeCard({
           className={cn(
             "flex size-11 shrink-0 items-center justify-center rounded-xl border",
             cardType.isActive
-              ? "bg-accent text-primary"
-              : "bg-muted text-muted-foreground",
+              ? "bg-accent border-accent text-primary"
+              : "bg-muted border-border text-muted-foreground",
           )}
         >
           <CreditCard className="size-5.5" strokeWidth={1.6} />
@@ -110,7 +110,7 @@ export default function CardTypeCard({
       </div>
 
       {/* Stats row */}
-      <div className="flex gap-4 border-t pt-3.5">
+      <div className="flex gap-4 border-t border-border pt-3.5">
         <StatPill label={TEXT.STAT_FIELDS} value={activeFields.length} />
         <StatPill label={TEXT.STAT_REQUIRED} value={requiredFields.length} />
         <StatPill label={TEXT.STAT_ACTIONS} value={activeActions.length} />

@@ -487,9 +487,24 @@
  *   - `body { margin: 0 }`
  *   - heading font-size/weight inheritance
  *   - `ol/ul/menu` margin + padding zeroing
- * So no universal reset is needed (and an unlayered universal reset would
- * override every Tailwind padding/margin/space utility — cascade-layer trap).
+ * A border-color base rule IS layered below: Preflight's shorthand reset
+ * (`border: 0 solid`) leaves a bare `border` utility at `currentColor` (the
+ * text color), so untyped borders rendered dark. The rule defaults every
+ * border to the --border token. It is scoped to border-color only (never
+ * box-model) and lives in @layer base, so explicit utilities (border-primary,
+ * border-accent, …) still win and no padding/margin utility is affected — the
+ * cascade-layer trap only applies to an *unlayered* box-model reset.
  * ========================================================================== */
+
+/* Default any bare `border` / `border-t` etc. to the --border token instead of
+   Preflight's `currentColor`. Layered so explicit color utilities override it. */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+}
 
 html, body {
   height: 100%;

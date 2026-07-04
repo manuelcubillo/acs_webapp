@@ -70,12 +70,12 @@ export default function CardTypeLinkedDesigns({
   const router = useRouter();
 
   return (
-    <div className="animate-fadein overflow-hidden rounded-2xl border bg-card shadow-sm">
+    <div className="animate-fadein overflow-hidden rounded-xl border bg-card shadow-sm">
       <div className="flex items-center justify-between border-b px-5 py-4">
         <div className="font-heading text-sm font-bold text-foreground">
           {LABELS.sectionTitle}
         </div>
-        <Badge variant="secondary">{linkedDesigns.length}</Badge>
+        <Badge variant="outline">{linkedDesigns.length}</Badge>
       </div>
 
       <div className="flex flex-col gap-2 px-3.5 py-3">

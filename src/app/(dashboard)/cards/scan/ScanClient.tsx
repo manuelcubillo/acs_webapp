@@ -79,7 +79,7 @@ export default function ScanClient({ scanMode }: ScanClientProps) {
       )}
 
       {showExternal && !showCamera && (
-        <div className="flex w-full flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-border bg-muted/40 px-10 py-12 text-center text-sm text-muted-foreground">
+        <div className="flex w-full flex-col items-center gap-3 rounded-xl border-2 border-dashed border-border bg-muted/40 px-10 py-12 text-center text-sm text-muted-foreground">
           <Radio aria-hidden className="size-6 animate-pulse" strokeWidth={1.8} />
           {TEXT.READY}
         </div>

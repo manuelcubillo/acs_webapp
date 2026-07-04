@@ -138,8 +138,8 @@ export default function CardDetailClient({
 
       {!scanResult.passed && <ScanAlerts scanResult={scanResult} />}
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_auto]">
-        <div className="rounded-2xl border border-border bg-card p-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_auto]">
+        <div className="rounded-xl border border-border bg-card p-6">
           <div className="mb-5">
             <span className="inline-block rounded-md bg-muted px-2.5 py-1 font-mono text-sm font-bold text-muted-foreground">
               {card.code}
@@ -167,7 +167,7 @@ export default function CardDetailClient({
         </div>
 
         {actions.length > 0 && (
-          <div className="self-start rounded-2xl border border-border bg-card p-5 lg:min-w-[200px]">
+          <div className="self-start rounded-xl border border-border bg-card p-5 lg:min-w-[200px]">
             <CardActions
               cardId={card.id}
               actions={actions}

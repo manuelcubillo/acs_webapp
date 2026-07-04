@@ -258,7 +258,7 @@ export default function ScanValidationsStep({
 
       {/* Add form */}
       {showForm ? (
-        <div className="rounded-2xl border bg-muted/40 p-5">
+        <div className="rounded-xl border bg-muted/40 p-5">
           <div className="mb-4 text-sm font-semibold text-foreground">
             {TEXT.NEW_TITLE}
           </div>

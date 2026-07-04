@@ -83,7 +83,7 @@ export default function CardTypeWizard({ initialData }: CardTypeWizardProps) {
   return (
     <div className="flex h-full flex-col">
       {/* ─── Header card: step indicator ─────────────────────────────────── */}
-      <div className="animate-fadein mb-6 rounded-2xl border bg-card px-8 py-7 shadow-sm">
+      <div className="animate-fadein mb-6 rounded-xl border bg-card px-8 py-7 shadow-sm">
         {/* Title */}
         <div className="mb-7">
           <div className="mb-1 font-heading text-[22px] font-extrabold text-foreground">
@@ -99,7 +99,7 @@ export default function CardTypeWizard({ initialData }: CardTypeWizardProps) {
 
       {/* ─── Step content ─────────────────────────────────────────────────── */}
       <div
-        className="animate-fadein mb-6 flex-1 overflow-auto rounded-2xl border bg-card px-8 py-7 shadow-sm"
+        className="animate-fadein mb-6 flex-1 overflow-auto rounded-xl border bg-card px-8 py-7 shadow-sm"
         key={step} // remount on step change to trigger animation
       >
         {step === 0 && (
@@ -143,7 +143,7 @@ export default function CardTypeWizard({ initialData }: CardTypeWizardProps) {
       </div>
 
       {/* ─── Navigation footer ────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-4 rounded-2xl border bg-card px-8 py-4 shadow-sm">
+      <div className="flex items-center justify-between gap-4 rounded-xl border bg-card px-8 py-4 shadow-sm">
         {/* Left: Back or Cancel */}
         <div className="flex gap-2.5">
           {isFirstStep ? (

@@ -3,7 +3,8 @@
 /**
  * HistoryTableRow
  *
- * Single row in the action history table.
+ * Single row in the action history table. Renders with the shared shadcn
+ * `TableRow`/`TableCell` parts so borders match the card surface style.
  *
  * Left-border color:
  *   - neutral for scans
@@ -15,6 +16,7 @@
 import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import type { ActionHistoryEntry } from "@/lib/dal";
 
@@ -102,7 +104,10 @@ interface HistoryTableRowProps {
   isOdd: boolean;
 }
 
-const CELL = "border-b px-3 py-2.5 align-top text-xs leading-relaxed text-foreground";
+// Card-style body cell. Row dividers come from TableRow's border-b; cells allow
+// wrapping (whitespace-normal) and align to the top for multi-line summaries.
+const CELL =
+  "whitespace-normal px-3 py-2.5 align-top text-xs leading-relaxed text-foreground";
 
 export default function HistoryTableRow({ entry, isOdd }: HistoryTableRowProps) {
   const isScan = entry.logType === "scan";
@@ -111,37 +116,39 @@ export default function HistoryTableRow({ entry, isOdd }: HistoryTableRowProps) 
   const details = formatDetails(entry);
 
   return (
-    <tr
+    <TableRow
       // borderLeftColor is data-driven (action's configured color) — preserved inline.
       style={{ borderLeftColor: accentColor }}
       className={cn(
-        "border-l-[3px] transition-colors hover:bg-accent/50",
+        "border-l-[3px] hover:bg-accent/50",
         isOdd ? "bg-muted/30" : "bg-card",
       )}
     >
       {/* Date/Time */}
-      <td className={CELL}>
+      <TableCell className={CELL}>
         <div className="font-semibold text-foreground">{relative}</div>
         <div className="mt-0.5 text-[11px] text-muted-foreground">{absolute}</div>
-      </td>
+      </TableCell>
 
       {/* Card Code */}
-      <td className={CELL}>
+      <TableCell className={CELL}>
         <Link
           href={`/cards/${encodeURIComponent(entry.cardCode)}`}
           className="font-mono text-xs font-bold text-primary hover:underline"
         >
           {entry.cardCode}
         </Link>
-      </td>
+      </TableCell>
 
       {/* Card Type */}
-      <td className={CELL}>
-        <Badge variant="secondary">{entry.cardTypeName}</Badge>
-      </td>
+      <TableCell className={CELL}>
+        <Badge variant="outline" className="bg-card text-muted-foreground">
+          {entry.cardTypeName}
+        </Badge>
+      </TableCell>
 
       {/* Action */}
-      <td className={CELL}>
+      <TableCell className={CELL}>
         <div className="flex flex-wrap items-center gap-1.5">
           <span
             // Dot uses the same data-driven action color.
@@ -161,17 +168,17 @@ export default function HistoryTableRow({ entry, isOdd }: HistoryTableRowProps) 
             </Badge>
           )}
         </div>
-      </td>
+      </TableCell>
 
       {/* Executed By */}
-      <td className={CELL}>
+      <TableCell className={CELL}>
         <span className={entry.executedByName ? "text-foreground" : "text-muted-foreground"}>
           {entry.executedByName ?? TEXT.EMPTY}
         </span>
-      </td>
+      </TableCell>
 
       {/* Summary Fields */}
-      <td className={CELL}>
+      <TableCell className={CELL}>
         {entry.summaryFields.length > 0 ? (
           <div className="flex flex-col gap-0.5">
             {entry.summaryFields.slice(0, 3).map((sf, i) => (
@@ -184,12 +191,12 @@ export default function HistoryTableRow({ entry, isOdd }: HistoryTableRowProps) 
         ) : (
           <span className="text-muted-foreground">{TEXT.EMPTY}</span>
         )}
-      </td>
+      </TableCell>
 
       {/* Details */}
-      <td className={cn(CELL, "text-[11px] text-muted-foreground", !isScan && "font-mono")}>
+      <TableCell className={cn(CELL, "text-[11px] text-muted-foreground", !isScan && "font-mono")}>
         {details}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }

@@ -31,7 +31,7 @@ export default function CardTypeList({
 }: CardTypeListProps) {
   if (cardTypes.length === 0) {
     return (
-      <div className="animate-fadein flex flex-col items-center gap-4 rounded-2xl border bg-card px-6 py-16 text-center shadow-sm">
+      <div className="animate-fadein flex flex-col items-center gap-4 rounded-xl border bg-card px-6 py-16 text-center shadow-sm">
         <div className="flex size-18 items-center justify-center rounded-[20px] bg-accent text-3xl">
           🗂️
         </div>

@@ -133,10 +133,10 @@ function SortableFieldRow({ field, onEdit, onRemove }: SortableFieldRowProps) {
             ({field.name})
           </span>
           {field.isRequired && (
-            <Badge variant="secondary">{TEXT.REQUIRED}</Badge>
+            <Badge variant="outline">{TEXT.REQUIRED}</Badge>
           )}
           {field.validationRules && field.validationRules.rules.length > 0 && (
-            <Badge variant="secondary">
+            <Badge variant="outline">
               {field.validationRules.rules.length} regla
               {field.validationRules.rules.length !== 1 ? "s" : ""}
             </Badge>

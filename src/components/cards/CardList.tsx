@@ -219,7 +219,7 @@ export default function CardList({
             <Filter className="size-3.5" strokeWidth={2} />
             {TEXT.BTN_FILTERS}
             {activeFilterCount > 0 && (
-              <Badge className="ml-0.5 h-5 min-w-5 px-1.5 text-[11px] font-bold">
+              <Badge variant="outline" className="ml-0.5 h-5 min-w-5 px-1.5 text-[11px] font-bold">
                 {activeFilterCount}
               </Badge>
             )}
@@ -240,7 +240,7 @@ export default function CardList({
 
       {/* Field filter panel */}
       {showFilters && filterFields.length > 0 && (
-        <div className="rounded-xl border border-border bg-muted/40 p-4">
+        <div className="rounded-xl border border-border bg-card p-4">
           <FieldFilterBuilder
             fields={filterFields}
             filters={pendingFieldFilters}

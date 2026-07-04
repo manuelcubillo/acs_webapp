@@ -65,7 +65,7 @@ export default function CardDesignCard({
 
   return (
     <div
-      className="animate-fadein flex cursor-pointer flex-col gap-3.5 rounded-2xl border bg-card px-6 py-5 shadow-sm transition-shadow hover:shadow-md"
+      className="animate-fadein flex cursor-pointer flex-col gap-3.5 rounded-xl border bg-card px-6 py-5 shadow-sm transition-shadow hover:shadow-md"
       onClick={() => router.push(`/card-designs/${design.id}/edit`)}
     >
       {/* Top row */}

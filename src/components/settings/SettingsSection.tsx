@@ -39,7 +39,7 @@ export default function SettingsSection({
       </div>
 
       {/* Content area — cards stacked vertically */}
-      <div className="flex flex-col gap-5">{children}</div>
+      <div className="flex flex-col gap-6">{children}</div>
     </div>
   );
 }

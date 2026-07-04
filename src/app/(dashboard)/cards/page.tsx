@@ -97,7 +97,7 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
   return (
     <DashboardShell title={TEXT.TITLE} role={role}>
       {/* Page header */}
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-heading text-2xl font-extrabold text-foreground">
             {TEXT.TITLE}

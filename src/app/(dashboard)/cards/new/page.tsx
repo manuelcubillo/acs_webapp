@@ -118,7 +118,7 @@ export default async function NewCardPage({ searchParams }: NewCardPageProps) {
 
   return (
     <DashboardShell title={TEXT.TITLE} role={role}>
-      <div className="mx-auto max-w-[600px] rounded-2xl border bg-card p-7">
+      <div className="mx-auto max-w-[600px] rounded-xl border bg-card p-7">
         <h1 className="mb-1 font-heading text-xl font-extrabold text-foreground">
           {TEXT.TITLE}
         </h1>

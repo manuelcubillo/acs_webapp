@@ -148,9 +148,9 @@ export default function ReviewStep({
                   </div>
                   <div className="flex shrink-0 gap-1.5">
                     <Badge className={meta.chip}>{meta.label}</Badge>
-                    {field.isRequired && <Badge variant="secondary">{TEXT.REQUIRED}</Badge>}
+                    {field.isRequired && <Badge variant="outline">{TEXT.REQUIRED}</Badge>}
                     {field.validationRules && field.validationRules.rules.length > 0 && (
-                      <Badge variant="secondary">
+                      <Badge variant="outline">
                         {field.validationRules.rules.length} regla{field.validationRules.rules.length !== 1 ? "s" : ""}
                       </Badge>
                     )}
@@ -254,7 +254,7 @@ export default function ReviewStep({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-2xl border bg-card">
+    <div className="overflow-hidden rounded-xl border bg-card">
       <div className="border-b px-4.5 py-3.5 font-heading text-sm font-bold text-foreground">
         {title}
       </div>

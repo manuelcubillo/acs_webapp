@@ -160,11 +160,17 @@ export default function DashboardView({
         overrideValidationErrors: pauseValidationErrors.map((e) => e.message),
       });
 
+      
+      
       if (resumeResult.success) {
-        await handleScanResult(resumeResult.data);
+        // avoid checking again the card
+        setActiveCard(resumeResult.data.card);
+        //await handleScanResult(resumeResult.data);
       } else {
         setManualActionError(resumeResult.error ?? TEXT.ERR_RESUME);
       }
+
+
     } finally {
       setIsResumingAutoActions(false);
     }

@@ -164,7 +164,7 @@ function EmptyState({
   onNew: () => void;
 }) {
   return (
-    <div className="animate-fadein flex flex-col items-center gap-4 rounded-2xl border bg-card px-6 py-16 text-center shadow-sm">
+    <div className="animate-fadein flex flex-col items-center gap-4 rounded-xl border bg-card px-6 py-16 text-center shadow-sm">
       <div className="flex size-18 items-center justify-center rounded-[20px] bg-accent text-primary">
         <Palette className="size-8.5" strokeWidth={1.5} />
       </div>

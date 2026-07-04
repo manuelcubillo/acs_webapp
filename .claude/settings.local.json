@@ -85,7 +85,10 @@
       "Bash(timeout 60 pnpm next build)",
       "Bash(pnpm dlx *)",
       "Bash(sed -n '179,195p' src/components/ui/select.tsx)",
-      "Bash(sed -n '147,165p' src/components/ui/dialog.tsx)"
+      "Bash(sed -n '147,165p' src/components/ui/dialog.tsx)",
+      "Bash(echo \"tsc exit: $?\")",
+      "Bash(echo \"lint exit: $?\")",
+      "Bash(npx tsc *)"
     ]
   }
 }

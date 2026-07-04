@@ -108,7 +108,7 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
   return (
     <DashboardShell title={cardType.name} role={role}>
       {/* Breadcrumb */}
-      <div className="mb-5 flex items-center gap-2">
+      <div className="mb-6 flex items-center gap-2">
         <Link
           href="/card-types"
           className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
@@ -123,12 +123,12 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
       </div>
 
       {/* Header card */}
-      <div className="animate-fadein mb-5 rounded-2xl border bg-card px-7 py-6 shadow-sm">
+      <div className="animate-fadein mb-6 rounded-xl border bg-card px-7 py-6 shadow-sm">
         <div className="flex items-start gap-4.5">
           {/* Icon */}
           <div
             className={cn(
-              "flex size-14 shrink-0 items-center justify-center rounded-2xl border",
+              "flex size-14 shrink-0 items-center justify-center rounded-xl border",
               cardType.isActive
                 ? "bg-accent text-primary"
                 : "bg-muted text-muted-foreground",
@@ -178,15 +178,15 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
       </div>
 
       {/* Layout: fields (wide) + right column (actions + scan validations) */}
-      <div className="grid items-start gap-5 [grid-template-columns:1fr_320px]">
+      <div className="grid items-start gap-6 [grid-template-columns:1fr_320px]">
 
         {/* Fields */}
-        <div className="animate-fadein overflow-hidden rounded-2xl border bg-card shadow-sm">
+        <div className="animate-fadein overflow-hidden rounded-xl border bg-card shadow-sm">
           <div className="flex items-center justify-between border-b px-5 py-4">
             <div className="font-heading text-sm font-bold text-foreground">
               {TEXT.SECTION_FIELDS}
             </div>
-            <Badge variant="secondary">{activeFields.length}</Badge>
+            <Badge variant="outline">{activeFields.length}</Badge>
           </div>
 
           {activeFields.length === 0 ? (
@@ -222,10 +222,10 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
                     </div>
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {field.isRequired && (
-                        <Badge variant="secondary">{TEXT.REQUIRED}</Badge>
+                        <Badge variant="outline">{TEXT.REQUIRED}</Badge>
                       )}
                       {field.defaultValue != null && (
-                        <Badge variant="secondary">
+                        <Badge variant="outline">
                           {TEXT.DEFAULT_PREFIX} {field.defaultValue}
                         </Badge>
                       )}
@@ -233,7 +233,7 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
                         const vr = field.validationRules as { rules?: unknown[] } | null | undefined;
                         const count = vr?.rules?.length ?? 0;
                         return count > 0 ? (
-                          <Badge variant="secondary">{count} regla(s)</Badge>
+                          <Badge variant="outline">{count} regla(s)</Badge>
                         ) : null;
                       })()}
                     </div>
@@ -245,14 +245,14 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
         </div>
 
         {/* Right column: actions + scan validations stacked */}
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-6">
           {/* Actions */}
-          <div className="animate-fadein overflow-hidden rounded-2xl border bg-card shadow-sm">
+          <div className="animate-fadein overflow-hidden rounded-xl border bg-card shadow-sm">
             <div className="flex items-center justify-between border-b px-5 py-4">
               <div className="font-heading text-sm font-bold text-foreground">
                 {TEXT.SECTION_ACTIONS}
               </div>
-              <Badge variant="secondary">{activeActions.length}</Badge>
+              <Badge variant="outline">{activeActions.length}</Badge>
             </div>
             {activeActions.length === 0 ? (
               <div className="px-5 py-6 text-center text-sm italic text-muted-foreground">
@@ -300,12 +300,12 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
           />
 
           {/* Scan Validations */}
-          <div className="animate-fadein overflow-hidden rounded-2xl border bg-card shadow-sm">
+          <div className="animate-fadein overflow-hidden rounded-xl border bg-card shadow-sm">
             <div className="flex items-center justify-between border-b px-5 py-4">
               <div className="font-heading text-sm font-bold text-foreground">
                 {TEXT.SECTION_SCANVAL}
               </div>
-              <Badge variant="secondary">{activeScanValidations.length}</Badge>
+              <Badge variant="outline">{activeScanValidations.length}</Badge>
             </div>
             {activeScanValidations.length === 0 ? (
               <div className="px-5 py-6 text-center text-sm italic text-muted-foreground">
@@ -352,7 +352,7 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
       </div>
 
       {/* Metadata footer */}
-      <div className="mt-5 flex gap-5 rounded-[10px] bg-muted px-4 py-3 text-[11px] text-muted-foreground">
+      <div className="mt-6 flex gap-5 rounded-[10px] bg-muted px-4 py-3 text-[11px] text-muted-foreground">
         <span>{TEXT.META_ID} <code className="font-mono text-[11px]">{cardType.id}</code></span>
         <span>{TEXT.META_CREATED} {new Date(cardType.createdAt).toLocaleDateString("es-ES")}</span>
         <span>{TEXT.META_UPDATED} {new Date(cardType.updatedAt).toLocaleDateString("es-ES")}</span>
