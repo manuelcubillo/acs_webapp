@@ -60,6 +60,7 @@
   "engines": {
     "node": ">=24"
   },
+  "packageManager": "pnpm@10.6.3",
   "pnpm": {
     "_patchedDependencies_disabled": {
       "@nodable/entities@2.1.0": "patches/@nodable__entities@2.1.0.patch"

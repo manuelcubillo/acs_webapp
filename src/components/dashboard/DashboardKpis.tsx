@@ -29,7 +29,7 @@ const TEXT = {
   NEVER:              "Sin actividad reciente",
   HINT_SCANS:         "Eventos de escaneo registrados desde las 00:00.",
   HINT_ACTIONS:       "Acciones automáticas + manuales desde las 00:00.",
-  HINT_CARD_TYPES:    "Plantillas con is_active=true.",
+  HINT_CARD_TYPES:    "Tipos de carnets disponibles",
   HINT_LAST:          "Última entrada en el feed operacional.",
 } as const;
 

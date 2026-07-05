@@ -88,7 +88,10 @@
       "Bash(sed -n '147,165p' src/components/ui/dialog.tsx)",
       "Bash(echo \"tsc exit: $?\")",
       "Bash(echo \"lint exit: $?\")",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(docker compose *)",
+      "Bash(docker build *)",
+      "Bash(docker rmi *)"
     ]
   }
 }

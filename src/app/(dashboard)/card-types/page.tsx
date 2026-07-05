@@ -23,7 +23,7 @@ import type { CardTypeWithFullSchema } from "@/lib/dal";
 export const dynamic = "force-dynamic";
 
 const TEXT = {
-  TITLE:        "Tipos de Tarjeta",
+  TITLE:        "Tipos de Carnets",
   EMPTY:        "No hay tipos definidos todavía.",
   COUNT_SINGLE: "tipo de tarjeta",
   COUNT_PLURAL: "tipos de tarjeta",

@@ -8,7 +8,17 @@
 
 import { Resend } from "resend";
 
-export const resend = new Resend(process.env.RESEND_APIKEY);
+let resendClient: Resend | undefined;
+
+/**
+ * Lazily constructs the Resend client on first use instead of at module
+ * load, so `next build` (page-data collection) doesn't require
+ * RESEND_APIKEY to be present at build time.
+ */
+export function getResendClient(): Resend {
+  resendClient ??= new Resend(process.env.RESEND_APIKEY);
+  return resendClient;
+}
 
 /** Must be a domain verified in your Resend account. */
 export const FROM_EMAIL =
@@ -45,7 +55,7 @@ export async function sendInvitationEmail({
 }: SendInvitationEmailParams): Promise<void> {
   const roleLabel = ROLE_LABELS[role] ?? role;
 
-  await resend.emails.send({
+  await getResendClient().emails.send({
     from: FROM_EMAIL,
     to,
     subject: `Invitación a ${tenantName}`,

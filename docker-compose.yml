@@ -1,0 +1,79 @@
+services: # Aquí listamos todos los "contenedores" que queremos crear
+
+  # -----------------------------------------------------------------
+  # CONTENEDOR 1: LA BASE DE DATOS (PostgreSQL)
+  # -----------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine # Descarga la imagen oficial de Postgres (versión ligera Alpine)
+    container_name: acs-postgres # Nombre visual que tendrá el contenedor en tu Docker Desktop
+    profiles: ["db", "all"] # Si ejecutas el perfil "db" o "all", este contenedor se encenderá
+    ports:
+      - "5432:5432" # Mapeo de puertos: [Puerto en tu PC] : [Puerto dentro del contenedor]
+    environment: # Variables de entorno obligatorias para que Postgres cree la base de datos
+      POSTGRES_USER: acs_user
+      POSTGRES_PASSWORD: acs_password
+      POSTGRES_DB: acs_db
+    volumes:
+      - postgres-data:/var/lib/postgresql/data # Guarda los datos en tu PC para que no se borren al apagar Docker
+
+  # -----------------------------------------------------------------
+  # CONTENEDOR 2: EL ALMACENAMIENTO DE ARCHIVOS (MinIO)
+  # -----------------------------------------------------------------
+  minio:
+    image: minio/minio:latest # Descarga la última versión de MinIO
+    container_name: acs-minio
+    profiles: ["storage", "all"] # Se enciende con el perfil "storage" o "all"
+    command: server /data --console-address ":9001" # Comando interno para iniciar MinIO y su panel web
+    environment: # Credenciales de administrador para MinIO
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      # El MinIO community edition no implementa el API S3 "PutBucketCors" (mc cors set
+      # devuelve "NotImplemented"). El CORS se configura a nivel de servidor con esta variable.
+      MINIO_API_CORS_ALLOW_ORIGIN: http://localhost:3000
+    ports:
+      - "9000:9000" # Puerto de la API (para que Next.js suba fotos)
+      - "9001:9001" # Puerto de la Consola Web (para entrar desde tu navegador)
+    volumes:
+      - minio-data:/data # Guarda las fotos en tu PC para que perduren
+    healthcheck: # Un test que hace Docker para saber si MinIO ya está listo y operativo
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # -----------------------------------------------------------------
+  # CONTENEDOR 3: EL CONFIGURADOR DE MINIO (Se apaga solo al terminar)
+  # -----------------------------------------------------------------
+  minio-init:
+    image: minio/mc:latest # Herramienta de consola de MinIO
+    container_name: acs-minio-init
+    profiles: ["storage", "all"]
+    depends_on:
+      minio:
+        condition: service_healthy # Espera obligatoriamente a que MinIO pase el "healthcheck" anterior
+    entrypoint: > # Este script crea el bucket 'acs-photos' y le da permisos públicos automáticamente
+      /bin/sh -c "
+      mc alias set local http://acs-minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/acs-photos &&
+      mc anonymous set download local/acs-photos
+      "
+
+  # -----------------------------------------------------------------
+  # CONTENEDOR 4: TU APP DE NEXT.JS (acs)
+  # -----------------------------------------------------------------
+  acs:
+    build:
+      context: . # Le dice a Docker que busque el Dockerfile en la carpeta actual
+      dockerfile: Dockerfile
+    container_name: acs-app
+    profiles: ["app", "all"]
+    ports:
+      - "3000:3000" # Accederás a tu app desde http://localhost:3000
+    env_file:
+      - .env.docker # Todas las variables (auth, resend, DB, storage) usando nombres de contenedor, no localhost
+
+# Definimos los "Discos Virtuales" (Volumes). Esto asegura que aunque borres los contenedores,
+# tus imágenes subidas y tus tablas de la Base de Datos sigan existiendo en tu disco duro.
+volumes:
+  minio-data:
+  postgres-data:

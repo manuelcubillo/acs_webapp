@@ -34,8 +34,8 @@ Everything that keeps the app running: database connection, migrations, env vars
 - `src/lib/images/optimize.ts` — Browser-side resize + recompress pipeline (canvas, retry-on-too-large).
 - `src/lib/actions/uploads.ts` — `requestPhotoUploadUrlAction`, `confirmPhotoUploadAction`.
 - `src/components/shared/PhotoUploader.tsx` — Universal upload widget (optimize → presign → PUT → confirm).
-- `infra/storage/` — `r2-cors.json`, `minio-cors.json`, `README.md`.
-- `docker-compose.minio.yml` — Local MinIO + bucket-init container.
+- `infra/storage/` — `r2-cors.json`, `README.md`. MinIO CORS is server-wide via `MINIO_API_CORS_ALLOW_ORIGIN` (no per-bucket file — community edition doesn't implement `PutBucketCors`).
+- `docker-compose.yml` (`storage`/`all` profiles) — Local MinIO + bucket-init container.
 - Scripts in `package.json`: `pnpm dev | build | start | lint`, `pnpm db:generate | db:migrate | db:studio`, `pnpm db:seed`, `pnpm test | test:watch`.
 
 ## Environment variables

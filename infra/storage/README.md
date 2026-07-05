@@ -12,15 +12,18 @@ can PUT directly to the bucket and so the canvas-based PNG export
 ## Local development (MinIO)
 
 ```sh
-docker compose -f docker-compose.minio.yml up -d
+docker compose --profile storage up -d
 ```
 
 Console at <http://localhost:9001> (`minioadmin` / `minioadmin`). The init
-container creates the `acs-photos` bucket and applies
-`infra/storage/minio-cors.json`. To stop:
+container creates the `acs-photos` bucket and sets public read access.
+CORS is applied server-wide via `MINIO_API_CORS_ALLOW_ORIGIN` on the `minio`
+service in `docker-compose.yml` — MinIO's community edition does not
+implement the S3 `PutBucketCors` API (`mc cors set` fails with
+`NotImplemented`), so per-bucket CORS files don't work here. To stop:
 
 ```sh
-docker compose -f docker-compose.minio.yml down
+docker compose --profile storage down
 ```
 
 To wipe local objects: add `-v` to the `down` command.
