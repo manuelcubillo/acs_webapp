@@ -91,7 +91,9 @@
       "Bash(npx tsc *)",
       "Bash(docker compose *)",
       "Bash(docker build *)",
-      "Bash(docker rmi *)"
+      "Bash(docker rmi *)",
+      "Bash(docker run *)",
+      "Bash(docker exec acs-postgres *)"
     ]
   }
 }

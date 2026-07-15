@@ -8,11 +8,8 @@
 import { config } from "dotenv";
 config({ path: ".env.local" });
 
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import { db } from "../src/lib/db";
 import * as schema from "../src/lib/db/schema";
-
-const db = drizzle(neon(process.env.DATABASE_URL!), { schema });
 
 async function seed() {
   console.log("Seeding database...\n");

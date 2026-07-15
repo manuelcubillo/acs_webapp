@@ -117,6 +117,17 @@ export const tenants = pgTable("tenants", {
    * 2026-04-27-photo-storage-r2-minio.md.
    */
   logoObjectKey: text("logo_object_key"),
+  /**
+   * Tenant action-strategy key. Selects which TenantActionStrategy handles
+   * action execution for this tenant (see `src/lib/action-strategies`).
+   *
+   * "standard" (the default) preserves the built-in
+   * increment/decrement/check/uncheck behavior byte-for-byte. Any other value
+   * routes this tenant's action execution to a custom strategy WITHOUT affecting
+   * any other tenant. Developer-configured via migration/seed — it is not
+   * exposed in the tenant settings UI.
+   */
+  scanStrategy: text("scan_strategy").notNull().default("standard"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

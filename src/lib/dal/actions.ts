@@ -23,12 +23,19 @@ import {
   fieldDefinitions,
   fieldValues,
   cards,
+  tenants,
 } from "@/lib/db/schema";
 import { NotFoundError, ValidationError } from "./errors";
 import { mapValueToColumn, extractValue } from "./field-values";
+import {
+  resolveActionStrategy,
+  createActionStrategyContext,
+} from "@/lib/action-strategies";
+import type { StrategyAction } from "@/lib/action-strategies";
 import type {
   ActionDefinitionWithField,
   ActionExecutionResult,
+  ActionType,
   CreateActionDefinitionInput,
   UpdateActionDefinitionInput,
   ExecuteActionInput,
@@ -64,27 +71,11 @@ function assertCompatible(
   }
 }
 
-/** Compute the new field value after applying an action. */
-function computeNewValue(
-  actionType: "increment" | "decrement" | "check" | "uncheck",
-  currentValue: unknown,
-  amount: number,
-): unknown {
-  switch (actionType) {
-    case "increment": {
-      const cur = typeof currentValue === "number" ? currentValue : 0;
-      return cur + amount;
-    }
-    case "decrement": {
-      const cur = typeof currentValue === "number" ? currentValue : 0;
-      return cur - amount;
-    }
-    case "check":
-      return true;
-    case "uncheck":
-      return false;
-  }
-}
+// NOTE: The value-computation switch that previously lived here was relocated to
+// `src/lib/action-strategies/compute-new-value.ts` so it can be shared as the
+// single source of truth by the standard strategy (and, optionally, by custom
+// strategies). `executeAction` now resolves a per-tenant strategy instead of
+// calling the switch inline.
 
 // ─── Action Definition CRUD ──────────────────────────────────────────────────
 
@@ -434,14 +425,60 @@ export async function executeAction(
     ? extractValue(existingFv, actionDef.fieldType as FieldType)
     : null;
 
-  // 3. Compute new value
-  const cfg = actionDef.config as { amount?: number } | null;
-  const amount = cfg?.amount ?? 1;
-  const newValue = computeNewValue(
-    actionDef.actionType as "increment" | "decrement" | "check" | "uncheck",
-    previousValue,
-    amount,
-  );
+  // 3. Resolve the tenant's action strategy and compute the new value.
+  //
+  // The strategy seam lets ONE tenant route action execution to custom code
+  // (selected by tenants.scan_strategy) while every other tenant keeps the
+  // standard increment/decrement/check/uncheck path byte-for-byte. The
+  // "standard" strategy delegates to the relocated computeNewValue switch, so
+  // the default path is unchanged. See src/lib/action-strategies.
+  //
+  // NOTE(perf): this adds two indexed PK lookups per execution — the tenant's
+  // scan_strategy and the card row for the strategy context. Every caller of
+  // executeAction already holds the card; a future optimization can thread
+  // `card` + `scanStrategy` through ExecuteActionInput to drop these lookups.
+  const [tenantRow] = await db
+    .select({ scanStrategy: tenants.scanStrategy })
+    .from(tenants)
+    .where(eq(tenants.id, input.tenantId))
+    .limit(1);
+
+  const [cardRow] = await db
+    .select()
+    .from(cards)
+    .where(eq(cards.id, input.cardId))
+    .limit(1);
+
+  if (!cardRow) {
+    // Cards.field_values has a FK to cards, so a missing card would already
+    // fail on write; failing here is an earlier, clearer error and never fires
+    // for real callers (which load the card before executing).
+    throw new NotFoundError("Card", input.cardId);
+  }
+
+  const strategyAction: StrategyAction = {
+    id: actionDef.id,
+    actionType: actionDef.actionType as ActionType,
+    config: (actionDef.config as Record<string, unknown> | null) ?? null,
+    targetField: {
+      id: actionDef.targetFieldDefinitionId,
+      name: actionDef.fieldName,
+      label: actionDef.fieldLabel,
+      fieldType: actionDef.fieldType as FieldType,
+    },
+  };
+
+  const strategy = resolveActionStrategy(tenantRow?.scanStrategy);
+  const ctx = createActionStrategyContext({
+    tenantId: input.tenantId,
+    card: cardRow,
+    action: strategyAction,
+    currentValue: previousValue,
+    executedBy: input.executedBy,
+  });
+
+  const { newValue, metadata: strategyMetadata } =
+    await strategy.handleAction(ctx);
 
   // 4. Upsert field value
   const typedPayload = mapValueToColumn(actionDef.fieldType as FieldType, newValue);
@@ -464,6 +501,11 @@ export async function executeAction(
     before_value: previousValue,
     after_value: newValue,
   };
+  // Merge any strategy-supplied annotations (e.g. why a value was computed).
+  // Standard-tenant executions never set this, so their metadata is unchanged.
+  if (strategyMetadata) {
+    Object.assign(baseMetadata, strategyMetadata);
+  }
   if (input.operatorOverride) {
     baseMetadata.operator_override = true;
     if (input.overrideValidationErrors && input.overrideValidationErrors.length > 0) {

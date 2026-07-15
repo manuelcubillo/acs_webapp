@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "scan_strategy" text DEFAULT 'standard' NOT NULL;
