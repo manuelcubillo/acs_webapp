@@ -5,7 +5,7 @@
  */
 
 import { redirect } from "next/navigation";
-import { requireOperator, AuthenticationError, AuthorizationError } from "@/lib/api";
+import { requireOperator, getCurrentUserProfile, AuthenticationError, AuthorizationError } from "@/lib/api";
 import { getTenantById } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
 import ScanClient from "./ScanClient";
@@ -23,11 +23,19 @@ export default async function ScanPage() {
   }
 
   const { tenantId, role } = context;
-  const tenant = await getTenantById(tenantId).catch(() => null);
+  const [tenant, userProfile] = await Promise.all([
+    getTenantById(tenantId).catch(() => null),
+    getCurrentUserProfile(),
+  ]);
   const scanMode = tenant?.scanMode ?? "both";
 
   return (
-    <DashboardShell title="Escanear" role={role}>
+    <DashboardShell
+      title="Escanear"
+      role={role}
+      userName={userProfile.name ?? undefined}
+      userAvatarUrl={userProfile.avatarUrl}
+    >
       <ScanClient scanMode={scanMode} />
     </DashboardShell>
   );

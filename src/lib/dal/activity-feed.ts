@@ -24,6 +24,7 @@ import {
 } from "@/lib/db/schema";
 import type { ActivityFeedEntry, ActivityFeedOptions, ActivityFeedSummaryField } from "./types";
 import { extractValue } from "./field-values";
+import { signPhotosForRead } from "@/lib/storage/read";
 
 /**
  * Get the activity feed for a tenant's operational dashboard.
@@ -95,6 +96,68 @@ export async function getActivityFeed(
 
   const cardTypeIds = [...new Set(rows.map((r) => r.cardTypeId))];
   const cardIds = [...new Set(rows.map((r) => r.cardId))];
+
+  // ── Step 2b: Resolve each card's primary photo → signed thumbnail URL ───────
+  // The photo identifies the card at a glance in the feed. We pick the
+  // lowest-position active photo field per card type, read its stored object
+  // key, and sign it. Photo fields need not be configured as summary fields.
+
+  const photoFieldDefs = await db
+    .select({
+      cardTypeId: fieldDefinitions.cardTypeId,
+      id: fieldDefinitions.id,
+    })
+    .from(fieldDefinitions)
+    .where(
+      and(
+        inArray(fieldDefinitions.cardTypeId, cardTypeIds),
+        eq(fieldDefinitions.fieldType, "photo"),
+        eq(fieldDefinitions.isActive, true),
+      ),
+    )
+    .orderBy(fieldDefinitions.position);
+
+  // cardTypeId → first (lowest-position) photo field definition id.
+  const photoDefByCardType = new Map<string, string>();
+  for (const def of photoFieldDefs) {
+    if (!photoDefByCardType.has(def.cardTypeId)) {
+      photoDefByCardType.set(def.cardTypeId, def.id);
+    }
+  }
+
+  // cardId → signed photo URL. A card only holds values for its own type's
+  // field definitions, so filtering by the primary photo def ids yields at
+  // most one photo row per card.
+  const cardPhotoUrlMap = new Map<string, string>();
+  const photoDefIds = [...new Set(photoDefByCardType.values())];
+
+  if (photoDefIds.length > 0 && cardIds.length > 0) {
+    const photoRows = await db
+      .select({
+        cardId: fieldValues.cardId,
+        valueText: fieldValues.valueText,
+      })
+      .from(fieldValues)
+      .where(
+        and(
+          inArray(fieldValues.cardId, cardIds),
+          inArray(fieldValues.fieldDefinitionId, photoDefIds),
+        ),
+      );
+
+    const keyByCard = new Map<string, string>();
+    for (const row of photoRows) {
+      if (typeof row.valueText === "string" && row.valueText.length > 0) {
+        keyByCard.set(row.cardId, row.valueText);
+      }
+    }
+
+    const signed = await signPhotosForRead([...keyByCard.values()]);
+    for (const [cardId, key] of keyByCard) {
+      const url = signed.get(key);
+      if (url) cardPhotoUrlMap.set(cardId, url);
+    }
+  }
 
   // ── Step 3: Load configured summary field definitions per card type ─────────
 
@@ -208,6 +271,7 @@ export async function getActivityFeed(
       cardTypeId: row.cardTypeId,
       actionDefinitionId: row.actionDefinitionId,
       actionName: row.actionName ?? null,
+      cardPhotoUrl: cardPhotoUrlMap.get(row.cardId) ?? null,
       executedAt: row.executedAt,
       executedBy: row.executedBy,
       metadata: row.metadata,

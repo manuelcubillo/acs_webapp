@@ -12,6 +12,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import {
   requireOperator,
+  getCurrentUserProfile,
   AuthenticationError,
 } from "@/lib/api";
 import { getCardTypeWithFullSchema, listCardTypes } from "@/lib/dal";
@@ -46,7 +47,10 @@ export default async function CardTypesPage() {
   // ── Data fetching ─────────────────────────────────────────────────────────
   // listCardTypes returns CardType[], but we need full schema for the card stats.
   // Fetch basic list first, then enrich (small tenants won't have many types).
-  const baseTypes = await listCardTypes(tenantId).catch(() => []);
+  const [baseTypes, userProfile] = await Promise.all([
+    listCardTypes(tenantId).catch(() => []),
+    getCurrentUserProfile(),
+  ]);
 
   const cardTypes: CardTypeWithFullSchema[] = (
     await Promise.all(
@@ -58,7 +62,12 @@ export default async function CardTypesPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <DashboardShell title={TEXT.TITLE} role={role}>
+    <DashboardShell
+      title={TEXT.TITLE}
+      role={role}
+      userName={userProfile.name ?? undefined}
+      userAvatarUrl={userProfile.avatarUrl}
+    >
       {/* Page header */}
       <div className="mb-6 flex items-center justify-between">
         <div>

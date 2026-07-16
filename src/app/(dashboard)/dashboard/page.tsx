@@ -10,13 +10,13 @@
 import { redirect } from "next/navigation";
 import {
   requireOperator,
+  getCurrentUserProfile,
   AuthenticationError,
   AuthorizationError,
 } from "@/lib/api";
 import {
   getActivityFeed,
   getDashboardSettings,
-  getTenantById,
   getActionHistory,
   listCardTypes,
 } from "@/lib/dal";
@@ -48,10 +48,10 @@ export default async function DashboardPage() {
 
   const { tenantId, role } = context;
 
-  // ── Settings + tenant (parallel) ──────────────────────────────────────────
-  const [settings, tenant] = await Promise.all([
+  // ── Settings + current user profile (parallel) ───────────────────────────
+  const [settings, userProfile] = await Promise.all([
     getDashboardSettings(tenantId).catch(() => null),
-    getTenantById(tenantId).catch(() => null),
+    getCurrentUserProfile(),
   ]);
 
   const feedLimit = settings?.feedLimit ?? 20;
@@ -87,7 +87,12 @@ export default async function DashboardPage() {
   };
 
   return (
-    <DashboardShell title={PAGE_TITLE} role={role} userName={tenant?.name}>
+    <DashboardShell
+      title={PAGE_TITLE}
+      role={role}
+      userName={userProfile.name ?? undefined}
+      userAvatarUrl={userProfile.avatarUrl}
+    >
       <DashboardView
         initialFeedEntries={initialFeedEntries}
         settings={settings}

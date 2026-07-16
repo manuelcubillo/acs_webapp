@@ -8,6 +8,7 @@
 import { redirect } from "next/navigation";
 import {
   requireMaster,
+  getCurrentUserProfile,
   AuthenticationError,
   AuthorizationError,
 } from "@/lib/api";
@@ -28,9 +29,15 @@ export default async function NewCardTypePage() {
   }
 
   const { role } = context;
+  const userProfile = await getCurrentUserProfile();
 
   return (
-    <DashboardShell title="Nuevo tipo de tarjeta" role={role}>
+    <DashboardShell
+      title="Nuevo tipo de tarjeta"
+      role={role}
+      userName={userProfile.name ?? undefined}
+      userAvatarUrl={userProfile.avatarUrl}
+    >
       {/* Full-height wizard layout */}
       <div className="flex h-full flex-col">
         <CardTypeWizard />

@@ -493,6 +493,12 @@ export interface ActivityFeedEntry {
   actionDefinitionId: string | null;
   /** Action name (null for scan entries). */
   actionName: string | null;
+  /**
+   * Signed read URL for the card's primary photo (lowest-position active photo
+   * field), or null when the card type has no photo field or none was uploaded.
+   * Rendered as the entry's thumbnail; short-lived, minted per feed load.
+   */
+  cardPhotoUrl: string | null;
   executedAt: Date;
   executedBy: string | null;
   metadata: unknown;

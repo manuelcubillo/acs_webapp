@@ -9,7 +9,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Edit, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { requireOperator, AuthenticationError, AuthorizationError } from "@/lib/api";
+import { requireOperator, getCurrentUserProfile, AuthenticationError, AuthorizationError } from "@/lib/api";
 import {
   getCardByCode,
   getActionsForCardType,
@@ -72,12 +72,14 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
     redirect("/cards");
   }
 
-  // Fetch actions, scan validations, dashboard settings, and linked designs in parallel
-  const [actions, svRules, settings, linkedDesigns] = await Promise.all([
+  // Fetch actions, scan validations, dashboard settings, linked designs, and
+  // the current user's topbar profile in parallel
+  const [actions, svRules, settings, linkedDesigns, userProfile] = await Promise.all([
     getActionsForCardType(card.cardTypeId).catch(() => []),
     getScanValidationsByCardType(card.cardTypeId).catch(() => []),
     getDashboardSettings(tenantId).catch(() => null),
     listDesignsForCardType(tenantId, card.cardTypeId).catch(() => []),
+    getCurrentUserProfile(),
   ]);
 
   // Run scan validations (pure, never throws)
@@ -134,7 +136,12 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <DashboardShell title={TEXT.SHELL_TITLE} role={role}>
+    <DashboardShell
+      title={TEXT.SHELL_TITLE}
+      role={role}
+      userName={userProfile.name ?? undefined}
+      userAvatarUrl={userProfile.avatarUrl}
+    >
       <div className="mx-auto max-w-[720px]">
         {/* Back + edit — static, no state needed */}
         <div className="mb-5 flex items-center justify-between">

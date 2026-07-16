@@ -13,10 +13,9 @@
  */
 
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
 import {
   requireAdmin,
+  getCurrentUserProfile,
   AuthenticationError,
   AuthorizationError,
 } from "@/lib/api";
@@ -42,13 +41,17 @@ export default async function SettingsLayout({ children }: SettingsLayoutProps) 
 
   const { role } = context;
 
-  // ── User name for the topbar avatar ───────────────────────────────────────
-  const session = await auth.api.getSession({ headers: await headers() });
-  const userName = session?.user?.name ?? undefined;
+  // ── User name + avatar for the topbar ─────────────────────────────────────
+  const userProfile = await getCurrentUserProfile();
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <DashboardShell title="Configuración" role={role} userName={userName}>
+    <DashboardShell
+      title="Configuración"
+      role={role}
+      userName={userProfile.name ?? undefined}
+      userAvatarUrl={userProfile.avatarUrl}
+    >
       <div className="flex min-h-full flex-col sm:flex-row">
         {/* Secondary settings nav */}
         <SettingsNav role={role} />

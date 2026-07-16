@@ -43,13 +43,13 @@ export default function PhotoRenderer({ value, label }: PhotoRendererProps) {
         alt={alt}
         onClick={() => setOpen(true)}
         aria-label={TEXT.ARIA_PREVIEW}
-        className="block size-12 cursor-pointer rounded-md border border-border object-cover transition-shadow hover:shadow-md"
+        className="block h-auto max-h-[var(--photo-thumbnail-size)] w-auto max-w-[var(--photo-thumbnail-size)] shrink-0 cursor-pointer self-start rounded-md border border-border transition-shadow hover:shadow-md"
       />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
           showCloseButton
-          className="max-w-[95vw] border-none bg-black/90 p-0 sm:max-w-3xl"
+          className="w-fit max-w-[95vw] border-none bg-black/90 p-0 sm:max-w-3xl"
         >
           <DialogTitle className="sr-only">{alt}</DialogTitle>
           {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -7,7 +7,7 @@
  */
 
 import { redirect, notFound } from "next/navigation";
-import { requireMaster, AuthenticationError } from "@/lib/api";
+import { requireMaster, getCurrentUserProfile, AuthenticationError } from "@/lib/api";
 import { getCardDesignById, listCardTypesForDesign } from "@/lib/dal";
 import { signPhotoForReadOptional } from "@/lib/storage/read";
 import type { CardDesignLayout } from "@/lib/card-designs/types";
@@ -42,7 +42,10 @@ export default async function CardDesignEditPage({ params }: Props) {
     notFound();
   }
 
-  const linkedCardTypes = await listCardTypesForDesign(tenantId, id).catch(() => []);
+  const [linkedCardTypes, userProfile] = await Promise.all([
+    listCardTypesForDesign(tenantId, id).catch(() => []),
+    getCurrentUserProfile(),
+  ]);
 
   // Pre-sign every static image object key referenced by the design layout
   // so the editor can render previews without round-tripping through storage.
@@ -67,7 +70,12 @@ export default async function CardDesignEditPage({ params }: Props) {
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <DashboardShell title={design.name} role={role}>
+    <DashboardShell
+      title={design.name}
+      role={role}
+      userName={userProfile.name ?? undefined}
+      userAvatarUrl={userProfile.avatarUrl}
+    >
       {/* Negate DashboardShell's 24px content padding so the editor fills the pane */}
       <div className="-m-6 h-[calc(100%+48px)]">
         <CardDesignEditorLoader

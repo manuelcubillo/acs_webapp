@@ -11,10 +11,11 @@
 import { redirect } from "next/navigation";
 import {
   requireOperator,
+  getCurrentUserProfile,
   AuthenticationError,
   AuthorizationError,
 } from "@/lib/api";
-import { getActionHistory, getHistoryFilterOptions, getTenantById } from "@/lib/dal";
+import { getActionHistory, getHistoryFilterOptions } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
 import ActionHistoryView from "@/components/history/ActionHistoryView";
 
@@ -34,7 +35,7 @@ export default async function HistoryPage() {
   const { tenantId, role } = context;
 
   // ── Fetch initial data in parallel ────────────────────────────────────────
-  const [initialData, filterOptions, tenant] = await Promise.all([
+  const [initialData, filterOptions, userProfile] = await Promise.all([
     getActionHistory(tenantId, {}, { page: 1, pageSize: 50 }).catch(() => ({
       data: [],
       total: 0,
@@ -46,12 +47,17 @@ export default async function HistoryPage() {
       actionDefinitions: [],
       users: [],
     })),
-    getTenantById(tenantId).catch(() => null),
+    getCurrentUserProfile(),
   ]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <DashboardShell title="Historial de acciones" role={role} userName={tenant?.name}>
+    <DashboardShell
+      title="Historial de acciones"
+      role={role}
+      userName={userProfile.name ?? undefined}
+      userAvatarUrl={userProfile.avatarUrl}
+    >
       <ActionHistoryView
         initialData={initialData}
         filterOptions={filterOptions}

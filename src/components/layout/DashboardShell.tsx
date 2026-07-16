@@ -31,6 +31,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
+import { UserProfileProvider, useUserProfile } from "@/components/layout/UserProfileContext";
 import type { TenantRole } from "@/lib/api";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -94,7 +95,31 @@ export default function DashboardShell({
   tenantName,
   tenantLogoUrl,
 }: DashboardShellProps) {
+  return (
+    <UserProfileProvider initialUserName={userName} initialUserAvatarUrl={userAvatarUrl}>
+      <DashboardShellBody title={title} role={role} tenantName={tenantName} tenantLogoUrl={tenantLogoUrl}>
+        {children}
+      </DashboardShellBody>
+    </UserProfileProvider>
+  );
+}
+
+interface DashboardShellBodyProps {
+  children: React.ReactNode;
+  title: string;
+  role: TenantRole;
+  tenantName?: string | null;
+  tenantLogoUrl?: string | null;
+}
+
+/**
+ * Reads userName/userAvatarUrl from UserProfileContext (not props) so that a
+ * descendant client component — e.g. AccountSettings after saving a new
+ * avatar — can update the topbar live without a full page reload.
+ */
+function DashboardShellBody({ children, title, role, tenantName, tenantLogoUrl }: DashboardShellBodyProps) {
   const pathname = usePathname();
+  const { userName, userAvatarUrl } = useUserProfile();
 
   function isActive(href: string) {
     if (href === "/dashboard") return pathname === "/dashboard";

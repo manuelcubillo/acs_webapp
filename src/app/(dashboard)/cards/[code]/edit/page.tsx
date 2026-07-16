@@ -6,7 +6,7 @@
  */
 
 import { redirect } from "next/navigation";
-import { requireAdmin, AuthenticationError, AuthorizationError } from "@/lib/api";
+import { requireAdmin, getCurrentUserProfile, AuthenticationError, AuthorizationError } from "@/lib/api";
 import {
   getCardByCode,
   getCardTypeWithFullSchema,
@@ -76,11 +76,19 @@ export default async function EditCardPage({ params }: EditCardPageProps) {
   }
 
   // Pre-sign photo keys so the form can preview them without round-tripping.
-  const photoReadUrls = await buildPhotoReadUrlMap(card);
+  const [photoReadUrls, userProfile] = await Promise.all([
+    buildPhotoReadUrlMap(card),
+    getCurrentUserProfile(),
+  ]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <DashboardShell title={TEXT.TITLE} role={role}>
+    <DashboardShell
+      title={TEXT.TITLE}
+      role={role}
+      userName={userProfile.name ?? undefined}
+      userAvatarUrl={userProfile.avatarUrl}
+    >
       <div className="mx-auto max-w-[600px] rounded-xl border bg-card p-7">
         <h1 className="mb-1 font-heading text-xl font-extrabold text-foreground">
           {TEXT.TITLE}

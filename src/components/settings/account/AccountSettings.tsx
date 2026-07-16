@@ -26,6 +26,7 @@ import { authClient } from "@/lib/auth-client";
 import SettingsSection from "@/components/settings/SettingsSection";
 import SettingsCard from "@/components/settings/SettingsCard";
 import PhotoUploader from "@/components/shared/PhotoUploader";
+import { useUserProfile } from "@/components/layout/UserProfileContext";
 import DeleteAccountModal from "./DeleteAccountModal";
 import DeleteTenantAccountModal from "./DeleteTenantAccountModal";
 import { Badge } from "@/components/ui/badge";
@@ -139,6 +140,10 @@ interface AccountSettingsProps {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AccountSettings({ tenant, user, role, masterCount }: AccountSettingsProps) {
+  // Pushes the new avatar (and name) into DashboardShell's topbar live,
+  // without requiring a full page reload.
+  const { setUserProfile } = useUserProfile();
+
   // ── Tenant name form ──────────────────────────────────────────────────────
   const [tenantName, setTenantName] = useState(tenant.name);
   const [isTenantPending, startTenantTransition] = useTransition();
@@ -162,12 +167,14 @@ export default function AccountSettings({ tenant, user, role, masterCount }: Acc
   // ── Tenant logo ───────────────────────────────────────────────────────────
   const [logoReadUrl, setLogoReadUrl] = useState<string | null>(tenant.logoReadUrl);
   const [logoError, setLogoError] = useState<string | null>(null);
+  const [logoSaved, setLogoSaved] = useState(false);
   const isMaster = role === "master";
 
   async function handleLogoChange(
     v: { objectKey: string; readUrl: string } | null,
   ) {
     setLogoError(null);
+    setLogoSaved(false);
     const result = await setCurrentTenantLogoAction({
       key: v?.objectKey ?? null,
     });
@@ -176,22 +183,29 @@ export default function AccountSettings({ tenant, user, role, masterCount }: Acc
       return;
     }
     setLogoReadUrl(v?.readUrl ?? null);
+    setLogoSaved(true);
+    setTimeout(() => setLogoSaved(false), 3000);
   }
 
   // ── User avatar ────────────────────────────────────────────────────────────
   const [avatarReadUrl, setAvatarReadUrl] = useState<string | null>(user.imageReadUrl);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [avatarSaved, setAvatarSaved] = useState(false);
 
   async function handleAvatarChange(
     v: { objectKey: string; readUrl: string } | null,
   ) {
     setAvatarError(null);
+    setAvatarSaved(false);
     const result = await setMyAvatarAction({ key: v?.objectKey ?? null });
     if (!result.success) {
       setAvatarError(result.error ?? "No se pudo guardar la foto de perfil");
       return;
     }
     setAvatarReadUrl(v?.readUrl ?? null);
+    setUserProfile({ userAvatarUrl: v?.readUrl ?? null });
+    setAvatarSaved(true);
+    setTimeout(() => setAvatarSaved(false), 3000);
   }
 
   // ── User name form ────────────────────────────────────────────────────────
@@ -208,6 +222,7 @@ export default function AccountSettings({ tenant, user, role, masterCount }: Acc
       if (error) {
         setUserError(error.message ?? "Error al actualizar el perfil");
       } else {
+        setUserProfile({ userName });
         setUserSaved(true);
         setTimeout(() => setUserSaved(false), 3000);
       }
@@ -288,6 +303,12 @@ export default function AccountSettings({ tenant, user, role, masterCount }: Acc
                   onChange={(v) => void handleLogoChange(v)}
                 />
               </div>
+              {logoSaved && (
+                <span className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+                  <Check className="size-3.5" strokeWidth={2.5} />
+                  {SAVED_TEXT}
+                </span>
+              )}
               {logoError && (
                 <p className="mt-1.5 text-xs text-destructive">{logoError}</p>
               )}
@@ -362,6 +383,12 @@ export default function AccountSettings({ tenant, user, role, masterCount }: Acc
                   onChange={(v) => void handleAvatarChange(v)}
                 />
               </div>
+              {avatarSaved && (
+                <span className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+                  <Check className="size-3.5" strokeWidth={2.5} />
+                  {SAVED_TEXT}
+                </span>
+              )}
               {avatarError && (
                 <p className="mt-1.5 text-xs text-destructive">{avatarError}</p>
               )}

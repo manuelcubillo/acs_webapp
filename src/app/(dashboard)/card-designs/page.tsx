@@ -6,7 +6,7 @@
  */
 
 import { redirect } from "next/navigation";
-import { requireMaster, AuthenticationError } from "@/lib/api";
+import { requireMaster, getCurrentUserProfile, AuthenticationError } from "@/lib/api";
 import { listCardDesigns, getDesignLinkCounts } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardDesignListClient from "@/components/card-designs/CardDesignListClient";
@@ -26,14 +26,20 @@ export default async function CardDesignsPage() {
   const { tenantId, role } = context;
 
   // ── Data fetching ───────────────────────────────────────────────────────────
-  const [designs, linkCounts] = await Promise.all([
+  const [designs, linkCounts, userProfile] = await Promise.all([
     listCardDesigns(tenantId).catch(() => []),
     getDesignLinkCounts(tenantId).catch(() => ({})),
+    getCurrentUserProfile(),
   ]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <DashboardShell title="Diseños de Tarjeta" role={role}>
+    <DashboardShell
+      title="Diseños de Tarjeta"
+      role={role}
+      userName={userProfile.name ?? undefined}
+      userAvatarUrl={userProfile.avatarUrl}
+    >
       <CardDesignListClient designs={designs} linkCounts={linkCounts} />
     </DashboardShell>
   );

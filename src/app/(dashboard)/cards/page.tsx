@@ -8,7 +8,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Plus, QrCode } from "lucide-react";
-import { requireOperator, AuthenticationError, AuthorizationError } from "@/lib/api";
+import { requireOperator, getCurrentUserProfile, AuthenticationError, AuthorizationError } from "@/lib/api";
 import {
   listCardTypes,
   getCardTypeWithFullSchema,
@@ -56,9 +56,10 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
   const { cardTypeId: rawCardTypeId, q = "" } = await searchParams;
 
   // ── Data ──────────────────────────────────────────────────────────────────
-  const [cardTypes, tenant] = await Promise.all([
+  const [cardTypes, tenant, userProfile] = await Promise.all([
     listCardTypes(tenantId).catch(() => []),
     getTenantById(tenantId).catch(() => null),
+    getCurrentUserProfile(),
   ]);
 
   const scanMode = tenant?.scanMode ?? "both";
@@ -95,7 +96,12 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <DashboardShell title={TEXT.TITLE} role={role}>
+    <DashboardShell
+      title={TEXT.TITLE}
+      role={role}
+      userName={userProfile.name ?? undefined}
+      userAvatarUrl={userProfile.avatarUrl}
+    >
       {/* Page header */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>

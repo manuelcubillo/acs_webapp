@@ -265,6 +265,10 @@
   --sidebar-width: 16rem;     /* 256px */
   --header-height: 4rem;      /* 64px */
 
+  /* Photo thumbnails — max footprint for PhotoRenderer's card preview.
+     Aspect ratio is always preserved; this only caps the longer side. */
+  --photo-thumbnail-size: 6rem; /* 96px, PhotoRenderer thumbnail cap */
+
   /* Fonts */
   --font-heading: 'Outfit', ui-sans-serif, system-ui, sans-serif;
   --font-body:    'DM Sans', ui-sans-serif, system-ui, sans-serif;

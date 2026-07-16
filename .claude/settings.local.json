@@ -93,7 +93,17 @@
       "Bash(docker build *)",
       "Bash(docker rmi *)",
       "Bash(docker run *)",
-      "Bash(docker exec acs-postgres *)"
+      "Bash(docker exec acs-postgres *)",
+      "Skill(claude-in-chrome)",
+      "Bash(echo exit)",
+      "Bash(lsof -i :3000 -sTCP:LISTEN)",
+      "Bash(ps -p 13012 -o pid,command)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/login)",
+      "Bash(lsof -iTCP -sTCP:LISTEN -P)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(rg -n \"signCardPhotos|photo-urls\" src/lib/dal/index.ts src/**/*.tsx src/**/*.ts)",
+      "Bash(npx eslint *)",
+      "Bash(lsof -iTCP:3000 -sTCP:LISTEN -n -P)"
     ]
   }
 }

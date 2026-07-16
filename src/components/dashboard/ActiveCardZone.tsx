@@ -229,8 +229,25 @@ function ResultPanel({ state, activeCard }: ResultPanelProps) {
               <dt className="truncate text-[11px] uppercase tracking-wide text-muted-foreground">
                 {f.label}
               </dt>
-              <dd className="mt-0.5 truncate text-sm font-semibold text-foreground">
-                {formatFieldValue(f.value, f.fieldType)}
+              <dd className="mt-0.5 text-sm font-semibold text-foreground">
+                {f.fieldType === "photo" ? (
+                  typeof f.value === "string" && f.value.length > 0 ? (
+                    // Signed read URL; click navigates to the card detail, where
+                    // the full lightbox lives.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={f.value}
+                      alt={f.label}
+                      className="block h-auto max-h-16 w-auto max-w-16 rounded-md border border-border"
+                    />
+                  ) : (
+                    <span className="text-muted-foreground">{TEXT.DASH}</span>
+                  )
+                ) : (
+                  <span className="block truncate">
+                    {formatFieldValue(f.value, f.fieldType)}
+                  </span>
+                )}
               </dd>
             </div>
           ))}

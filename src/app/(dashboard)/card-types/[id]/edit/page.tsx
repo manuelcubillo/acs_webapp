@@ -14,6 +14,7 @@
 import { redirect, notFound } from "next/navigation";
 import {
   requireMaster,
+  getCurrentUserProfile,
   AuthenticationError,
   AuthorizationError,
 } from "@/lib/api";
@@ -58,6 +59,8 @@ export default async function EditCardTypePage({ params }: PageProps) {
   } catch {
     notFound();
   }
+
+  const userProfile = await getCurrentUserProfile();
 
   // Map DB fields to FieldDefinitionDraft.
   // Convention: tempId === field.id (DB UUID) so actions and scan validations
@@ -121,7 +124,12 @@ export default async function EditCardTypePage({ params }: PageProps) {
   };
 
   return (
-    <DashboardShell title={`Editar: ${cardType.name}`} role={role}>
+    <DashboardShell
+      title={`Editar: ${cardType.name}`}
+      role={role}
+      userName={userProfile.name ?? undefined}
+      userAvatarUrl={userProfile.avatarUrl}
+    >
       <div className="flex h-full flex-col">
         <CardTypeWizard initialData={initialData} />
       </div>

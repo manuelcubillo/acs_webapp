@@ -50,6 +50,7 @@ import {
   getErrorLevelChecks,
   type ScanValidationResult,
 } from "@/lib/validation/scan-validator";
+import { signCardPhotos } from "@/lib/dal/photo-urls";
 
 // ─── Composite types ──────────────────────────────────────────────────────────
 
@@ -57,6 +58,25 @@ import {
 export interface CardScanResult {
   card: CardWithFields;
   scanResult: ScanValidationResult;
+}
+
+/**
+ * Replace the result card's photo object keys with short-lived signed read
+ * URLs so the client `ActiveCardZone` can render photo fields as thumbnails.
+ *
+ * Runs after `actionHandler` so validation (which used the raw card, and never
+ * reads photo values) is untouched. Signing failures degrade gracefully — the
+ * scan still succeeds; photo fields simply render nothing.
+ */
+async function signScanResultPhotos(
+  result: ActionResult<ScanWithAutoActionsResult>,
+): Promise<ActionResult<ScanWithAutoActionsResult>> {
+  if (!result.success) return result;
+  try {
+    return { ...result, data: { ...result.data, card: await signCardPhotos(result.data.card) } };
+  } catch {
+    return result;
+  }
 }
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
@@ -149,7 +169,7 @@ export async function getCardByCodeAction(
 export async function executeScanWithAutoActionsAction(
   code: string,
 ): Promise<ActionResult<ScanWithAutoActionsResult>> {
-  return actionHandler(async () => {
+  const result = await actionHandler(async () => {
     const { userId, tenantId } = await requireOperator();
 
     // 1. Load card (throws NotFoundError if not found)
@@ -288,6 +308,8 @@ export async function executeScanWithAutoActionsAction(
       pauseValidationErrors: null,
     };
   });
+
+  return signScanResultPhotos(result);
 }
 
 /**
@@ -305,7 +327,7 @@ export async function executeScanWithAutoActionsAction(
 export async function resumeAutoActionsAction(
   input: ResumeAutoActionsInput,
 ): Promise<ActionResult<ScanWithAutoActionsResult>> {
-  return actionHandler(async () => {
+  const result = await actionHandler(async () => {
     const { userId, tenantId } = await requireOperator();
 
     // 1. Fetch card by code
@@ -417,6 +439,8 @@ export async function resumeAutoActionsAction(
       pauseValidationErrors: null,
     };
   });
+
+  return signScanResultPhotos(result);
 }
 
 /**

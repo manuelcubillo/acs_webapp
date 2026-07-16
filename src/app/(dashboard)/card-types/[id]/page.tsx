@@ -10,6 +10,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import {
   requireOperator,
+  getCurrentUserProfile,
   AuthenticationError,
 } from "@/lib/api";
 import { getCardTypeWithFullSchema } from "@/lib/dal";
@@ -98,7 +99,10 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const linkedDesigns = await listDesignsForCardType(tenantId, id).catch(() => []);
+  const [linkedDesigns, userProfile] = await Promise.all([
+    listDesignsForCardType(tenantId, id).catch(() => []),
+    getCurrentUserProfile(),
+  ]);
 
   const activeFields = cardType.fieldDefinitions.filter((f) => f.isActive);
   const activeActions = (cardType.actionDefinitions as ActionDefinitionWithField[]).filter((a) => a.isActive);
@@ -106,7 +110,12 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <DashboardShell title={cardType.name} role={role}>
+    <DashboardShell
+      title={cardType.name}
+      role={role}
+      userName={userProfile.name ?? undefined}
+      userAvatarUrl={userProfile.avatarUrl}
+    >
       {/* Breadcrumb */}
       <div className="mb-6 flex items-center gap-2">
         <Link

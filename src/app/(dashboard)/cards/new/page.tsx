@@ -9,7 +9,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { requireAdmin, AuthenticationError, AuthorizationError } from "@/lib/api";
+import { requireAdmin, getCurrentUserProfile, AuthenticationError, AuthorizationError } from "@/lib/api";
 import {
   listCardTypes,
   getCardTypeWithFullSchema,
@@ -48,12 +48,18 @@ export default async function NewCardPage({ searchParams }: NewCardPageProps) {
 
   const { tenantId, role } = context;
   const { cardTypeId } = await searchParams;
+  const userProfile = await getCurrentUserProfile();
 
   // ── No card type selected → show picker ──────────────────────────────────
   if (!cardTypeId) {
     const cardTypes = await listCardTypes(tenantId).catch(() => []);
     return (
-      <DashboardShell title={TEXT.TITLE} role={role}>
+      <DashboardShell
+        title={TEXT.TITLE}
+        role={role}
+        userName={userProfile.name ?? undefined}
+        userAvatarUrl={userProfile.avatarUrl}
+      >
         <div className="mx-auto max-w-[480px]">
           <Link
             href="/cards"
@@ -117,7 +123,12 @@ export default async function NewCardPage({ searchParams }: NewCardPageProps) {
     }));
 
   return (
-    <DashboardShell title={TEXT.TITLE} role={role}>
+    <DashboardShell
+      title={TEXT.TITLE}
+      role={role}
+      userName={userProfile.name ?? undefined}
+      userAvatarUrl={userProfile.avatarUrl}
+    >
       <div className="mx-auto max-w-[600px] rounded-xl border bg-card p-7">
         <h1 className="mb-1 font-heading text-xl font-extrabold text-foreground">
           {TEXT.TITLE}

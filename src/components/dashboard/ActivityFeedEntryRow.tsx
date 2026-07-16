@@ -62,22 +62,34 @@ export default function ActivityFeedEntryRow({ entry }: ActivityFeedEntryRowProp
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
       )}
     >
-      {/* Type icon */}
-      <div
-        aria-hidden
-        className={cn(
-          "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border",
-          isScan
-            ? "bg-state-info border-state-info-border text-state-info-icon"
-            : "bg-accent border-accent text-primary",
-        )}
-      >
-        {isScan ? (
-          <ScanLine className="size-4" strokeWidth={1.8} />
-        ) : (
-          <Zap className="size-4" strokeWidth={1.8} />
-        )}
-      </div>
+      {/* Leading visual: the card photo identifies who was scanned at a glance.
+          Falls back to the neutral scan icon when no photo exists; action
+          entries keep the brand action icon. */}
+      {isScan && entry.cardPhotoUrl ? (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img
+          src={entry.cardPhotoUrl}
+          alt=""
+          aria-hidden
+          className="mt-0.5 size-9 shrink-0 rounded-lg border border-border object-cover"
+        />
+      ) : (
+        <div
+          aria-hidden
+          className={cn(
+            "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-lg border",
+            isScan
+              ? "bg-state-info border-state-info-border text-state-info-icon"
+              : "bg-accent border-accent text-primary",
+          )}
+        >
+          {isScan ? (
+            <ScanLine className="size-4" strokeWidth={1.8} />
+          ) : (
+            <Zap className="size-4" strokeWidth={1.8} />
+          )}
+        </div>
+      )}
 
       {/* Content */}
       <div className="min-w-0 flex-1">

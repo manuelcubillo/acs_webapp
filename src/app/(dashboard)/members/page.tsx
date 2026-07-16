@@ -42,12 +42,13 @@ export default async function MembersPage() {
     }
   }
 
-  // Resolve the current user's display name from the members list.
+  // Resolve the current user's display name + avatar from the members list.
   const currentMember = members.find((m) => m.userId === userId);
   const userName = currentMember?.userName;
+  const userAvatarUrl = currentMember ? memberAvatarReadUrls[currentMember.id] : undefined;
 
   return (
-    <DashboardShell title="Miembros" role={role} userName={userName}>
+    <DashboardShell title="Miembros" role={role} userName={userName} userAvatarUrl={userAvatarUrl}>
       <MembersClient
         initialMembers={members}
         initialInvitations={invitations}

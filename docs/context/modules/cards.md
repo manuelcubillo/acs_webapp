@@ -1,6 +1,6 @@
 # Module: cards
 
-**Last updated**: 2026-06-07 · **Last feature**: Phase 3 token/shadcn migration of cards route pages (presentation only — ADR `2026-06-07-phase3-inline-style-migration.md`)
+**Last updated**: 2026-07-16 · **Last feature**: scan/resume actions sign the returned card's photos for dashboard thumbnails
 
 ## Responsibility
 
@@ -82,6 +82,7 @@ The server component fetches the card + actions + scan validations and passes th
 
 ## Recent changes
 
+- 2026-07-16 — `executeScanWithAutoActionsAction` / `resumeAutoActionsAction` now sign the returned card's photo fields (`signCardPhotos`, via helper `signScanResultPhotos`) so the dashboard's `ActiveCardZone` can render photo thumbnails. Signing runs after `actionHandler`, degrades silently on failure, and never touches validation. See `modules/dashboard.md`.
 - 2026-04-28 — Photo storage migration: card detail / list / edit pages now call `signCardPhotos` / `signCardListPhotos` / `buildPhotoReadUrlMap` before passing card data to client renderers. `CardForm` accepts `cardId` + `photoReadUrls`; `PhotoInput` persists object keys (not URLs). External `/api/cards/[code]` returns presigned URLs in photo fields. Card detail page also pre-signs `staticImageUrls` for the design preview's image nodes. ADR `2026-04-27-photo-storage-r2-minio.md`.
 - 2026-04-27 — Added design preview + PNG export to card detail: `CardDesignPreviewButton`, `CardDesignPreviewModal`; `listDesignsForCardType` parallel-fetched on page load; field values serialised by server component.
 - 2026-04-19 — Initial extraction from technical handoff.
