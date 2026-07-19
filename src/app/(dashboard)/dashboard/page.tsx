@@ -18,11 +18,13 @@ import {
   getActivityFeed,
   getDashboardSettings,
   getActionHistory,
+  getFeedSummaryFieldConfig,
   listCardTypes,
 } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
 import DashboardView from "@/components/dashboard/DashboardView";
 import type { DashboardKpiData } from "@/components/dashboard/DashboardKpis";
+import type { FeedBuilderConfig } from "@/lib/dashboard/feed-entries";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +63,13 @@ export default async function DashboardPage() {
   // ── Feed + KPI data (parallel) ────────────────────────────────────────────
   const today = startOfToday();
 
-  const [initialFeedEntries, scansHistory, actionsHistory, cardTypes] = await Promise.all([
+  const [
+    initialFeedEntries,
+    scansHistory,
+    actionsHistory,
+    cardTypes,
+    summaryFieldConfig,
+  ] = await Promise.all([
     getActivityFeed(tenantId, {
       limit: feedLimit,
       includeScanEntries: showScan,
@@ -72,7 +80,16 @@ export default async function DashboardPage() {
     getActionHistory(tenantId, { dateFrom: today, logTypes: ["action"] }, { page: 1, pageSize: 1 })
       .catch(() => ({ data: [], total: 0, limit: 1, offset: 0 })),
     listCardTypes(tenantId).catch(() => []),
+    getFeedSummaryFieldConfig(tenantId).catch(() => new Map()),
   ]);
+
+  // Static per-tenant data the client needs to build feed rows for its own
+  // scans without a round trip. Card type names ride along on listCardTypes,
+  // already fetched for the KPI strip.
+  const feedConfig: FeedBuilderConfig = {
+    cardTypeNames: Object.fromEntries(cardTypes.map((t) => [t.id, t.name])),
+    summaryFields: Object.fromEntries(summaryFieldConfig),
+  };
 
   const SCAN_COUNT_CAP = 10000;
   const kpiData: DashboardKpiData = {
@@ -98,6 +115,7 @@ export default async function DashboardPage() {
         settings={settings}
         allowOverrideOnError={settings?.allowOverrideOnError ?? false}
         kpiData={kpiData}
+        feedConfig={feedConfig}
       />
     </DashboardShell>
   );

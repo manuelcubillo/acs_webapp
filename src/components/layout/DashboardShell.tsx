@@ -24,11 +24,11 @@ import {
   LogOut,
   History,
   Palette,
+  Trash2,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { UserProfileProvider, useUserProfile } from "@/components/layout/UserProfileContext";
@@ -44,6 +44,7 @@ const TEXT = {
   NAV_CARDS:       "Carnets",
   NAV_HISTORY:     "Historial",
   NAV_MEMBERS:     "Miembros",
+  NAV_ARCHIVED:    "Archivados",
   NAV_DESIGNS:     "Diseños de Tarjeta",
   NAV_SETTINGS:    "Configuración",
   NAV_SIGNOUT:     "Cerrar sesión",
@@ -62,6 +63,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/cards",        label: TEXT.NAV_CARDS,      icon: IdCard,      minRole: "operator" },
   { href: "/history",      label: TEXT.NAV_HISTORY,    icon: History,     minRole: "operator" },
   { href: "/members",      label: TEXT.NAV_MEMBERS,    icon: Users,       minRole: "admin" },
+  { href: "/archived",     label: TEXT.NAV_ARCHIVED,   icon: Trash2,      minRole: "admin" },
   { href: "/card-designs", label: TEXT.NAV_DESIGNS,    icon: Palette,     minRole: "master" },
 ];
 
@@ -179,7 +181,6 @@ function Sidebar({ tenantName, tenantLogoUrl, visibleNav, isActive }: SidebarPro
       aria-label="Navegación principal"
     >
       <BrandHeader tenantName={tenantName} tenantLogoUrl={tenantLogoUrl} />
-      <Separator />
 
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4" aria-label="Páginas">
         {visibleNav.map((item) => (
@@ -200,9 +201,14 @@ function Sidebar({ tenantName, tenantLogoUrl, visibleNav, isActive }: SidebarPro
   );
 }
 
+/**
+ * Height and bottom border must mirror Topbar so both dividers align.
+ * px-6 keeps the logo on the same 24px inset as the nav icons below it
+ * (nav px-3 + NavLink px-3).
+ */
 function BrandHeader({ tenantName, tenantLogoUrl }: { tenantName: string; tenantLogoUrl?: string | null }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-4">
+    <div className="flex h-16 shrink-0 items-center gap-3 border-b border-border px-6">
       <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary text-primary-foreground shadow-sm">
         {tenantLogoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element

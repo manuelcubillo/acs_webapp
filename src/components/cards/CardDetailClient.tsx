@@ -19,7 +19,7 @@
  */
 
 import { useState, useCallback } from "react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, ShieldAlert } from "lucide-react";
 
 import DynamicFieldRenderer from "./DynamicFieldRenderer";
 import CardActions from "./CardActions";
@@ -29,12 +29,18 @@ import { cn } from "@/lib/utils";
 import { getCardByCodeAction } from "@/lib/actions/cards";
 import { executeActionAction } from "@/lib/actions/actions";
 import { hasErrorLevelFailures, getErrorLevelChecks } from "@/lib/validation/scan-validator";
+// Pure module (not the barrel) so the client bundle avoids the DB-backed service.
+import { buildLifecycleScanCheck } from "@/lib/server/lifecycle/scan-gate";
 import type { CardWithFields, ActionDefinitionWithField } from "@/lib/dal";
+import type { LifecycleGateResult } from "@/lib/server/lifecycle/scan-gate";
 import type { ScanValidationResult, ScanValidationCheck } from "@/lib/validation/scan-validator";
 
 const TEXT = {
-  EMPTY:        "Este carnet no tiene campos.",
-  ERR_FALLBACK: "Error al ejecutar la acción.",
+  EMPTY:            "Este carnet no tiene campos.",
+  ERR_FALLBACK:     "Error al ejecutar la acción.",
+  LC_TITLE_OVERRIDE: "Requiere override",
+  LC_TITLE_BLOCKED:  "Bloqueado",
+  LC_TITLE_ARCHIVED: "Acceso denegado",
 } as const;
 
 interface CardDetailClientProps {
@@ -43,6 +49,8 @@ interface CardDetailClientProps {
   initialScanResult: ScanValidationResult;
   initialHasBlockingErrors: boolean;
   allowOverrideOnError: boolean;
+  /** Lifecycle gate verdict for this card (phase 2). Gates the action buttons. */
+  lifecycleGate: LifecycleGateResult;
 }
 
 export default function CardDetailClient({
@@ -51,6 +59,7 @@ export default function CardDetailClient({
   initialScanResult,
   initialHasBlockingErrors,
   allowOverrideOnError,
+  lifecycleGate,
 }: CardDetailClientProps) {
   const [card, setCard] = useState<CardWithFields>(initialCard);
   const [scanResult, setScanResult] = useState<ScanValidationResult>(initialScanResult);
@@ -80,14 +89,21 @@ export default function CardDetailClient({
 
   const handleActionClick = useCallback(
     (actionId: string, actionName: string) => {
-      const errorChecks = getErrorLevelChecks(scanResult);
+      const scanErrors = getErrorLevelChecks(scanResult);
+      // For a switched-off card the override is a lifecycle override — surface
+      // its reason in the modal (and thus in the audit trail) ahead of any
+      // scan-validation errors.
+      const errorChecks =
+        lifecycleGate.outcome === "requires_override"
+          ? [buildLifecycleScanCheck(lifecycleGate.status), ...scanErrors]
+          : scanErrors;
       setPendingActionId(actionId);
       setPendingActionName(actionName);
       setModalErrors(errorChecks);
       setActionError(null);
       setShowModal(true);
     },
-    [scanResult],
+    [scanResult, lifecycleGate],
   );
 
   const handleModalConfirm = useCallback(async () => {
@@ -122,8 +138,16 @@ export default function CardDetailClient({
     setModalErrors([]);
   }, []);
 
-  const isHardDisabled = hasBlockingErrors && !allowOverrideOnError;
-  const isWarningMode = hasBlockingErrors && allowOverrideOnError;
+  // Lifecycle gate takes precedence over scan validation on the action buttons:
+  //   archived → hard-disabled (denied), inactive/expired → override or blocked.
+  const lcOutcome = lifecycleGate.outcome;
+  const lcArchived = lcOutcome === "denied_archived";
+  const lcBlocked = lcOutcome === "blocked";
+  const lcOverride = lcOutcome === "requires_override";
+  const lcOff = lcOverride || lcBlocked;
+
+  const isHardDisabled = lcArchived || lcBlocked || (hasBlockingErrors && !allowOverrideOnError);
+  const isWarningMode = !isHardDisabled && (lcOverride || (hasBlockingErrors && allowOverrideOnError));
 
   return (
     <>
@@ -168,6 +192,10 @@ export default function CardDetailClient({
 
         {actions.length > 0 && (
           <div className="self-start rounded-xl border border-border bg-card p-5 lg:min-w-[200px]">
+            {(lcArchived || lcOff) && (
+              <LifecycleActionBanner outcome={lcOutcome} reason={lifecycleGate.reason} />
+            )}
+
             <CardActions
               cardId={card.id}
               actions={actions}
@@ -176,6 +204,8 @@ export default function CardDetailClient({
               warningMode={isWarningMode}
               onActionClick={handleActionClick}
               filterAutoExecute
+              overrideTone={lcOff}
+              hideBanner={lcArchived || lcOff}
             />
 
             {actionError && (
@@ -194,5 +224,52 @@ export default function CardDetailClient({
         )}
       </div>
     </>
+  );
+}
+
+// ─── Lifecycle action banner ──────────────────────────────────────────────────
+
+interface LifecycleActionBannerProps {
+  outcome: LifecycleGateResult["outcome"];
+  reason: string | null;
+}
+
+/**
+ * Explains why the action buttons are gated by the card's lifecycle status.
+ * Archived → red (denied); inactive/expired → orange (override / blocked). These
+ * ARE action-outcome surfaces, so the reserved `--state-*` tokens apply here
+ * (unlike the neutral status badge in the page header).
+ */
+function LifecycleActionBanner({ outcome, reason }: LifecycleActionBannerProps) {
+  const isArchived = outcome === "denied_archived";
+  const title = isArchived
+    ? TEXT.LC_TITLE_ARCHIVED
+    : outcome === "requires_override"
+      ? TEXT.LC_TITLE_OVERRIDE
+      : TEXT.LC_TITLE_BLOCKED;
+  const Icon = isArchived ? AlertCircle : ShieldAlert;
+
+  return (
+    <div
+      role="alert"
+      className={cn(
+        "mb-3 flex items-start gap-2 rounded-md border px-3 py-2 text-xs font-semibold",
+        isArchived
+          ? "bg-state-denied border-state-denied-border text-state-denied-foreground"
+          : "bg-state-override border-state-override-border text-state-override-foreground",
+      )}
+    >
+      <Icon
+        aria-hidden
+        className={cn(
+          "mt-0.5 size-4 shrink-0",
+          isArchived ? "text-state-denied-icon" : "text-state-override-icon",
+        )}
+      />
+      <span>
+        {title}
+        {reason ? ` — ${reason}` : ""}
+      </span>
+    </div>
   );
 }

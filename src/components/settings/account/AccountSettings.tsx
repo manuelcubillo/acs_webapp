@@ -264,7 +264,7 @@ export default function AccountSettings({ tenant, user, role, masterCount }: Acc
     >
       {/* ── Tenant info ──────────────────────────────────────────────────── */}
       <SettingsCard
-        title="Información del tenant"
+        title="Información de la organización"
         description="Nombre y datos de identificación de tu organización."
         footer={
           <>

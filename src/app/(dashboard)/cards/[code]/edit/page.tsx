@@ -14,6 +14,7 @@ import {
 import { buildPhotoReadUrlMap } from "@/lib/dal/photo-urls";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardEditClient from "./CardEditClient";
+import CardLifecycleControls from "@/components/cards/CardLifecycleControls";
 import type { FieldDefinitionShape } from "@/lib/validation/types";
 import type { ValidationRules } from "@/lib/validation/types";
 
@@ -89,22 +90,27 @@ export default async function EditCardPage({ params }: EditCardPageProps) {
       userName={userProfile.name ?? undefined}
       userAvatarUrl={userProfile.avatarUrl}
     >
-      <div className="mx-auto max-w-[600px] rounded-xl border bg-card p-7">
-        <h1 className="mb-1 font-heading text-xl font-extrabold text-foreground">
-          {TEXT.TITLE}
-        </h1>
-        <p className="mb-6 text-sm text-muted-foreground">
-          {TEXT.CODE}{" "}
-          <span className="font-mono font-bold">{decodedCode}</span>
-        </p>
+      <div className="mx-auto flex max-w-[600px] flex-col gap-6">
+        <div className="rounded-xl border bg-card p-7">
+          <h1 className="mb-1 font-heading text-xl font-extrabold text-foreground">
+            {TEXT.TITLE}
+          </h1>
+          <p className="mb-6 text-sm text-muted-foreground">
+            {TEXT.CODE}{" "}
+            <span className="font-mono font-bold">{decodedCode}</span>
+          </p>
 
-        <CardEditClient
-          cardId={card.id}
-          cardCode={decodedCode}
-          fields={fields}
-          initialValues={initialValues}
-          photoReadUrls={photoReadUrls}
-        />
+          <CardEditClient
+            cardId={card.id}
+            cardCode={decodedCode}
+            fields={fields}
+            initialValues={initialValues}
+            photoReadUrls={photoReadUrls}
+          />
+        </div>
+
+        {/* Lifecycle state controls (admin) — activate / deactivate / archive. */}
+        <CardLifecycleControls cardId={card.id} initialStatus={card.status} />
       </div>
     </DashboardShell>
   );

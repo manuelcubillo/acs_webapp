@@ -14,6 +14,10 @@ import { z } from "zod";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import {
+  MIN_ARCHIVE_RETENTION_DAYS,
+  MAX_ARCHIVE_RETENTION_DAYS,
+} from "@/lib/db/schema";
+import {
   actionHandler,
   requireAuth,
   requireAdmin,
@@ -49,6 +53,12 @@ const UpdateTenantSchema = z.object({
 
 const UpdateTenantSettingsSchema = z.object({
   scanMode: z.enum(["camera", "external_reader", "both"]).optional(),
+  archiveRetentionDays: z
+    .number()
+    .int()
+    .min(MIN_ARCHIVE_RETENTION_DAYS)
+    .max(MAX_ARCHIVE_RETENTION_DAYS)
+    .optional(),
 });
 
 // ─── Actions ─────────────────────────────────────────────────────────────────

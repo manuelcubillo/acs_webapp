@@ -47,7 +47,7 @@ Out of scope (for now):
 
 ## Runtime requirements
 
-- **Node.js v20 ONLY.** Node 22 (Homebrew default on macOS) is broken due to an `icu4c` ABI mismatch. Use `/opt/homebrew/opt/node@20/bin/node` or prefix with `PATH="/opt/homebrew/opt/node@20/bin:$PATH"`.
+- **Node.js v24 ONLY.** Node 22 (Homebrew default on macOS) is broken due to an `icu4c` ABI mismatch. Use `/opt/homebrew/opt/node@20/bin/node` or prefix with `PATH="/opt/homebrew/opt/node@20/bin:$PATH"`.
 
 ## Non-negotiable conventions
 

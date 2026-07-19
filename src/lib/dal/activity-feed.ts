@@ -11,7 +11,7 @@
  * in a second query and attached inline for quick card identification.
  */
 
-import { eq, and, desc, inArray, or } from "drizzle-orm";
+import { eq, and, desc, inArray, or, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   actionLogs,
@@ -24,7 +24,7 @@ import {
 } from "@/lib/db/schema";
 import type { ActivityFeedEntry, ActivityFeedOptions, ActivityFeedSummaryField } from "./types";
 import { extractValue } from "./field-values";
-import { signPhotosForRead } from "@/lib/storage/read";
+import { cardPhotoRoute } from "@/lib/storage/photo-routes";
 
 /**
  * Get the activity feed for a tenant's operational dashboard.
@@ -33,6 +33,10 @@ import { signPhotosForRead } from "@/lib/storage/read";
  *   - card code and card type name (for display)
  *   - action name (for action entries)
  *   - summary field values (configured per card type)
+ *   - a thumbnail route for cards that have a photo
+ *
+ * Called on dashboard page load and on manual refresh only — the feed does not
+ * poll. See `src/components/dashboard/ActivityFeed.tsx`.
  *
  * @param tenantId - Tenant UUID.
  * @param options  - Filtering and limit options.
@@ -97,16 +101,18 @@ export async function getActivityFeed(
   const cardTypeIds = [...new Set(rows.map((r) => r.cardTypeId))];
   const cardIds = [...new Set(rows.map((r) => r.cardId))];
 
-  // ── Step 2b: Resolve each card's primary photo → signed thumbnail URL ───────
-  // The photo identifies the card at a glance in the feed. We pick the
-  // lowest-position active photo field per card type, read its stored object
-  // key, and sign it. Photo fields need not be configured as summary fields.
+  // ── Step 2b: Work out which cards have a primary photo ─────────────────────
+  // The photo identifies the card at a glance in the feed. The primary one is
+  // the lowest-position active photo field of the card's type; photo fields
+  // need not be configured as summary fields.
+  //
+  // We only resolve EXISTENCE here, not a URL: the thumbnail is served by the
+  // stable /api/photos/cards/[code] route, which signs per request. Signing
+  // here instead would hand the client a URL that both expires in 15 minutes
+  // and busts its own browser cache on every load.
 
   const photoFieldDefs = await db
-    .select({
-      cardTypeId: fieldDefinitions.cardTypeId,
-      id: fieldDefinitions.id,
-    })
+    .select({ id: fieldDefinitions.id })
     .from(fieldDefinitions)
     .where(
       and(
@@ -114,22 +120,16 @@ export async function getActivityFeed(
         eq(fieldDefinitions.fieldType, "photo"),
         eq(fieldDefinitions.isActive, true),
       ),
-    )
-    .orderBy(fieldDefinitions.position);
+    );
 
-  // cardTypeId → first (lowest-position) photo field definition id.
-  const photoDefByCardType = new Map<string, string>();
-  for (const def of photoFieldDefs) {
-    if (!photoDefByCardType.has(def.cardTypeId)) {
-      photoDefByCardType.set(def.cardTypeId, def.id);
-    }
-  }
-
-  // cardId → signed photo URL. A card only holds values for its own type's
-  // field definitions, so filtering by the primary photo def ids yields at
-  // most one photo row per card.
-  const cardPhotoUrlMap = new Map<string, string>();
-  const photoDefIds = [...new Set(photoDefByCardType.values())];
+  // "Has a photo" means: some active photo field of this card holds a key —
+  // exactly the condition under which /api/photos/cards/[code] finds one to
+  // serve. Do NOT narrow this to the lowest-position photo *definition*: a card
+  // carries no value row for a field left empty, so a card type whose first
+  // photo field is blank and whose second is filled would be marked photo-less
+  // here while the route happily served the second one.
+  const cardsWithPhoto = new Set<string>();
+  const photoDefIds = photoFieldDefs.map((d) => d.id);
 
   if (photoDefIds.length > 0 && cardIds.length > 0) {
     const photoRows = await db
@@ -145,21 +145,18 @@ export async function getActivityFeed(
         ),
       );
 
-    const keyByCard = new Map<string, string>();
     for (const row of photoRows) {
       if (typeof row.valueText === "string" && row.valueText.length > 0) {
-        keyByCard.set(row.cardId, row.valueText);
+        cardsWithPhoto.add(row.cardId);
       }
-    }
-
-    const signed = await signPhotosForRead([...keyByCard.values()]);
-    for (const [cardId, key] of keyByCard) {
-      const url = signed.get(key);
-      if (url) cardPhotoUrlMap.set(cardId, url);
     }
   }
 
   // ── Step 3: Load configured summary field definitions per card type ─────────
+  // Photo fields are excluded: a photo's value is an object key, which the row
+  // would print as raw text. The card's photo is already shown as a thumbnail.
+  // `getFeedSummaryFieldConfig` applies the same rule for the client-built
+  // rows — the two must agree or a refresh will reshuffle the feed.
 
   const summaryFieldDefs = await db
     .select({
@@ -178,6 +175,7 @@ export async function getActivityFeed(
       and(
         eq(cardTypeSummaryFields.tenantId, tenantId),
         inArray(cardTypeSummaryFields.cardTypeId, cardTypeIds),
+        ne(fieldDefinitions.fieldType, "photo"),
       ),
     )
     .orderBy(cardTypeSummaryFields.position);
@@ -271,7 +269,9 @@ export async function getActivityFeed(
       cardTypeId: row.cardTypeId,
       actionDefinitionId: row.actionDefinitionId,
       actionName: row.actionName ?? null,
-      cardPhotoUrl: cardPhotoUrlMap.get(row.cardId) ?? null,
+      cardPhotoUrl: cardsWithPhoto.has(row.cardId)
+        ? cardPhotoRoute(row.cardCode)
+        : null,
       executedAt: row.executedAt,
       executedBy: row.executedBy,
       metadata: row.metadata,

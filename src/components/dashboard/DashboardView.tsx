@@ -5,10 +5,12 @@
  *
  * Main client-side orchestrator for the operational dashboard.
  *
- * ALL state, handlers and effects are byte-identical to the previous version —
- * the scan pipeline (executeScanWithAutoActionsAction / resumeAutoActionsAction),
- * useExternalScanner integration and the history DAL are untouched. Only the
- * JSX presentation is rebuilt on token-driven shadcn primitives.
+ * Owns the activity feed's entries. The feed does not poll: every mutation this
+ * view performs (scan, resumed auto-actions, manual action) appends the rows the
+ * server just logged, built locally from the data the action already returned.
+ * `refreshFeed` — the feed's Refrescar button — is the only path back to the
+ * server for feed data. See `src/lib/dashboard/feed-entries.ts` for the mirror
+ * of the server's logging rules, and keep the two in step.
  *
  * Layout:
  *   ┌──────────────────────────────────────────────────┐
@@ -20,7 +22,7 @@
  *   └──────────────────────┴───────────────────────────┘
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 
 import DashboardSearchBar from "./DashboardSearchBar";
 import ActiveCardZone from "./ActiveCardZone";
@@ -36,10 +38,21 @@ import {
   resumeAutoActionsAction,
 } from "@/lib/actions/cards";
 import { getActionsForCardTypeAction, executeActionAction } from "@/lib/actions/actions";
+import { getActivityFeedAction } from "@/lib/actions/dashboard-settings";
+import {
+  buildScanEntries,
+  buildActionEntries,
+  prependEntries,
+  type FeedBuilderConfig,
+  type FeedVisibility,
+} from "@/lib/dashboard/feed-entries";
 import {
   hasErrorLevelFailures,
   getErrorLevelChecks,
 } from "@/lib/validation/scan-validator";
+// Import the gate helpers from the pure module (not the barrel) so the client
+// bundle never pulls in the DB-backed lifecycle service.
+import { buildLifecycleScanCheck } from "@/lib/server/lifecycle/scan-gate";
 import type {
   ScanWithAutoActionsResult,
   ActivityFeedEntry,
@@ -48,6 +61,7 @@ import type {
   CardWithFields,
   AutoActionResult,
 } from "@/lib/dal";
+import type { LifecycleGateResult } from "@/lib/server/lifecycle/scan-gate";
 import type { ScanValidationResult, ScanValidationCheck } from "@/lib/validation/scan-validator";
 
 const TEXT = {
@@ -59,11 +73,16 @@ const TEXT = {
   ERR_ACTION:    "Acción",
 } as const;
 
+/** Mirrors the DAL default, applied when a tenant has no settings row yet. */
+const DEFAULT_FEED_LIMIT = 20;
+
 interface DashboardViewProps {
   initialFeedEntries: ActivityFeedEntry[];
   settings: DashboardSettings | null;
   allowOverrideOnError: boolean;
   kpiData: DashboardKpiData;
+  /** Static per-tenant data for building feed rows client-side. */
+  feedConfig: FeedBuilderConfig;
 }
 
 export default function DashboardView({
@@ -71,12 +90,14 @@ export default function DashboardView({
   settings,
   allowOverrideOnError,
   kpiData,
+  feedConfig,
 }: DashboardViewProps) {
   // ── State (UNCHANGED from previous implementation) ────────────────────────
   const [scanResult, setScanResult] = useState<ScanWithAutoActionsResult | null>(null);
   const [activeCard, setActiveCard] = useState<CardWithFields | null>(null);
   const [hasBlockingErrors, setHasBlockingErrors] = useState(false);
   const [finalValidationResult, setFinalValidationResult] = useState<ScanValidationResult | null>(null);
+  const [lifecycleGate, setLifecycleGate] = useState<LifecycleGateResult | null>(null);
 
   const [manualActions, setManualActions] = useState<ActionDefinitionWithField[]>([]);
 
@@ -86,7 +107,12 @@ export default function DashboardView({
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
 
-  const [feedKey, setFeedKey] = useState(0);
+  // ── Activity feed ─────────────────────────────────────────────────────────
+  // Owned here, not inside ActivityFeed, so a scan can append its own rows
+  // without asking the server. Only refreshFeed goes back to it.
+  const [feedEntries, setFeedEntries] = useState<ActivityFeedEntry[]>(initialFeedEntries);
+  const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
+  const [lastFeedRefreshAt, setLastFeedRefreshAt] = useState<Date>(() => new Date());
 
   // Auto-action modal state
   const [showAutoActionModal, setShowAutoActionModal] = useState(false);
@@ -104,13 +130,54 @@ export default function DashboardView({
   const [pendingManualActionName, setPendingManualActionName] = useState<string>("");
   const [isConfirmingManualAction, setIsConfirmingManualAction] = useState(false);
 
-  // ── Handlers (UNCHANGED) ──────────────────────────────────────────────────
+  const visibility = useMemo<FeedVisibility>(
+    () => ({
+      showScanEntries: settings?.showScanEntries ?? true,
+      showActionEntries: settings?.showActionEntries ?? true,
+      feedLimit: settings?.feedLimit ?? DEFAULT_FEED_LIMIT,
+    }),
+    [settings],
+  );
+
+  const appendFeedEntries = useCallback(
+    (entries: ActivityFeedEntry[]) => {
+      setFeedEntries((current) =>
+        prependEntries(current, entries, visibility.feedLimit),
+      );
+    },
+    [visibility.feedLimit],
+  );
+
+  /**
+   * The only path back to the server for feed data. Replaces the list wholesale:
+   * server rows are the truth and already contain the scans we appended locally,
+   * so the locally built rows they displace need no reconciling.
+   */
+  const refreshFeed = useCallback(async () => {
+    setIsRefreshingFeed(true);
+    try {
+      const result = await getActivityFeedAction({
+        limit: visibility.feedLimit,
+        includeScanEntries: visibility.showScanEntries,
+        includeActionEntries: visibility.showActionEntries,
+      });
+      if (result.success) {
+        setFeedEntries(result.data);
+        setLastFeedRefreshAt(new Date());
+      }
+    } finally {
+      setIsRefreshingFeed(false);
+    }
+  }, [visibility]);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleScanResult = useCallback(async (data: ScanWithAutoActionsResult) => {
     setScanResult(data);
     setActiveCard(data.card);
     setHasBlockingErrors(data.hasBlockingErrors);
     setFinalValidationResult(data.finalValidationResult);
+    setLifecycleGate(data.lifecycleGate);
 
     if (data.pausedForConfirmation && data.pendingAutoActionIds) {
       setCompletedAutoActions(data.autoActions);
@@ -121,8 +188,15 @@ export default function DashboardView({
       setShowAutoActionModal(true);
     }
 
-    setFeedKey((k) => k + 1);
-  }, []);
+    appendFeedEntries(
+      buildScanEntries({
+        card: data.card,
+        autoActions: data.autoActions,
+        config: feedConfig,
+        visibility,
+      }),
+    );
+  }, [appendFeedEntries, feedConfig, visibility]);
 
   const handleScan = useCallback(async (code: string) => {
     setIsScanning(true);
@@ -134,6 +208,7 @@ export default function DashboardView({
         setScanError(result.error);
         setScanResult(null);
         setActiveCard(null);
+        setLifecycleGate(null);
         return;
       }
 
@@ -160,21 +235,38 @@ export default function DashboardView({
         overrideValidationErrors: pauseValidationErrors.map((e) => e.message),
       });
 
-      
-      
       if (resumeResult.success) {
-        // avoid checking again the card
+        // Deliberately not handleScanResult: resuming logs no scan row, and
+        // re-running the scan pipeline would re-check the card for nothing.
         setActiveCard(resumeResult.data.card);
-        //await handleScanResult(resumeResult.data);
+        setLifecycleGate(resumeResult.data.lifecycleGate);
+        // `autoActions` holds only the actions this resume ran, so the rows
+        // already appended for the scan are not duplicated. They carry the
+        // override badge: resumeAutoActionsAction executes with
+        // operatorOverride: true.
+        appendFeedEntries(
+          buildActionEntries({
+            card: resumeResult.data.card,
+            autoActions: resumeResult.data.autoActions,
+            config: feedConfig,
+            visibility,
+            operatorOverride: true,
+          }),
+        );
       } else {
         setManualActionError(resumeResult.error ?? TEXT.ERR_RESUME);
       }
-
-
     } finally {
       setIsResumingAutoActions(false);
     }
-  }, [activeCard, pendingAutoActionIds, pauseValidationErrors, handleScanResult]);
+  }, [
+    activeCard,
+    pendingAutoActionIds,
+    pauseValidationErrors,
+    appendFeedEntries,
+    feedConfig,
+    visibility,
+  ]);
 
   const handleAutoActionStop = useCallback(() => {
     setShowAutoActionModal(false);
@@ -202,15 +294,32 @@ export default function DashboardView({
     }
 
     const cardResult = await getCardByCodeAction(activeCard.code);
-    if (cardResult.success) {
-      setActiveCard(cardResult.data.card);
-      const newScanResult = cardResult.data.scanResult;
-      setFinalValidationResult(newScanResult);
-      setHasBlockingErrors(hasErrorLevelFailures(newScanResult));
-    }
+    if (!cardResult.success) return;
 
-    setFeedKey((k) => k + 1);
-  }, [activeCard]);
+    setActiveCard(cardResult.data.card);
+    const newScanResult = cardResult.data.scanResult;
+    setFinalValidationResult(newScanResult);
+    setHasBlockingErrors(hasErrorLevelFailures(newScanResult));
+
+    // One action ran, so one row was logged. Built from the refreshed card so
+    // its summary fields show post-action values, as a server-built row would.
+    const definition = manualActions.find((a) => a.id === actionId);
+    appendFeedEntries(
+      buildActionEntries({
+        card: cardResult.data.card,
+        autoActions: [
+          {
+            actionDefinitionId: actionId,
+            actionName: definition?.name ?? TEXT.ERR_ACTION,
+            success: true,
+          },
+        ],
+        config: feedConfig,
+        visibility,
+        operatorOverride: withOverride,
+      }),
+    );
+  }, [activeCard, manualActions, appendFeedEntries, feedConfig, visibility]);
 
   const handleManualAction = useCallback(async (actionId: string) => {
     if (!activeCard || isExecutingActionId) return;
@@ -221,6 +330,26 @@ export default function DashboardView({
       const preCheck = await validateBeforeActionAction(activeCard.id);
       if (!preCheck.success) {
         setManualActionError(preCheck.error ?? TEXT.ERR_VALIDATE);
+        return;
+      }
+
+      // Lifecycle gate takes precedence over scan validation: a switched-off or
+      // archived card is denied/blocked or requires an explicit override,
+      // regardless of scan-validation state. Server-side enforcement in
+      // executeActionAction is the source of truth; this pre-check is for UX.
+      const gate = preCheck.data.lifecycleGate;
+      if (gate.outcome === "denied_archived" || gate.outcome === "blocked") {
+        setManualActionError(gate.reason ?? TEXT.ERR_EXEC);
+        return;
+      }
+      if (gate.outcome === "requires_override") {
+        const action = manualActions.find((a) => a.id === actionId);
+        // Surface the lifecycle reason (plus any scan errors) in the modal.
+        const lcCheck = buildLifecycleScanCheck(gate.status);
+        setPendingManualActionId(actionId);
+        setPendingManualActionName(action?.name ?? TEXT.ERR_ACTION);
+        setManualActionModalErrors([lcCheck, ...getErrorLevelChecks(preCheck.data.scanResult)]);
+        setShowManualActionModal(true);
         return;
       }
 
@@ -309,9 +438,10 @@ export default function DashboardView({
           </div>
         )}
 
-        {/* 2. KPI row */}
+        {/* 2. KPI row 
         <DashboardKpis data={kpiData} />
-
+        */}
+        
         {/* 3. Two-column work area */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
           <section aria-label={TEXT.COLUMN_ACTIVE} className="flex flex-col gap-3">
@@ -327,6 +457,7 @@ export default function DashboardView({
               hasBlockingErrors={hasBlockingErrors}
               allowOverrideOnError={allowOverrideOnError}
               finalValidationResult={finalValidationResult}
+              lifecycleGate={lifecycleGate}
               onManualAction={handleManualAction}
               isExecutingActionId={isExecutingActionId}
               actionError={manualActionError}
@@ -334,10 +465,11 @@ export default function DashboardView({
           </section>
 
           <ActivityFeed
-            key={feedKey}
-            initialEntries={initialFeedEntries}
+            entries={feedEntries}
             settings={settings}
-            refreshIntervalMs={15000}
+            onRefresh={refreshFeed}
+            isRefreshing={isRefreshingFeed}
+            lastRefreshedAt={lastFeedRefreshAt}
           />
         </div>
       </div>

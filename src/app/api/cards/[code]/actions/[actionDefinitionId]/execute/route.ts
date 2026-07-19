@@ -16,17 +16,24 @@
  *     "metadata":   { "location": "Gate A" }   // optional, free-form
  *   }
  *
+ * Lifecycle gate (phase 2): an archived card is denied (403); a switched-off
+ * card (inactive/expired) is blocked (422). The external channel has no
+ * interactive operator, so there is no override path here — the gate is
+ * resolved with override disabled, collapsing off-states to a plain block.
+ *
  * Response:
  *   201 { success: true,  data: ActionLog }
  *   400 { success: false, error: "Invalid request body" }
  *   401 { success: false, error: "Missing x-tenant-id header" }
+ *   403 { success: false, error: "El carnet está archivado", code: "CARD_ARCHIVED" }
  *   404 { success: false, error: "Card ... not found" | "ActionDefinition ... not found" }
- *   422 { success: false, error: "..." }
+ *   422 { success: false, error: "El carnet está inactivo", code: "CARD_INACTIVE" }
  */
 
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { getCardByCode, executeAction } from "@/lib/dal";
+import { resolveLifecycleGate } from "@/lib/server/lifecycle";
 import { getTenantFromHeader } from "@/lib/api/auth";
 import { routeHandler, apiSuccess, apiError } from "@/lib/api/response";
 
@@ -62,6 +69,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Resolve card by code + tenant (verifies card exists and belongs to tenant).
     const card = await getCardByCode(code, tenantId);
+
+    // Lifecycle gate. No interactive override on the device channel, so resolve
+    // with override disabled: archived → hard denial, inactive/expired → block.
+    const gate = resolveLifecycleGate(card.status, false);
+    if (gate.outcome === "denied_archived") {
+      return apiError(gate.reason ?? "El carnet está archivado", 403, "CARD_ARCHIVED");
+    }
+    if (gate.outcome === "blocked") {
+      return apiError(gate.reason ?? "El carnet está inactivo", 422, "CARD_INACTIVE");
+    }
 
     // Log the action execution.
     const log = await executeAction({

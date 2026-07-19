@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback, useTransition } from "react";
 import { Filter, X } from "lucide-react";
 
 import CardSearch from "./CardSearch";
+import CardStatusFilter from "./CardStatusFilter";
 import CardTableView from "./CardTableView";
 import CardProfileView from "./CardProfileView";
 import CardViewToggle, { type ViewMode } from "./CardViewToggle";
@@ -29,6 +30,7 @@ import type {
   PaginatedResult,
   FieldFilter,
   CommonFieldDefinition,
+  CardSearchStatus,
 } from "@/lib/dal/types";
 import { searchCardsAction } from "@/lib/actions/cards";
 import { getCommonFieldDefinitionsAction } from "@/lib/actions/action-history";
@@ -55,6 +57,7 @@ interface CardListProps {
   initialCardTypeId: string;
   scanMode: ScanMode;
   initialSearch?: string;
+  initialStatus?: CardSearchStatus;
   summaryFieldIds?: string[];
 }
 
@@ -65,6 +68,7 @@ export default function CardList({
   initialCardTypeId,
   scanMode,
   initialSearch = "",
+  initialStatus = "all",
   summaryFieldIds = [],
 }: CardListProps) {
   const [selectedTypeIds, setSelectedTypeIds] = useState<string[]>([initialCardTypeId]);
@@ -79,6 +83,7 @@ export default function CardList({
   const [isPending, startTransition] = useTransition();
 
   const [codeSearch, setCodeSearch] = useState(initialSearch);
+  const [statusFilter, setStatusFilter] = useState<CardSearchStatus>(initialStatus);
   const [fieldFilters, setFieldFilters] = useState<FieldFilter[]>([]);
   const [pendingFieldFilters, setPendingFieldFilters] = useState<FieldFilter[]>([]);
   const [filterFields, setFilterFields] = useState<CommonFieldDefinition[]>([]);
@@ -99,12 +104,20 @@ export default function CardList({
   }, [selectedTypeIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchCards = useCallback(
-    (typeIds: string[], code: string, filters: FieldFilter[], page: number, ps: number) => {
+    (
+      typeIds: string[],
+      code: string,
+      filters: FieldFilter[],
+      page: number,
+      ps: number,
+      status: CardSearchStatus,
+    ) => {
       startTransition(async () => {
         const result = await searchCardsAction({
           cardTypeIds: typeIds,
           codeContains: code || undefined,
           filters: filters.length > 0 ? filters : undefined,
+          status,
           limit: ps,
           offset: (page - 1) * ps,
         });
@@ -131,39 +144,53 @@ export default function CardList({
   useEffect(() => {
     if (!hasMounted) { setHasMounted(true); return; }
     setCurrentPage(1);
-    fetchCards(selectedTypeIds, codeSearch, [], 1, pageSize);
+    fetchCards(selectedTypeIds, codeSearch, [], 1, pageSize, statusFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTypeIds.join(",")]);
 
   const handleSearch = (q: string) => {
     setCodeSearch(q);
     setCurrentPage(1);
-    fetchCards(selectedTypeIds, q, fieldFilters, 1, pageSize);
+    fetchCards(selectedTypeIds, q, fieldFilters, 1, pageSize, statusFilter);
+  };
+
+  const handleStatusChange = (next: CardSearchStatus) => {
+    setStatusFilter(next);
+    setCurrentPage(1);
+    fetchCards(selectedTypeIds, codeSearch, fieldFilters, 1, pageSize, next);
+    // Reflect the choice in the URL (shareable) without a server refetch —
+    // mirrors how FlashMessage manages query params via history.replaceState.
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (next === "all") url.searchParams.delete("status");
+      else url.searchParams.set("status", next);
+      window.history.replaceState(null, "", url.toString());
+    }
   };
 
   const handleApplyFilters = () => {
     setFieldFilters(pendingFieldFilters);
     setCurrentPage(1);
-    fetchCards(selectedTypeIds, codeSearch, pendingFieldFilters, 1, pageSize);
+    fetchCards(selectedTypeIds, codeSearch, pendingFieldFilters, 1, pageSize, statusFilter);
   };
 
   const handleClearFilters = () => {
     setPendingFieldFilters([]);
     setFieldFilters([]);
     setCurrentPage(1);
-    fetchCards(selectedTypeIds, codeSearch, [], 1, pageSize);
+    fetchCards(selectedTypeIds, codeSearch, [], 1, pageSize, statusFilter);
   };
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
-    fetchCards(selectedTypeIds, codeSearch, fieldFilters, page, pageSize);
+    fetchCards(selectedTypeIds, codeSearch, fieldFilters, page, pageSize, statusFilter);
   };
 
   const handleViewChange = (newView: ViewMode) => {
     setView(newView);
     const newPageSize = newView === "table" ? PAGE_SIZE_TABLE : PAGE_SIZE_GALLERY;
     setCurrentPage(1);
-    fetchCards(selectedTypeIds, codeSearch, fieldFilters, 1, newPageSize);
+    fetchCards(selectedTypeIds, codeSearch, fieldFilters, 1, newPageSize, statusFilter);
   };
 
   const activeFilterCount = fieldFilters.length;
@@ -208,6 +235,8 @@ export default function CardList({
             onSearch={handleSearch}
           />
         </div>
+
+        <CardStatusFilter value={statusFilter} onChange={handleStatusChange} />
 
         {filterFields.length > 0 && (
           <Button

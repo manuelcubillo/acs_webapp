@@ -18,6 +18,7 @@ import {
 import { getCardTypeWithFullSchema, listCardTypes } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardTypeList from "@/components/card-types/CardTypeList";
+import FlashMessage from "@/components/shared/FlashMessage";
 import { Button } from "@/components/ui/button";
 import type { CardTypeWithFullSchema } from "@/lib/dal";
 
@@ -31,7 +32,27 @@ const TEXT = {
   BTN_NEW:      "Nuevo tipo",
 } as const;
 
-export default async function CardTypesPage() {
+/**
+ * Resolve a lifecycle redirect flash code to a message. `type-archived` carries
+ * the cascade size in `n` (how many cards were archived with the type).
+ */
+function resolveFlash(flash?: string, n?: string): string | undefined {
+  if (flash !== "type-archived") return undefined;
+  const count = Number(n);
+  if (!Number.isFinite(count) || count <= 0) {
+    return "Tipo de carnet archivado. Se ha movido a la papelera.";
+  }
+  const cards = count === 1 ? "carnet" : "carnets";
+  return `Tipo de carnet archivado, junto con ${count} ${cards}.`;
+}
+
+interface CardTypesPageProps {
+  searchParams: Promise<{ flash?: string; n?: string }>;
+}
+
+export default async function CardTypesPage({
+  searchParams,
+}: CardTypesPageProps) {
   // ── Auth guard ────────────────────────────────────────────────────────────
   let context;
   try {
@@ -43,6 +64,9 @@ export default async function CardTypesPage() {
 
   const { tenantId, role } = context;
   const isMaster = role === "master";
+
+  const { flash, n } = await searchParams;
+  const flashMessage = resolveFlash(flash, n);
 
   // ── Data fetching ─────────────────────────────────────────────────────────
   // listCardTypes returns CardType[], but we need full schema for the card stats.
@@ -68,6 +92,9 @@ export default async function CardTypesPage() {
       userName={userProfile.name ?? undefined}
       userAvatarUrl={userProfile.avatarUrl}
     >
+      {/* One-shot confirmation after a lifecycle redirect. */}
+      <FlashMessage message={flashMessage} />
+
       {/* Page header */}
       <div className="mb-6 flex items-center justify-between">
         <div>

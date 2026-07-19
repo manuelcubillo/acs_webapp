@@ -11,6 +11,12 @@
  *   to preserve type integrity at the database level.
  * - field_definitions are soft-deleted (is_active = false), never hard-deleted,
  *   to maintain referential integrity with existing field_values.
+ *   WARNING: this invariant is now enforced by the DAL ONLY. The FKs pointing at
+ *   field_definitions / action_definitions were RESTRICT until 2026-07-17; they
+ *   are CASCADE now so that the archive purge job can physically delete a whole
+ *   card type in one statement. A hard delete of a field_definition therefore no
+ *   longer errors — it silently takes its field_values with it. Never hard-delete
+ *   one outside the purge path. See ADR 2026-07-17-card-lifecycle-archiving.md.
  * - Photos are stored as object keys (not URLs) in value_text. Keys are
  *   resolved to short-lived signed URLs at render time. See ADR
  *   2026-04-27-photo-storage-r2-minio.md.
@@ -29,8 +35,22 @@ import {
   uuid,
   index,
   unique,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { user } from "./auth";
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+/**
+ * Default trash retention, in days, applied to every new tenant.
+ * Masters override it per tenant via `tenants.archive_retention_days`.
+ */
+export const DEFAULT_ARCHIVE_RETENTION_DAYS = 30;
+
+/** Accepted range for `tenants.archive_retention_days`. */
+export const MIN_ARCHIVE_RETENTION_DAYS = 1;
+export const MAX_ARCHIVE_RETENTION_DAYS = 365;
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
@@ -57,11 +77,27 @@ export const actionTypeEnum = pgEnum("action_type", [
   "uncheck",
 ]);
 
-/** Lifecycle status of an issued card */
-export const cardStatusEnum = pgEnum("card_status", [
+/**
+ * Lifecycle status shared by cards and card types.
+ *
+ * - active:   operational.
+ * - inactive: switched off operationally. Stays forever, never purged.
+ * - archived: in the trash. Countdown starts at archived_at; once the tenant's
+ *             archive_retention_days elapses the row is physically deleted.
+ *             Excluded from normal management lists and searches.
+ * - expired:  cards only — card_types carries a CHECK forbidding this value.
+ *             Reserved for a future automatic expiry mechanism; nothing sets it
+ *             today. Every rule in the lifecycle service treats it exactly like
+ *             `inactive`.
+ *
+ * Replaces the former `card_status` enum (which also had an unused `suspended`)
+ * and the former `card_types.is_active` boolean. See ADR
+ * 2026-07-17-card-lifecycle-archiving.md.
+ */
+export const lifecycleStatusEnum = pgEnum("lifecycle_status", [
   "active",
   "inactive",
-  "suspended",
+  "archived",
   "expired",
 ]);
 
@@ -92,10 +128,18 @@ export const scanModeEnum = pgEnum("scan_mode", [
 
 /**
  * Type of entry in the action_logs table.
- * - scan:   A card was scanned (no field mutation). Logged for activity feed.
- * - action: An action was executed on a card (field mutation occurred).
+ * - scan:      A card was scanned (no field mutation). Logged for activity feed.
+ * - action:    An action was executed on a card (field mutation occurred).
+ * - lifecycle: A card changed lifecycle status (activate / deactivate / archive
+ *              / restore). actionDefinitionId is null; metadata carries
+ *              from/to statuses. Card types are NOT audited — they only bump
+ *              updated_at.
+ *
+ * `lifecycle` entries are deliberately NOT surfaced by the activity feed or the
+ * /history view: both filter explicitly to scan|action. Exposing them is UI work
+ * belonging to a later phase.
  */
-export const logTypeEnum = pgEnum("log_type", ["scan", "action"]);
+export const logTypeEnum = pgEnum("log_type", ["scan", "action", "lifecycle"]);
 
 /** Kind of visual design template: badge-sized card or passbook-style pass. */
 export const designKindEnum = pgEnum("design_kind", ["card", "passbook"]);
@@ -128,13 +172,33 @@ export const tenants = pgTable("tenants", {
    * exposed in the tenant settings UI.
    */
   scanStrategy: text("scan_strategy").notNull().default("standard"),
+  /**
+   * How many days an archived card / card type stays in the trash before it is
+   * physically deleted by the purge job. Master-editable per tenant; there is no
+   * platform-wide global (this app has no super-admin — `master` is a per-tenant
+   * role, so a cross-tenant setting would have no coherent owner).
+   *
+   * Validated to 1..365 at the Server Action boundary.
+   */
+  archiveRetentionDays: integer("archive_retention_days")
+    .notNull()
+    .default(DEFAULT_ARCHIVE_RETENTION_DAYS),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 // ─── Card Types ──────────────────────────────────────────────────────────────
 
-/** Template defining a type of card (e.g. "Employee Badge", "Visitor Pass") */
+/**
+ * Template defining a type of card (e.g. "Employee Badge", "Visitor Pass")
+ *
+ * Lifecycle: `status` replaced the former `is_active` boolean (true -> 'active',
+ * false -> 'inactive'). Archiving a card type cascades to all its cards — see
+ * `src/lib/server/lifecycle/card-types.ts`.
+ *
+ * Card types are never `expired` (that state belongs to cards only), which the
+ * CHECK below enforces at the database level since the enum is shared.
+ */
 export const cardTypes = pgTable(
   "card_types",
   {
@@ -144,11 +208,35 @@ export const cardTypes = pgTable(
       .references(() => tenants.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description"),
-    isActive: boolean("is_active").notNull().default(true),
+    status: lifecycleStatusEnum("status").notNull().default("active"),
+    /** When this card type entered the trash. Null unless status = 'archived'. */
+    archivedAt: timestamp("archived_at"),
+    /** Who archived it. Null unless status = 'archived'. */
+    archivedBy: text("archived_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    /** Status to return to on restore. Null unless status = 'archived'. */
+    statusBeforeArchive: lifecycleStatusEnum("status_before_archive"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
-  (table) => [index("card_types_tenant_id_idx").on(table.tenantId)],
+  (table) => [
+    index("card_types_tenant_id_idx").on(table.tenantId),
+    index("card_types_tenant_status_idx").on(table.tenantId, table.status),
+    /** Supports the purge job's scan for expired trash. */
+    index("card_types_archived_at_idx")
+      .on(table.archivedAt)
+      .where(sql`${table.archivedAt} IS NOT NULL`),
+    /** `expired` is a card-only state. */
+    check("card_types_no_expired_ck", sql`${table.status} <> 'expired'`),
+    /** Trash metadata is present exactly when archived, and never points at 'archived'. */
+    check(
+      "card_types_archive_metadata_ck",
+      sql`(${table.status} = 'archived') = (${table.archivedAt} IS NOT NULL)
+          AND (${table.status} = 'archived') = (${table.statusBeforeArchive} IS NOT NULL)
+          AND (${table.statusBeforeArchive} IS NULL OR ${table.statusBeforeArchive} <> 'archived')`,
+    ),
+  ],
 );
 
 // ─── Field Definitions ───────────────────────────────────────────────────────
@@ -219,7 +307,27 @@ export const cards = pgTable(
     tenantId: uuid("tenant_id")
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
-    status: cardStatusEnum("status").notNull().default("active"),
+    status: lifecycleStatusEnum("status").notNull().default("active"),
+    /** When this card entered the trash. Null unless status = 'archived'. */
+    archivedAt: timestamp("archived_at"),
+    /** Who archived it. Null unless status = 'archived'. */
+    archivedBy: text("archived_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    /** Status to return to on restore. Null unless status = 'archived'. */
+    statusBeforeArchive: lifecycleStatusEnum("status_before_archive"),
+    /**
+     * Set only when this card was archived as a side effect of archiving its
+     * card type. Restoring that card type restores exactly the cards carrying
+     * its id here, leaving individually-archived cards in the trash.
+     *
+     * ON DELETE SET NULL rather than CASCADE: purging the card type must not
+     * drag along cards that outlived it via restore.
+     */
+    archivedViaTypeId: uuid("archived_via_type_id").references(
+      () => cardTypes.id,
+      { onDelete: "set null" },
+    ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -231,6 +339,21 @@ export const cards = pgTable(
     index("cards_tenant_id_idx").on(table.tenantId),
     index("cards_card_type_id_idx").on(table.cardTypeId),
     index("cards_tenant_status_idx").on(table.tenantId, table.status),
+    /** Supports the purge job's scan for expired trash. */
+    index("cards_archived_at_idx")
+      .on(table.archivedAt)
+      .where(sql`${table.archivedAt} IS NOT NULL`),
+    /** Supports restoring a card type's cascade. */
+    index("cards_archived_via_type_id_idx")
+      .on(table.archivedViaTypeId)
+      .where(sql`${table.archivedViaTypeId} IS NOT NULL`),
+    /** Trash metadata is present exactly when archived, and never points at 'archived'. */
+    check(
+      "cards_archive_metadata_ck",
+      sql`(${table.status} = 'archived') = (${table.archivedAt} IS NOT NULL)
+          AND (${table.status} = 'archived') = (${table.statusBeforeArchive} IS NOT NULL)
+          AND (${table.statusBeforeArchive} IS NULL OR ${table.statusBeforeArchive} <> 'archived')`,
+    ),
   ],
 );
 
@@ -259,7 +382,7 @@ export const fieldValues = pgTable(
       .references(() => cards.id, { onDelete: "cascade" }),
     fieldDefinitionId: uuid("field_definition_id")
       .notNull()
-      .references(() => fieldDefinitions.id, { onDelete: "restrict" }),
+      .references(() => fieldDefinitions.id, { onDelete: "cascade" }),
     valueText: text("value_text"),
     valueNumber: doublePrecision("value_number"),
     valueBoolean: boolean("value_boolean"),
@@ -307,7 +430,7 @@ export const actionDefinitions = pgTable(
     /** The field this action reads/writes. Must match actionType field type compatibility. */
     targetFieldDefinitionId: uuid("target_field_definition_id")
       .notNull()
-      .references(() => fieldDefinitions.id, { onDelete: "restrict" }),
+      .references(() => fieldDefinitions.id, { onDelete: "cascade" }),
     /**
      * Action parameters.
      * increment/decrement: { amount: number } (default amount = 1)
@@ -365,7 +488,7 @@ export const scanValidations = pgTable(
     /** The field whose current value is evaluated by this rule */
     fieldDefinitionId: uuid("field_definition_id")
       .notNull()
-      .references(() => fieldDefinitions.id, { onDelete: "restrict" }),
+      .references(() => fieldDefinitions.id, { onDelete: "cascade" }),
     /**
      * Rule identifier matching a key in SCAN_RULE_EVALUATORS.
      * Examples: "boolean_is_true", "number_gt", "date_after"
@@ -427,7 +550,7 @@ export const actionLogs = pgTable(
      */
     actionDefinitionId: uuid("action_definition_id").references(
       () => actionDefinitions.id,
-      { onDelete: "restrict" },
+      { onDelete: "cascade" },
     ),
     /** Distinguishes scan-only entries from action execution entries. */
     logType: logTypeEnum("log_type").notNull().default("action"),

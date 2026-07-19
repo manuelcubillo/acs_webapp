@@ -1,6 +1,6 @@
 # Module: actions
 
-**Last updated**: 2026-04-19 · **Last feature**: documentation sync against source code
+**Last updated**: 2026-07-17 · **Last feature**: lifecycle gate on manual + auto action execution (phase 2)
 
 ## Responsibility
 
@@ -78,6 +78,8 @@ Called when operator confirms the modal (`pausedForConfirmation=true` was return
 
 Called from `CardActions` (card detail page) and `DashboardView` (active card zone manual actions). Returns `{ success, data: { previousValue, newValue }, ... }`. UI re-renders with the new value and re-evaluates scan validations client-side.
 
+**Lifecycle gate (phase 2, server-side):** before executing, it loads the card's status (`getCardLifecycleStatus`) and runs `resolveLifecycleGate` (see `modules/cards.md`). `archived` → `CardArchivedError` (403); `inactive`/`expired` with override off → `LifecycleBlockedError` (422); with override on but no `operatorOverride` flag → `OverrideRequiredError` (422, client opens the override modal and retries); with the flag → executes and appends the lifecycle reason to `override_validation_errors`. This is a genuine server-side block — distinct from scan validations, which never block (constraint #9). The clients pre-check via `validateBeforeActionAction` (now returns `lifecycleGate`) for UX, but the server is the source of truth.
+
 ## Extension points
 
 - **New action type** → extend `action_type` enum, add handler in `executeAction`, update `ActionsStep` config UI, enforce new field-type compatibility rule.
@@ -100,5 +102,6 @@ Called from `CardActions` (card detail page) and `DashboardView` (active card zo
 
 ## Recent changes
 
+- 2026-07-17 — Phase-2 lifecycle gate. `executeActionAction` enforces `resolveLifecycleGate` server-side (archived → `CardArchivedError` 403; inactive/expired → `LifecycleBlockedError` / `OverrideRequiredError` 422). The operational pipeline denies archived (no auto-actions, scan still logged) and pauses/blocks inactive/expired via a synthetic scan check. New error classes in `src/lib/api/errors.ts`. External `execute` route gates too (archived 403, off 422, no interactive override). See `modules/cards.md` and ADR `2026-07-17-card-lifecycle-scan-behaviour.md`.
 - 2026-04-19 — Initial extraction from technical handoff + memory context about auto-action sequencing and override flow.
 - 2026-04-19 — Synchronized documentation against source code: added `logScanEntry`, `executeScanWithAutoActionsAction`, `resumeAutoActionsAction`; corrected operational scan flow with re-validation detail; clarified `is_auto_execute` flag behavior.

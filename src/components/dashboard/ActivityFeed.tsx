@@ -1,24 +1,29 @@
 "use client";
 
 /**
- * ActivityFeed — live operational feed (scans + actions).
+ * ActivityFeed — operational feed (scans + actions).
  *
- * Behavior preserved EXACTLY:
- *   - Server-rendered initial entries for zero-flicker first paint.
- *   - 15s polling via getActivityFeedAction (or whatever refreshIntervalMs is).
- *   - All filtering driven by dashboard settings; no changes.
+ * Presentational and fully controlled: `DashboardView` owns the entries, so it
+ * can append the rows a scan just produced without a round trip.
  *
- * Presentation rebuilt: token-driven Card-like surface, refresh affordance on
- * the right, empty state polished.
+ * There is NO polling. Server-built rows arrive at page load and on manual
+ * refresh; everything in between the client builds itself from what the scan
+ * action already returned (`src/lib/dashboard/feed-entries.ts`). A tenant runs
+ * one or two dashboards at a time, so polling spent five queries and a full
+ * re-serialised payload every 15s, per open dashboard, overwhelmingly to
+ * discover that nothing had changed.
+ *
+ * The trade: rows from OTHER dashboards only appear on refresh. "Actualizado
+ * HH:MM" is what makes that honest — it is the last time we asked the server.
+ *
+ * See ADR 2026-07-17-dashboard-feed-no-polling.md.
  */
 
-import { useEffect, useRef, useState, useCallback } from "react";
 import { Inbox, RefreshCw } from "lucide-react";
 
 import ActivityFeedEntryRow from "./ActivityFeedEntryRow";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { getActivityFeedAction } from "@/lib/actions/dashboard-settings";
 import type { ActivityFeedEntry, DashboardSettings } from "@/lib/dal";
 
 const TEXT = {
@@ -31,57 +36,25 @@ const TEXT = {
   EMPTY_BODY:     "Los escaneos y acciones de carnets aparecerán aquí.",
 } as const;
 
-const DEFAULT_SETTINGS = {
-  feedLimit: 20,
-  showScanEntries: true,
-  showActionEntries: true,
-};
-
 interface ActivityFeedProps {
-  initialEntries: ActivityFeedEntry[];
+  entries: ActivityFeedEntry[];
   settings: DashboardSettings | null;
-  /** Polling interval in ms. Set to 0 to disable auto-refresh. */
-  refreshIntervalMs?: number;
+  /** Fetches server-built rows and replaces the list. */
+  onRefresh: () => void;
+  isRefreshing: boolean;
+  /** When the server was last asked — not when a local row was appended. */
+  lastRefreshedAt: Date;
 }
 
 export default function ActivityFeed({
-  initialEntries,
+  entries,
   settings,
-  refreshIntervalMs = 15000,
+  onRefresh,
+  isRefreshing,
+  lastRefreshedAt,
 }: ActivityFeedProps) {
-  const [entries, setEntries] = useState<ActivityFeedEntry[]>(initialEntries);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const feedLimit = settings?.feedLimit ?? DEFAULT_SETTINGS.feedLimit;
-  const showScan = settings?.showScanEntries ?? DEFAULT_SETTINGS.showScanEntries;
-  const showAction = settings?.showActionEntries ?? DEFAULT_SETTINGS.showActionEntries;
-
-  const refresh = useCallback(async () => {
-    setIsRefreshing(true);
-    try {
-      const result = await getActivityFeedAction({
-        limit: feedLimit,
-        includeScanEntries: showScan,
-        includeActionEntries: showAction,
-      });
-      if (result.success) {
-        setEntries(result.data);
-        setLastRefresh(new Date());
-      }
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [feedLimit, showScan, showAction]);
-
-  useEffect(() => {
-    if (!refreshIntervalMs) return;
-    intervalRef.current = setInterval(refresh, refreshIntervalMs);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [refresh, refreshIntervalMs]);
+  const showScan = settings?.showScanEntries ?? true;
+  const showAction = settings?.showActionEntries ?? true;
 
   const filterHint =
     !showScan && showAction
@@ -90,7 +63,7 @@ export default function ActivityFeed({
         ? `${TEXT.ONLY_SCANS} · `
         : "";
 
-  const updatedTime = lastRefresh.toLocaleTimeString("es-ES", {
+  const updatedTime = lastRefreshedAt.toLocaleTimeString("es-ES", {
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -115,7 +88,7 @@ export default function ActivityFeed({
           variant="ghost"
           size="sm"
           disabled={isRefreshing}
-          onClick={refresh}
+          onClick={onRefresh}
           aria-label={TEXT.BTN_REFRESH}
           className="gap-1.5 text-primary hover:text-primary"
         >

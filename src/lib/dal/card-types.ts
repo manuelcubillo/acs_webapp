@@ -6,13 +6,16 @@
  * that cards of this type will follow.
  */
 
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, desc, count, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   cardTypes,
+  cards,
   fieldDefinitions,
+  user,
 } from "@/lib/db/schema";
 import { NotFoundError } from "./errors";
+import { tenantCardTypesNotArchived, onlyArchived } from "./scopes";
 import { addFieldDefinition } from "./field-definitions";
 import { getActionsForCardType } from "./actions";
 import { getScanValidationsByCardType } from "./scan-validations";
@@ -23,6 +26,7 @@ import type {
   CardTypeWithFields,
   CardTypeWithFullSchema,
   FieldDefinition,
+  ArchivedCardTypeListItem,
 } from "./types";
 
 /**
@@ -126,7 +130,11 @@ export async function getCardTypeWithFullSchema(
 }
 
 /**
- * Update a card type's mutable fields.
+ * Update a card type's mutable descriptive fields (name, description).
+ *
+ * `status` is deliberately NOT settable here — every lifecycle transition goes
+ * through `src/lib/server/lifecycle/card-types.ts`, which validates the
+ * transition, keeps the trash metadata coherent and cascades to cards.
  *
  * @param id       - Card type UUID.
  * @param tenantId - Tenant UUID for multi-tenant isolation.
@@ -142,7 +150,6 @@ export async function updateCardType(
   const set: Record<string, unknown> = { updatedAt: new Date() };
   if (data.name !== undefined) set.name = data.name;
   if (data.description !== undefined) set.description = data.description;
-  if (data.isActive !== undefined) set.isActive = data.isActive;
 
   const [updated] = await db
     .update(cardTypes)
@@ -158,32 +165,73 @@ export async function updateCardType(
 }
 
 /**
- * List active card types for a tenant.
+ * List a tenant's card types for management views.
+ *
+ * Excludes archived (trashed) types. `inactive` types ARE included: they are
+ * operationally switched off, not deleted.
+ *
+ * Note: before the lifecycle migration this returned only `is_active = true`
+ * rows, so deactivated types were hidden entirely. They are now visible, which
+ * is the intended semantics of the three-state model. See ADR
+ * 2026-07-17-card-lifecycle-archiving.md.
  *
  * @param tenantId - Tenant UUID.
- * @returns Array of active card types ordered by name.
+ * @returns Array of non-archived card types ordered by name.
  */
 export async function listCardTypes(tenantId: string): Promise<CardType[]> {
   return db
     .select()
     .from(cardTypes)
-    .where(
-      and(eq(cardTypes.tenantId, tenantId), eq(cardTypes.isActive, true)),
-    )
+    .where(tenantCardTypesNotArchived(tenantId))
     .orderBy(asc(cardTypes.name));
 }
 
 /**
- * Soft-delete a card type by setting `is_active = false`.
+ * List a tenant's archived (trashed) card types for the "Archived" view (phase 4).
  *
- * @param id       - Card type UUID.
- * @param tenantId - Tenant UUID.
- * @returns The deactivated card type row.
- * @throws {NotFoundError} If no card type matches within the tenant.
+ * Returns only `status = 'archived'` types, newest first, each resolved to the
+ * display name of whoever archived it (LEFT join — `archived_by` is
+ * `ON DELETE SET NULL`, so the actor may be gone) and to `cardCount`: how many
+ * cards a hard delete of the type would cascade away. For an archived type every
+ * one of its cards is archived too (individual restore is blocked while the type
+ * is in the trash), so the count is simply every card of the type.
+ *
+ * @param tenantId - Tenant UUID (scopes the query).
+ * @returns Archived card types, ordered by archive time (most recent first).
  */
-export async function deactivateCardType(
-  id: string,
+export async function listArchivedCardTypes(
   tenantId: string,
-): Promise<CardType> {
-  return updateCardType(id, tenantId, { isActive: false });
+): Promise<ArchivedCardTypeListItem[]> {
+  const rows = await db
+    .select({
+      id: cardTypes.id,
+      name: cardTypes.name,
+      archivedAt: cardTypes.archivedAt,
+      archivedByName: user.name,
+    })
+    .from(cardTypes)
+    .leftJoin(user, eq(cardTypes.archivedBy, user.id))
+    .where(and(eq(cardTypes.tenantId, tenantId), onlyArchived(cardTypes.status)))
+    .orderBy(desc(cardTypes.archivedAt));
+
+  if (rows.length === 0) return [];
+
+  // One grouped count for the cascade size of every listed type (avoids N+1).
+  const typeIds = rows.map((r) => r.id);
+  const counts = await db
+    .select({ cardTypeId: cards.cardTypeId, total: count() })
+    .from(cards)
+    .where(and(eq(cards.tenantId, tenantId), inArray(cards.cardTypeId, typeIds)))
+    .groupBy(cards.cardTypeId);
+
+  const countByType = new Map(counts.map((c) => [c.cardTypeId, c.total]));
+
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    cardCount: countByType.get(r.id) ?? 0,
+    // Non-null for archived rows, guaranteed by card_types_archive_metadata_ck.
+    archivedAt: r.archivedAt as Date,
+    archivedByName: r.archivedByName ?? null,
+  }));
 }

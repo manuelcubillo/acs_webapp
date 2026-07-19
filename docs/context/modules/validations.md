@@ -1,6 +1,6 @@
 # Module: validations
 
-**Last updated**: 2026-04-19 · **Last feature**: documentation sync against source code
+**Last updated**: 2026-07-17 · **Last feature**: lifecycle status reuses the scan-validation channel (phase 2)
 
 ## Responsibility
 
@@ -10,6 +10,8 @@ Two independent validation engines, both pure TypeScript and framework-agnostic:
 2. **Scan validation** — used at scan time and re-evaluated after each action. Evaluates the current Card state against rules attached to the CardType.
 
 Critical invariant: scan validations **inform**, never **block** actions.
+
+⚠️ Phase 2 reuses the scan-validation *channel* for lifecycle, but the lifecycle gate itself DOES block (it is not a scan validation). `buildLifecycleScanCheck` (`src/lib/server/lifecycle/scan-gate.ts`) emits a synthetic error-level `ScanValidationCheck` (`rule: "lifecycle_status"`, no `fieldDefinitionId`) that is prepended to `validateScan`'s results for an inactive/expired card, so the existing pause/block/override machinery drives it. The scan validator and its rules are untouched; only the result stream carries an extra, synthetic check. The message templates live in `messages.ts` (`LIFECYCLE_SCAN_MESSAGES`).
 
 ## Key files
 
@@ -85,5 +87,6 @@ Severity: `error` (red) or `warning` (yellow).
 
 ## Recent changes
 
+- 2026-07-17 — Phase-2 lifecycle reuses the scan-validation channel: a synthetic `lifecycle_status` check (`buildLifecycleScanCheck`) surfaces an inactive/expired card as an error-level failure so the override flow handles it. `messages.ts` gained `LIFECYCLE_SCAN_MESSAGES` + `LIFECYCLE_SCAN_FIELD_LABEL`. The engines themselves are unchanged. ADR `2026-07-17-card-lifecycle-scan-behaviour.md`.
 - 2026-04-19 — Initial extraction from architecture document.
 - 2026-04-19 — Synchronized documentation against source code: no drift found; metadata updated.

@@ -9,6 +9,7 @@
 
 export * from "./errors";
 export * from "./types";
+export * from "./scopes";
 export * from "./tenants";
 export * from "./card-types";
 export * from "./field-definitions";

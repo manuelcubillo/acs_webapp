@@ -20,9 +20,11 @@ import {
 import { signCardPhotos } from "@/lib/dal/photo-urls";
 import { signPhotoForReadOptional } from "@/lib/storage/read";
 import { validateScan, hasErrorLevelFailures } from "@/lib/validation/scan-validator";
+import { resolveLifecycleGate } from "@/lib/server/lifecycle";
 import type { CardDesignLayout } from "@/lib/card-designs/types";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardDetailClient from "@/components/cards/CardDetailClient";
+import CardStatusBadge from "@/components/shared/CardStatusBadge";
 import CardDesignPreviewButton from "@/components/card-designs/CardDesignPreviewButton";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +32,7 @@ export const dynamic = "force-dynamic";
 const TEXT = {
   SHELL_TITLE:    "Detalle de carnet",
   BACK_CARDS:     "Todos los carnets",
+  BACK_ARCHIVED:  "Papelera",
   BACK_DASHBOARD: "Vista principal",
   BTN_EDIT:       "Editar",
   CREATED:        "Creado:",
@@ -57,8 +60,14 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
   const decodedCode = decodeURIComponent(code);
 
   // Dynamic back link based on where the user navigated from
-  const backHref = from === "cards" ? "/cards" : "/dashboard";
-  const backLabel = from === "cards" ? TEXT.BACK_CARDS : TEXT.BACK_DASHBOARD;
+  const backHref =
+    from === "cards" ? "/cards" : from === "archived" ? "/archived" : "/dashboard";
+  const backLabel =
+    from === "cards"
+      ? TEXT.BACK_CARDS
+      : from === "archived"
+        ? TEXT.BACK_ARCHIVED
+        : TEXT.BACK_DASHBOARD;
   const isAdmin = role === "admin" || role === "master";
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -84,6 +93,14 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
 
   // Run scan validations (pure, never throws)
   const scanResult = validateScan(card.fields, svRules);
+
+  // Lifecycle gate — gates the action buttons and is surfaced by the status
+  // badge. The detail page itself stays informational (no scan log, no
+  // auto-actions); only manual action execution is affected.
+  const lifecycleGate = resolveLifecycleGate(
+    card.status,
+    settings?.allowOverrideOnError ?? false,
+  );
 
   // Pick the "card" kind design (most common for physical card preview)
   const previewDesign = linkedDesigns.find((d) => d.kind === "card") ?? linkedDesigns[0] ?? null;
@@ -175,11 +192,17 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
           </div>
         </div>
 
+        {/* Lifecycle status — informational indicator (neutral, not a state color) */}
+        <div className="mb-4">
+          <CardStatusBadge status={card.status} />
+        </div>
+
         {/*
           CardDetailClient manages:
           - card state (refreshed after each action)
           - scanResult state (re-evaluated after each action)
           - hasBlockingErrors (disables action buttons when true)
+          - lifecycleGate (gates action buttons by card status)
           This page does NOT log a scan entry or run auto-actions.
         */}
         <CardDetailClient
@@ -188,6 +211,7 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
           initialScanResult={scanResult}
           initialHasBlockingErrors={hasErrorLevelFailures(scanResult)}
           allowOverrideOnError={settings?.allowOverrideOnError ?? false}
+          lifecycleGate={lifecycleGate}
         />
 
         {/* Metadata footer — static */}

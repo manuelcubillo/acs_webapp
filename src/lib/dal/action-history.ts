@@ -424,7 +424,7 @@ export async function getHistoryFilterOptions(
     db
       .select({ id: cardTypes.id, name: cardTypes.name })
       .from(cardTypes)
-      .where(and(eq(cardTypes.tenantId, tenantId), eq(cardTypes.isActive, true)))
+      .where(and(eq(cardTypes.tenantId, tenantId), eq(cardTypes.status, "active")))
       .orderBy(cardTypes.name),
 
     // Active action definitions across all card types

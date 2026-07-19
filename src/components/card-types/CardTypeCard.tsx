@@ -44,6 +44,7 @@ export default function CardTypeCard({
   const activeFields = cardType.fieldDefinitions.filter((f) => f.isActive);
   const requiredFields = activeFields.filter((f) => f.isRequired);
   const activeActions = cardType.actionDefinitions.filter((a) => a.isActive);
+  const isActive = cardType.status === "active";
 
   return (
     <div
@@ -56,7 +57,7 @@ export default function CardTypeCard({
         <div
           className={cn(
             "flex size-11 shrink-0 items-center justify-center rounded-xl border",
-            cardType.isActive
+            isActive
               ? "bg-accent border-accent text-primary"
               : "bg-muted border-border text-muted-foreground",
           )}
@@ -71,13 +72,13 @@ export default function CardTypeCard({
               {cardType.name}
             </h3>
             {/* Active status badge — entity status, neutral (not a state token) */}
-            <Badge variant={cardType.isActive ? "outline" : "secondary"}>
-              {cardType.isActive ? (
+            <Badge variant={isActive ? "outline" : "secondary"}>
+              {isActive ? (
                 <CircleDot strokeWidth={2} />
               ) : (
                 <CircleOff strokeWidth={2} />
               )}
-              {cardType.isActive ? TEXT.ACTIVE : TEXT.INACTIVE}
+              {isActive ? TEXT.ACTIVE : TEXT.INACTIVE}
             </Badge>
           </div>
           {cardType.description && (

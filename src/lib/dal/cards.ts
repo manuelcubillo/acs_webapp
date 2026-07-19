@@ -21,12 +21,13 @@ import {
   inArray,
 } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { cards, fieldValues, fieldDefinitions } from "@/lib/db/schema";
+import { cards, cardTypes, fieldValues, user } from "@/lib/db/schema";
 import {
   NotFoundError,
   ValidationError,
   DuplicateCodeError,
 } from "./errors";
+import { notArchived, onlyArchived } from "./scopes";
 import { getFieldDefinitionsByCardType } from "./field-definitions";
 import { mapValueToColumn, extractValue } from "./field-values";
 import { validateCard as runEngineValidation } from "@/lib/validation";
@@ -36,10 +37,12 @@ import type {
   EnrichedFieldValue,
   FieldValueMap,
   FieldDefinition,
+  LifecycleStatus,
   PaginationOptions,
   PaginatedResult,
   SearchCardsInput,
   SearchFilter,
+  ArchivedCardListItem,
 } from "./types";
 
 // ─── Internal helpers ───────────────────────────────────────────────────────
@@ -247,6 +250,110 @@ export async function getCardByCode(
 }
 
 /**
+ * Read only a card's lifecycle status within a tenant.
+ *
+ * A light lookup (no field enrichment) used by the action-execution gate to
+ * decide, server-side, whether the card may be acted upon given its status.
+ * Also confirms the card belongs to the tenant.
+ *
+ * @param id       - Card internal UUID.
+ * @param tenantId - Tenant UUID.
+ * @returns The card's `lifecycle_status`.
+ * @throws {NotFoundError} If no card matches within the tenant.
+ */
+export async function getCardLifecycleStatus(
+  id: string,
+  tenantId: string,
+): Promise<LifecycleStatus> {
+  const [row] = await db
+    .select({ status: cards.status })
+    .from(cards)
+    .where(and(eq(cards.id, id), eq(cards.tenantId, tenantId)))
+    .limit(1);
+
+  if (!row) {
+    throw new NotFoundError("Card", id);
+  }
+
+  return row.status;
+}
+
+/**
+ * Count the live (non-archived) cards belonging to a card type.
+ *
+ * "Live" mirrors exactly what an archive cascade touches: every card of the
+ * type whose status is not already `archived` (i.e. `active` + `inactive` +
+ * `expired`). Used to warn the operator how many cards will be dragged into the
+ * trash before archiving a card type (see `archiveCardType`).
+ *
+ * @param cardTypeId - The card type whose cards are counted.
+ * @param tenantId   - Tenant UUID (scopes the count).
+ * @returns The number of non-archived cards of that type.
+ */
+export async function countLiveCardsForCardType(
+  cardTypeId: string,
+  tenantId: string,
+): Promise<number> {
+  const [row] = await db
+    .select({ total: count() })
+    .from(cards)
+    .where(
+      and(
+        eq(cards.cardTypeId, cardTypeId),
+        eq(cards.tenantId, tenantId),
+        notArchived(cards.status),
+      ),
+    );
+
+  return row?.total ?? 0;
+}
+
+/**
+ * List a tenant's archived (trashed) cards for the "Archived" view (phase 4).
+ *
+ * Returns only `status = 'archived'` rows, newest first, each resolved to its
+ * card type name and the display name of whoever archived it. The user join is
+ * a LEFT join on purpose: `archived_by` is `ON DELETE SET NULL`, so the actor
+ * may no longer exist. The internal `id` is included solely as the argument for
+ * the restore / purge Server Actions — callers must display `code`, never it.
+ *
+ * The purge countdown is deliberately NOT computed here: it lives in
+ * `src/lib/server/lifecycle/retention.ts` and is applied by the page, keeping
+ * the DAL free of any dependency on the lifecycle service.
+ *
+ * @param tenantId - Tenant UUID (scopes the query).
+ * @returns Archived cards, ordered by archive time (most recent first).
+ */
+export async function listArchivedCards(
+  tenantId: string,
+): Promise<ArchivedCardListItem[]> {
+  const rows = await db
+    .select({
+      id: cards.id,
+      code: cards.code,
+      cardTypeName: cardTypes.name,
+      archivedAt: cards.archivedAt,
+      archivedByName: user.name,
+      archivedViaTypeId: cards.archivedViaTypeId,
+    })
+    .from(cards)
+    .leftJoin(cardTypes, eq(cards.cardTypeId, cardTypes.id))
+    .leftJoin(user, eq(cards.archivedBy, user.id))
+    .where(and(eq(cards.tenantId, tenantId), onlyArchived(cards.status)))
+    .orderBy(desc(cards.archivedAt));
+
+  return rows.map((r) => ({
+    id: r.id,
+    code: r.code,
+    cardTypeName: r.cardTypeName ?? "",
+    // Non-null for archived rows, guaranteed by cards_archive_metadata_ck.
+    archivedAt: r.archivedAt as Date,
+    archivedByName: r.archivedByName ?? null,
+    archivedViaType: r.archivedViaTypeId !== null,
+  }));
+}
+
+/**
  * Get a card by its internal UUID within a tenant.
  *
  * For internal use and cross-entity relationships.
@@ -377,9 +484,11 @@ export async function updateCardCode(
 }
 
 /**
- * List cards of a card type with pagination.
+ * List cards of a card type with pagination, for management views.
  *
  * Returns cards with their enriched field values, ordered by code.
+ * Excludes archived (trashed) cards; `inactive` and `expired` cards stay
+ * visible — they are switched off, not deleted.
  *
  * @param cardTypeId - Card type UUID.
  * @param tenantId   - Tenant UUID.
@@ -394,21 +503,23 @@ export async function listCards(
   const limit = options.limit ?? 50;
   const offset = options.offset ?? 0;
 
+  const where = and(
+    eq(cards.cardTypeId, cardTypeId),
+    eq(cards.tenantId, tenantId),
+    notArchived(cards.status),
+  );
+
   // Count total.
   const [{ total }] = await db
     .select({ total: count() })
     .from(cards)
-    .where(
-      and(eq(cards.cardTypeId, cardTypeId), eq(cards.tenantId, tenantId)),
-    );
+    .where(where);
 
   // Fetch page.
   const rows = await db
     .select()
     .from(cards)
-    .where(
-      and(eq(cards.cardTypeId, cardTypeId), eq(cards.tenantId, tenantId)),
-    )
+    .where(where)
     .orderBy(asc(cards.code))
     .limit(limit)
     .offset(offset);
@@ -426,35 +537,13 @@ export async function listCards(
 }
 
 /**
- * Soft-delete a card by setting its status to "inactive".
- *
- * @param code     - Client-facing card code.
- * @param tenantId - Tenant UUID.
- * @returns The deactivated card row.
- * @throws {NotFoundError} If no card matches.
- */
-export async function deleteCard(
-  code: string,
-  tenantId: string,
-): Promise<Card> {
-  const [updated] = await db
-    .update(cards)
-    .set({ status: "inactive", updatedAt: new Date() })
-    .where(and(eq(cards.tenantId, tenantId), eq(cards.code, code)))
-    .returning();
-
-  if (!updated) {
-    throw new NotFoundError("Card", `code="${code}" tenant=${tenantId}`);
-  }
-
-  return updated;
-}
-
-/**
  * Search cards by dynamic field values and/or partial code match.
  *
  * Builds a dynamic query with EXISTS subqueries for each field filter.
  * Supports searching across multiple card types simultaneously.
+ *
+ * Excludes archived (trashed) cards; `inactive` and `expired` cards stay
+ * searchable. Filtering by lifecycle status is a later phase.
  *
  * @param cardTypeIds - One or more card type UUIDs.
  * @param tenantId    - Tenant UUID.
@@ -480,7 +569,20 @@ export async function searchCards(
     ? eq(cards.cardTypeId, cardTypeIds[0])
     : inArray(cards.cardTypeId, cardTypeIds);
 
-  const conditions = [cardTypeCondition, eq(cards.tenantId, tenantId)];
+  const conditions = [
+    cardTypeCondition,
+    eq(cards.tenantId, tenantId),
+    notArchived(cards.status),
+  ];
+
+  // Lifecycle status filter. `archived` is never selectable here — `notArchived`
+  // above always applies. `inactive` groups `inactive` + `expired`, which behave
+  // identically. `all` (or undefined) adds no extra status condition.
+  if (input.status === "active") {
+    conditions.push(eq(cards.status, "active"));
+  } else if (input.status === "inactive") {
+    conditions.push(inArray(cards.status, ["inactive", "expired"]));
+  }
 
   // Code partial match.
   if (input.codeContains) {

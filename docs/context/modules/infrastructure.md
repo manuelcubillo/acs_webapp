@@ -1,6 +1,6 @@
 # Module: infrastructure
 
-**Last updated**: 2026-04-28 · **Last feature**: photo storage via R2 + MinIO behind `CardPhotoStorage`; image optimization module; presigned-PUT upload Server Actions
+**Last updated**: 2026-07-18 · **Last feature**: daily retention purge job — `GET /api/cron/purge-archived` (CRON_SECRET-authed) + `vercel.json` cron, closing the card-archiving feature (5/5)
 
 ## Responsibility
 
@@ -28,7 +28,12 @@ Everything that keeps the app running: database connection, migrations, env vars
 - `src/lib/storage/s3-base.ts` — Shared S3-compatible class (presigned PUT/GET, head, delete, prefix delete).
 - `src/lib/storage/r2.ts` / `minio.ts` — Adapter shims (virtual-host vs path-style addressing).
 - `src/lib/storage/validation.ts` — `assertObjectMatchesKind`, `assertHeadOk` (server-side guards).
-- `src/lib/storage/read.ts` — `signPhotoForRead`, `signPhotoForReadOptional`, `signPhotosForRead`.
+- `src/lib/storage/read.ts` — `signPhotoForRead`, `signPhotoForReadOptional`, `signPhotosForRead`. 15-min TTL.
+- `src/lib/storage/photo-routes.ts` — `cardPhotoRoute(code)`. Dependency-free on purpose: imported by both the DAL and client components.
+- `src/app/api/photos/cards/[code]/route.ts` — Session-authed (OPERATOR+) card photo: 302 → signed URL minted per request. Stable per card, so it neither expires client-side nor busts the browser cache. ADR `2026-07-17-stable-photo-routes.md`.
+- `src/app/api/cron/purge-archived/route.ts` — Daily retention purge endpoint. No session; authed by `Authorization: Bearer <CRON_SECRET>` (constant-time compare, fails closed if `CRON_SECRET` unset). Runs `purgeExpiredArchivedRecords()` and returns the per-tenant summary. In its own `/api/cron/*` tree, NOT under `/api/cards/*` (that tree is device-header-authed). ADR `2026-07-18-card-lifecycle-purge-job.md`.
+- `src/lib/server/lifecycle/purge.ts` — `hardDeleteArchivedCard` / `hardDeleteArchivedCardType` / `hardDeleteAllArchived` (phase-4 manual, per-tenant) and `purgeExpiredArchivedRecords` (phase-5 daily job, cross-tenant DELETE-with-join against each tenant's `archive_retention_days`).
+- `vercel.json` — Vercel Cron entry: `GET /api/cron/purge-archived` at `0 3 * * *` (daily, 03:00 UTC). Vercel injects the `Authorization: Bearer <CRON_SECRET>` header when `CRON_SECRET` is set in the project env.
 - `src/lib/storage/index.ts` — Factory: `getPhotoStorage()`; barrel.
 - `src/lib/images/profiles.ts` — `CARD_PHOTO_PROFILE`, `MEMBER_AVATAR_PROFILE`, `TENANT_LOGO_PROFILE`, `CARD_DESIGN_IMAGE_PROFILE`. Tweaks here re-tune storage for that kind.
 - `src/lib/images/optimize.ts` — Browser-side resize + recompress pipeline (canvas, retry-on-too-large).
@@ -54,13 +59,16 @@ S3_BUCKET=...
 S3_ACCESS_KEY_ID=...
 S3_SECRET_ACCESS_KEY=...
 S3_FORCE_PATH_STYLE=false              # true for MinIO (path-style), false for R2 (virtual-host)
+CRON_SECRET=...                        # Shared secret for the daily purge endpoint. openssl rand -hex 32
 ```
+
+`CRON_SECRET` protects `GET /api/cron/purge-archived`. On Vercel, Cron Jobs inject the `Authorization: Bearer <CRON_SECRET>` header automatically when it is set in the project env; on Docker / self-hosted the external cron sends it. If unset, the endpoint refuses every request (fail closed). Documented in `.env.example` and `.env.docker`.
 
 ## Runtime constraints
 
-- **Node.js v20 only.** Node 22 (Homebrew default) is broken due to `icu4c` ABI mismatch (v74 ↔ v77). Use `/opt/homebrew/opt/node@20/bin/node` or `PATH="/opt/homebrew/opt/node@20/bin:$PATH" pnpm ...`.
-- **Neon HTTP driver** — does not support interactive transactions. Any multi-step write that needs atomicity must document the limitation (see `modules/actions.md`).
-- **No middleware** — `src/middleware.ts` does not exist. All auth is page-level via `requireX()` guards.
+- **Node.js v24.** `package.json` `engines.node` is `">=24"`; the default `node` on this machine is v24. Older notes pinning Node 20 (and the Node 22 `icu4c` ABI workaround) are stale — see `CLAUDE.md`.
+- **Neon HTTP driver** — does not support interactive transactions. Any multi-step write that needs atomicity must document the limitation (see `modules/actions.md`). The lifecycle transitions and the retention purge sidestep this by expressing each multi-row write as a single data-modifying CTE.
+- **No middleware** — `src/middleware.ts` does not exist. All auth is page-level via `requireX()` guards. The one non-session `/api` route (`/api/cron/purge-archived`) authenticates by shared secret, not a guard.
 
 ## Dependencies (key versions)
 
@@ -98,6 +106,60 @@ S3_FORCE_PATH_STYLE=false              # true for MinIO (path-style), false for 
 4. `pnpm db:migrate` to apply against `DATABASE_URL`.
 5. Commit schema + generated migration together.
 
+**Data migrations**: drizzle-kit only diffs structure. If a column changes type or a
+column's data must be transformed (e.g. `is_active` → `status`), its generated SQL will
+be wrong or destructive — hand-write the file. Keep drizzle-kit's snapshot + journal
+entry, which it produces even when you replace the SQL body. When the enum diff prompts
+"created or renamed?", it needs a real TTY (`expect`); `generate --custom` scaffolds a
+journal entry but clones the previous snapshot, so it is not a substitute.
+
+**Down migrations**: drizzle-kit neither generates nor runs them. Rollbacks live in
+`drizzle/down/<tag>.down.sql`, outside the migrator's path, and are applied by hand with
+`psql -f`. They must also be removed from `drizzle/meta/_journal.json`. See
+`drizzle/down/0017_card_lifecycle_archiving.down.sql` for the pattern (including how to
+document lossy rollbacks).
+
+### Verifying a migration before it reaches Neon
+
+`docker compose --profile db up -d` gives a local Postgres 15. Replay every migration into
+a throwaway DB, seed rows covering each data-migration branch, then run the new one:
+
+```
+docker exec ... psql -U acs_user -d postgres -c "CREATE DATABASE mig_test;"
+for f in drizzle/00*.sql; do sed 's/--> statement-breakpoint//' "$f" | psql -d mig_test -v ON_ERROR_STOP=1; done
+```
+
+Integration tests do the same via `TEST_DATABASE_URL` in `.env.test.local` (gitignored),
+which flips `DB_DRIVER=local` so they never touch the shared Neon branch.
+
+### Daily retention purge job
+
+Physically deletes archived cards / card types whose per-tenant retention has
+elapsed. One mechanism: a single endpoint invoked once a day (no in-process
+scheduler — Vercel is stateless between invocations). See ADR
+`2026-07-18-card-lifecycle-purge-job.md`.
+
+1. `purgeExpiredArchivedRecords()` (`src/lib/server/lifecycle/purge.ts`) runs two
+   deletes joined to `tenants`: expired archived card types first (cascading to
+   their cards), then remaining expired archived cards. Cutoff:
+   `archived_at < (now() AT TIME ZONE 'UTC') - make_interval(days => archive_retention_days)`.
+   Single CTE = one atomic statement on Neon HTTP. Idempotent; returns a
+   per-tenant summary and logs it (the purge leaves no per-record audit).
+2. `GET /api/cron/purge-archived` (secret-authed) runs it and returns the summary.
+
+**Triggers (same endpoint everywhere):**
+
+- **Vercel** — `vercel.json` cron at `0 3 * * *`. Vercel injects
+  `Authorization: Bearer <CRON_SECRET>` when `CRON_SECRET` is set.
+- **Docker / self-hosted** — a host or container cron hits the endpoint once a
+  day with the same header. Example crontab line:
+  ```
+  0 3 * * * curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" https://<host>/api/cron/purge-archived
+  ```
+  or a sidecar cron service on the Compose network targeting `http://acs:3000/...`.
+- **Local dev** — invoke by hand:
+  `curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/purge-archived`.
+
 ### Adding a new DAL error
 
 1. Define in `src/lib/dal/errors.ts`.
@@ -108,6 +170,8 @@ S3_FORCE_PATH_STYLE=false              # true for MinIO (path-style), false for 
 ## Extension points
 
 - **New API Route for external devices** → `src/app/api/<route>/route.ts`. Use `routeHandler` wrapper. Currently relies on `x-tenant-id` header (`TODO: API_AUTH`) until API key system lands.
+- **New API Route for the browser** (rare — Server Actions are the default; justified when an `<img>`/`<a>` needs a real URL) → session guard, `export const dynamic = "force-dynamic"`, and `Cache-Control: private` + `Vary: Cookie` on anything session-dependent. Keep it OUT of `/api/cards/*`: that tree is header-authed, and mixing auth models in one tree invites cross-tenant mistakes. Pattern: `src/app/api/photos/cards/[code]/route.ts`.
+- **New scheduled / cron endpoint** → `src/app/api/cron/<name>/route.ts`, `routeHandler` wrapper, `export const dynamic = "force-dynamic"`, no session. Authenticate by a shared secret (`Authorization: Bearer <SECRET>`, constant-time compare, fail closed if unset). Add a `vercel.json` `crons` entry for Vercel and document the equivalent host/container cron for Docker. Pattern: `src/app/api/cron/purge-archived/route.ts`.
 - **Swap DB driver** (e.g. for full transactions) → replaces `src/lib/db/index.ts` lazy proxy. Every multi-step write should be re-audited for true atomicity gains. Requires ADR.
 
 ## Module interactions
@@ -122,12 +186,13 @@ S3_FORCE_PATH_STYLE=false              # true for MinIO (path-style), false for 
 
 ## Future considerations
 
-- Janitor cron for orphaned photo objects (replacement uploads write a new key; the previous one is left for an out-of-band sweep).
+- Janitor cron for orphaned photo objects (replacement uploads write a new key; the previous one is left for an out-of-band sweep). Would follow the `/api/cron/*` + `vercel.json` pattern established by the purge job.
 
 ## Recent changes
 
+- 2026-07-18 — Card lifecycle phase 5 (final, 5/5): daily retention purge. New `purgeExpiredArchivedRecords()` (cross-tenant DELETE-with-join against each tenant's `archive_retention_days`, single atomic CTE, idempotent) in `src/lib/server/lifecycle/purge.ts`; new `GET /api/cron/purge-archived` endpoint (no session, `CRON_SECRET` Bearer auth, fails closed); `vercel.json` cron at `0 3 * * *`; `CRON_SECRET` added to env docs (`.env.example`, `.env.docker`). Master-gated retention UI at `/settings/retention`. Also corrected the stale Node-version note (v24, per `engines`). ADR `2026-07-18-card-lifecycle-purge-job.md`.
+- 2026-07-17 — Photos on long-lived surfaces are served by `/api/photos/cards/[code]` (session-authed, 302 → per-request signature) instead of an embedded signed URL. A signed URL is a bearer token that changes on every signing, so it both busted the browser cache and expired in place after 15 min. First session-authenticated route under `/api` — see `01-architecture.md` §6. Adopted by the dashboard feed only; other surfaces still embed signed URLs. ADR `2026-07-17-stable-photo-routes.md`.
 - 2026-04-28 — Photo storage migration: `CardPhotoStorage` (R2 + MinIO) + `src/lib/images/` optimization module + presigned-PUT Server Actions. `tenants.logo_object_key` added (migration 0015). `field_values.value_text` for `photo` fields now stores object keys (not URLs); server-side helpers in `src/lib/dal/photo-urls.ts` sign keys before render. Old `/api/upload` route removed. ADR `2026-04-27-photo-storage-r2-minio.md`.
 - 2026-04-27 — Added `card_designs` + `card_type_designs` tables (migration 0014); added konva 10.2.5, react-konva 19.2.3, qrcode 1.5.4, jsbarcode 3.12.3 to dependencies.
 - 2026-04-26 — Added `departure_feedback` table (migrations 0011, 0012). Note: snapshot files for 0008–0010 were missing; 0011 SQL was hand-trimmed to only the new table to avoid duplicate DDL errors.
 - 2026-04-25 — Added Resend (v6.12.2) for transactional email; documented `RESEND_APIKEY` and `RESEND_FROM_EMAIL` env vars.
-- 2026-04-19 — Initial extraction from technical handoff.

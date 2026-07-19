@@ -95,7 +95,7 @@ export async function deleteTenant(id: string): Promise<void> {
 }
 
 /**
- * Update tenant-level settings (scan mode, etc.).
+ * Update tenant-level settings (scan mode, archive retention, etc.).
  *
  * @param id   - Tenant UUID.
  * @param data - Settings to update.

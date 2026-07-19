@@ -85,6 +85,14 @@ interface CardActionsProps {
   onActionClick?: (actionId: string, actionName: string) => void;
   /** When true, is_auto_execute actions are hidden from the button list. */
   filterAutoExecute?: boolean;
+  /**
+   * Use override (orange) styling instead of warning (amber) for warningMode —
+   * used when the confirmation is a lifecycle (off-state) override rather than a
+   * scan-validation override.
+   */
+  overrideTone?: boolean;
+  /** Suppress the internal banners when the parent shows its own lifecycle banner. */
+  hideBanner?: boolean;
 }
 
 export default function CardActions({
@@ -95,6 +103,8 @@ export default function CardActions({
   warningMode = false,
   onActionClick,
   filterAutoExecute = false,
+  overrideTone = false,
+  hideBanner = false,
 }: CardActionsProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
@@ -108,6 +118,13 @@ export default function CardActions({
     activeActions = activeActions.filter((a) => !a.isAutoExecute);
   }
   if (activeActions.length === 0) return null;
+
+  // The "confirm before executing" surface is amber for scan-validation
+  // overrides and orange for lifecycle (off-state) overrides.
+  const confirmBg = overrideTone ? "bg-state-override" : "bg-state-warning";
+  const confirmBorder = overrideTone ? "border-state-override-border" : "border-state-warning-border";
+  const confirmText = overrideTone ? "text-state-override-foreground" : "text-state-warning-foreground";
+  const confirmIcon = overrideTone ? "text-state-override-icon" : "text-state-warning-icon";
 
   function handleClick(action: ActionDefinitionWithField) {
     if (disabled) return;
@@ -145,7 +162,7 @@ export default function CardActions({
         {TEXT.SECTION}
       </p>
 
-      {disabled && (
+      {!hideBanner && disabled && (
         <div
           role="alert"
           className={cn(
@@ -158,15 +175,15 @@ export default function CardActions({
         </div>
       )}
 
-      {!disabled && warningMode && (
+      {!hideBanner && !disabled && warningMode && (
         <div
           role="alert"
           className={cn(
             "flex items-start gap-2 rounded-md border px-3 py-2 text-xs font-semibold",
-            "bg-state-warning border-state-warning-border text-state-warning-foreground",
+            confirmBg, confirmBorder, confirmText,
           )}
         >
-          <Square aria-hidden className="mt-0.5 size-4 shrink-0 text-state-warning-icon" />
+          <Square aria-hidden className={cn("mt-0.5 size-4 shrink-0", confirmIcon)} />
           {TEXT.WARNING}
         </div>
       )}
@@ -206,7 +223,7 @@ export default function CardActions({
                 disabled
                   ? "cursor-not-allowed border-border bg-muted text-muted-foreground opacity-50"
                   : isWarning
-                    ? "bg-state-warning border-state-warning-border text-state-warning-foreground hover:bg-state-warning-border/40"
+                    ? cn(confirmBg, confirmBorder, confirmText, "hover:opacity-90")
                     : style.classes,
                 isLoading && "opacity-70",
                 !isDisabled && !isWarning && "cursor-pointer",

@@ -14,9 +14,10 @@ import {
   AuthenticationError,
 } from "@/lib/api";
 import { getCardTypeWithFullSchema } from "@/lib/dal";
-import { listDesignsForCardType } from "@/lib/dal";
+import { listDesignsForCardType, countLiveCardsForCardType } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardTypeLinkedDesigns from "@/components/card-types/CardTypeLinkedDesigns";
+import CardTypeLifecycleControls from "@/components/card-types/CardTypeLifecycleControls";
 import { FieldTypeDisplay } from "@/components/card-types/fields/FieldTypeSelector";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -99,14 +100,16 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const [linkedDesigns, userProfile] = await Promise.all([
+  const [linkedDesigns, liveCardCount, userProfile] = await Promise.all([
     listDesignsForCardType(tenantId, id).catch(() => []),
+    countLiveCardsForCardType(id, tenantId).catch(() => 0),
     getCurrentUserProfile(),
   ]);
 
   const activeFields = cardType.fieldDefinitions.filter((f) => f.isActive);
   const activeActions = (cardType.actionDefinitions as ActionDefinitionWithField[]).filter((a) => a.isActive);
   const activeScanValidations = (cardType.scanValidations as ScanValidationWithField[]).filter((sv) => sv.isActive);
+  const isActive = cardType.status === "active";
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -138,7 +141,7 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
           <div
             className={cn(
               "flex size-14 shrink-0 items-center justify-center rounded-xl border",
-              cardType.isActive
+              isActive
                 ? "bg-accent text-primary"
                 : "bg-muted text-muted-foreground",
             )}
@@ -152,13 +155,13 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
               <h1 className="font-heading text-[22px] font-extrabold text-foreground">
                 {cardType.name}
               </h1>
-              <Badge variant={cardType.isActive ? "outline" : "secondary"}>
-                {cardType.isActive ? (
+              <Badge variant={isActive ? "outline" : "secondary"}>
+                {isActive ? (
                   <CircleDot strokeWidth={2} />
                 ) : (
                   <CircleOff strokeWidth={2} />
                 )}
-                {cardType.isActive ? TEXT.ACTIVE : TEXT.INACTIVE}
+                {isActive ? TEXT.ACTIVE : TEXT.INACTIVE}
               </Badge>
             </div>
             {cardType.description && (
@@ -185,6 +188,15 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
           )}
         </div>
       </div>
+
+      {/* Lifecycle state controls (master) — activate / deactivate / archive. */}
+      {isMaster && (
+        <CardTypeLifecycleControls
+          cardTypeId={cardType.id}
+          initialStatus={cardType.status}
+          liveCardCount={liveCardCount}
+        />
+      )}
 
       {/* Layout: fields (wide) + right column (actions + scan validations) */}
       <div className="grid items-start gap-6 [grid-template-columns:1fr_320px]">

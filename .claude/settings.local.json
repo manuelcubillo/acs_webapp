@@ -103,7 +103,30 @@
       "Bash(echo \"exit: $?\")",
       "Bash(rg -n \"signCardPhotos|photo-urls\" src/lib/dal/index.ts src/**/*.tsx src/**/*.ts)",
       "Bash(npx eslint *)",
-      "Bash(lsof -iTCP:3000 -sTCP:LISTEN -n -P)"
+      "Bash(lsof -iTCP:3000 -sTCP:LISTEN -n -P)",
+      "Bash(echo \"=== EXIT: $? ===\")",
+      "Bash(timeout 90 npx drizzle-kit generate --name=card_lifecycle_archiving)",
+      "Bash(npx vitest *)",
+      "Bash(perl -0pi -e 's/AND archived_via_type_id = \\\\$\\\\{cardTypeId\\\\}::uuid//' src/lib/server/lifecycle/card-types.ts)",
+      "Bash(perl -0pi -e 's/  await assertCardTypeNotArchived\\\\\\(card\\\\.cardTypeId, actor\\\\.tenantId\\\\\\);//' src/lib/server/lifecycle/cards.ts)",
+      "Bash(npx next *)",
+      "Bash(lsof -nP -iTCP:3000 -sTCP:LISTEN)",
+      "Bash(docker exec *)",
+      "Bash(echo \"after repair -> log_type is: $\\(docker exec -e PGPASSWORD=acs_password acs-postgres psql -U acs_user -d drift -qtA -c \"SELECT udt_name FROM information_schema.columns WHERE table_name='action_logs' AND column_name='log_type';\"\\)\")",
+      "Bash(echo \"existing rows preserved: $\\(docker exec -e PGPASSWORD=acs_password acs-postgres psql -U acs_user -d drift -qtA -c \"SELECT string_agg\\(log_type::text,',' ORDER BY log_type::text\\) FROM action_logs;\"\\)\")",
+      "Bash(node *)",
+      "Bash(sqlite3 veredillasDB.db \".tables\")",
+      "Bash(sqlite3 veredillasDB.db \".schema\")",
+      "Bash(sqlite3 /Users/manuelcubillo/Projects/Veredillas/code/acs_web/scripts/legacyDBMigration/veredillasDB.db 'SELECT codigo, COUNT\\(*\\) c FROM carnet GROUP BY codigo HAVING c>1;')",
+      "Bash(sqlite3 -header -column /Users/manuelcubillo/Projects/Veredillas/code/acs_web/scripts/legacyDBMigration/veredillasDB.db 'SELECT dtype,codigo,bloque,calle,letra,num,nombre,apellido FROM carnet WHERE codigo=0;')",
+      "Bash(sqlite3 -header -column /Users/manuelcubillo/Projects/Veredillas/code/acs_web/scripts/legacyDBMigration/veredillasDB.db 'SELECT dtype, SUM\\(CASE WHEN nombre IS NULL OR nombre='\\\\'''\\\\'' THEN 1 ELSE 0 END\\) empty_nombre, SUM\\(CASE WHEN apellido IS NULL OR apellido='\\\\'''\\\\'' THEN 1 ELSE 0 END\\) empty_apellido, SUM\\(CASE WHEN foto IS NULL OR foto='\\\\'''\\\\'' THEN 1 ELSE 0 END\\) empty_foto FROM carnet GROUP BY dtype;')",
+      "Bash(sqlite3 -header -column /Users/manuelcubillo/Projects/Veredillas/code/acs_web/scripts/legacyDBMigration/veredillasDB.db 'SELECT dtype, SUM\\(CASE WHEN anotaciones IS NOT NULL AND anotaciones!='\\\\'''\\\\'' THEN 1 ELSE 0 END\\) with_anot FROM carnet GROUP BY dtype;')",
+      "Bash(echo \"=== exit: $? ===\")",
+      "Bash(sed -n '/export interface CreateFieldDefinitionInput/,/^}/p' src/lib/dal/types.ts)",
+      "Bash(sed -n '/export interface CreateCardTypeInput/,/^}/p' src/lib/dal/types.ts)",
+      "Bash(git check-ignore *)",
+      "Bash(git status *)",
+      "Bash(docker --version)"
     ]
   }
 }

@@ -18,7 +18,7 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { User, LayoutDashboard, ScanLine } from "lucide-react";
+import { User, LayoutDashboard, ScanLine, Trash2 } from "lucide-react";
 import type { TenantRole } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -64,6 +64,12 @@ const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     label: "Lector",
     href: "/settings/reader",
     icon: ScanLine,
+    requiredRole: "master",
+  },
+  {
+    label: "Retención",
+    href: "/settings/retention",
+    icon: Trash2,
     requiredRole: "master",
   },
 ];

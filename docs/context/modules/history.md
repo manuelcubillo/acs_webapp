@@ -1,6 +1,6 @@
 # Module: history
 
-**Last updated**: 2026-06-07 · **Last feature**: Phase 3 token/shadcn migration of history view/filters/table (presentation only — ADR `2026-06-07-phase3-inline-style-migration.md`)
+**Last updated**: 2026-07-17 · **Last feature**: `action_logs` gained `log_type = 'lifecycle'`; the history view deliberately ignores those rows
 
 ## Responsibility
 
@@ -27,6 +27,7 @@ Does not write to `action_logs` (consumer only). Does not own scan execution or 
 Read-only access to:
 
 - `action_logs` — source of truth. Filtered by `tenant_id`. Joined to `cards`, `card_types`, `action_definitions`, `user`.
+  ⚠️ Since 2026-07-17 the table also holds `log_type = 'lifecycle'` rows (card archive/restore/activate/deactivate). The history view and its filters cover `scan | action` only — surfacing lifecycle entries is a later phase of the archiving feature. Any new query here must filter `logType` explicitly rather than assuming two values.
 - `card_type_summary_fields` + `field_values` — enriches each row with the tenant-configured summary fields (same config used by the dashboard activity feed).
 - `field_values` — field-level filter subqueries use correlated `EXISTS` against this table.
 
@@ -90,4 +91,5 @@ When operator selects one or more card types, `getCommonFieldDefinitionsAction(c
 
 ## Recent changes
 
+- 2026-07-17 — `log_type` enum gained `lifecycle` (card lifecycle audit). `/history` is unchanged and still shows only `scan | action`; `getHistoryFilterOptions` now filters card types by `status = 'active'` instead of the removed `is_active`. ADR `2026-07-17-card-lifecycle-archiving.md`.
 - 2026-04-19 — Module created: history feature documented for the first time (feature existed in source but had no context documentation).

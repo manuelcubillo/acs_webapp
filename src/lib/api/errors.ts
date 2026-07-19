@@ -45,6 +45,43 @@ export class UnprocessableError extends AppError {
   }
 }
 
+// ─── Lifecycle gate errors (phase 2 — scan / action behaviour by status) ──────
+
+/**
+ * 403 — the card is archived (in the trash). Scanning or acting on it is a hard
+ * denial that never passes through the override flow, even when the tenant has
+ * `allow_override_on_error = true`.
+ */
+export class CardArchivedError extends AppError {
+  constructor(message: string) {
+    super(message, "CARD_ARCHIVED", 403);
+    this.name = "CardArchivedError";
+  }
+}
+
+/**
+ * 422 — the card is switched off (inactive/expired) and the tenant does not
+ * allow overriding, so the action is blocked with no confirmation path.
+ */
+export class LifecycleBlockedError extends AppError {
+  constructor(message: string) {
+    super(message, "LIFECYCLE_BLOCKED", 422);
+    this.name = "LifecycleBlockedError";
+  }
+}
+
+/**
+ * 422 — the card is switched off (inactive/expired) and the tenant allows
+ * overriding, but the caller did not pass `operatorOverride`. The client should
+ * surface the override modal and retry the action with the flag set.
+ */
+export class OverrideRequiredError extends AppError {
+  constructor(message: string) {
+    super(message, "OVERRIDE_REQUIRED", 422);
+    this.name = "OverrideRequiredError";
+  }
+}
+
 // ─── ActionResult — return type for Server Actions ────────────────────────────
 
 /**

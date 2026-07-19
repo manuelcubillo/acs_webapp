@@ -25,7 +25,6 @@ import {
   getCardTypeWithFullSchema,
   updateCardType,
   listCardTypes,
-  deactivateCardType,
   addFieldDefinition,
   updateFieldDefinition,
   deactivateFieldDefinition,
@@ -153,18 +152,9 @@ export async function updateCardTypeAction(
   });
 }
 
-/**
- * Deactivate (soft-delete) a card type.
- * @role master
- */
-export async function deactivateCardTypeAction(
-  id: string,
-): Promise<ActionResult<void>> {
-  return actionHandler(async () => {
-    const { tenantId } = await requireMaster();
-    await deactivateCardType(id, tenantId);
-  });
-}
+// Card type lifecycle (activate / deactivate / archive / restore) lives in
+// `src/lib/actions/lifecycle.ts`. The former `deactivateCardTypeAction` here
+// wrote `is_active` directly, bypassing validation and audit.
 
 // ─── MASTER actions — Field Definition management ─────────────────────────────
 

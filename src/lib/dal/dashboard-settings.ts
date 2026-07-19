@@ -8,7 +8,7 @@
  * each activity feed entry for quick card identification.
  */
 
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   dashboardSettings,
@@ -18,6 +18,7 @@ import {
 import type {
   DashboardSettings,
   CardTypeSummaryField,
+  FeedSummaryFieldConfig,
   UpsertDashboardSettingsInput,
   SetCardTypeSummaryFieldsInput,
 } from "./types";
@@ -129,6 +130,63 @@ export async function getSummaryFieldsForCardTypes(
     if (!cardTypeIds.includes(row.cardTypeId)) continue;
     const existing = map.get(row.cardTypeId) ?? [];
     existing.push(row);
+    map.set(row.cardTypeId, existing);
+  }
+  return map;
+}
+
+/**
+ * Summary field configuration for every card type of a tenant, shipped to the
+ * dashboard client at page load.
+ *
+ * The dashboard builds the feed rows for its own scans locally instead of
+ * re-querying the server (see `src/lib/dashboard/feed-entries.ts`). The values
+ * arrive with the scan; only this selection — which fields, in what order, and
+ * how to label them — has to be sent ahead of time. It is small and static.
+ *
+ * `label` and `fieldType` are included rather than resolved client-side from
+ * the card: a card carries no field value row for a field left empty, so the
+ * client would silently drop a configured-but-empty summary field that the
+ * server-built feed renders as "—".
+ *
+ * Photo fields are excluded, mirroring `getActivityFeed`. The feed shows a
+ * card's photo as a thumbnail; a photo's *value* is an object key, which the
+ * row would print as raw text.
+ *
+ * @param tenantId - Tenant UUID.
+ * @returns Map of cardTypeId → ordered summary field config.
+ */
+export async function getFeedSummaryFieldConfig(
+  tenantId: string,
+): Promise<Map<string, FeedSummaryFieldConfig[]>> {
+  const rows = await db
+    .select({
+      cardTypeId: cardTypeSummaryFields.cardTypeId,
+      fieldDefinitionId: cardTypeSummaryFields.fieldDefinitionId,
+      label: fieldDefinitions.label,
+      fieldType: fieldDefinitions.fieldType,
+    })
+    .from(cardTypeSummaryFields)
+    .innerJoin(
+      fieldDefinitions,
+      eq(cardTypeSummaryFields.fieldDefinitionId, fieldDefinitions.id),
+    )
+    .where(
+      and(
+        eq(cardTypeSummaryFields.tenantId, tenantId),
+        ne(fieldDefinitions.fieldType, "photo"),
+      ),
+    )
+    .orderBy(asc(cardTypeSummaryFields.position));
+
+  const map = new Map<string, FeedSummaryFieldConfig[]>();
+  for (const row of rows) {
+    const existing = map.get(row.cardTypeId) ?? [];
+    existing.push({
+      fieldDefinitionId: row.fieldDefinitionId,
+      label: row.label,
+      fieldType: row.fieldType,
+    });
     map.set(row.cardTypeId, existing);
   }
   return map;

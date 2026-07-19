@@ -71,6 +71,27 @@ services: # Aquí listamos todos los "contenedores" que queremos crear
       - "3000:3000" # Accederás a tu app desde http://localhost:3000
     env_file:
       - .env.docker # Todas las variables (auth, resend, DB, storage) usando nombres de contenedor, no localhost
+    labels: # Job leído por el contenedor "ofelia" (definido abajo) para disparar el purge-archived diario
+      ofelia.enabled: "true"
+      ofelia.job-exec.purge-archived.schedule: "0 3 * * *" # Mismo horario que el cron de Vercel (vercel.json)
+      ofelia.job-exec.purge-archived.command: >-
+        sh -c 'wget -qO- --header="Authorization: Bearer $$CRON_SECRET"
+        http://localhost:3000/api/cron/purge-archived'
+
+  # -----------------------------------------------------------------
+  # CONTENEDOR 5: EL CRON (Ofelia dispara el purge-archived cada día)
+  # -----------------------------------------------------------------
+  ofelia:
+    image: mcuadros/ofelia:latest
+    container_name: acs-cron
+    profiles: ["app", "all"]
+    command: daemon --docker
+    depends_on:
+      - acs
+    environment:
+      TZ: UTC # El schedule de arriba está en horario UTC, igual que el cron de Vercel
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro # Necesario para que Ofelia pueda hacer "exec" dentro de acs-app
 
 # Definimos los "Discos Virtuales" (Volumes). Esto asegura que aunque borres los contenedores,
 # tus imágenes subidas y tus tablas de la Base de Datos sigan existiendo en tu disco duro.

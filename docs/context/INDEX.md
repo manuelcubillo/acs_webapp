@@ -2,6 +2,8 @@
 
 Router for tasks. Read `foundation/` once per session. Then read only the modules matching the task.
 
+**Card archiving feature: COMPLETE (5/5).** Phase 1 data model + lifecycle service, phase 2 scan/action behaviour, phase 3 edit controls + status filter, phase 4 trash view + manual hard-delete, phase 5 retention settings UI + daily purge job. ADRs dated `2026-07-17-*` (phases 1–4) and `2026-07-18-card-lifecycle-purge-job.md` (phase 5).
+
 ## Task routing
 
 | Task keyword / intent                                | Modules to read                                 |
@@ -14,6 +16,12 @@ Router for tasks. Read `foundation/` once per session. Then read only the module
 | Field type, field definition, renderer, input        | `fields`, `validations`                         |
 | Field validation rule, validation engine             | `validations`, `fields`                         |
 | Card CRUD, card list, card search, card profile      | `cards`, `fields`                               |
+| Archive, trash, restore, lifecycle, retention, purge | `cards`, `card-types`, `decisions/2026-07-17-card-lifecycle-archiving.md` |
+| Retention settings UI, edit `archive_retention_days` | `auth-tenants`, `decisions/2026-07-18-card-lifecycle-purge-job.md` |
+| Purge job, cron endpoint, scheduled job, Vercel Cron, deploy cron | `infrastructure`, `decisions/2026-07-18-card-lifecycle-purge-job.md` |
+| Scan/action behaviour by card status, lifecycle gate, deny archived, override inactive | `cards`, `actions`, `scanning`, `decisions/2026-07-17-card-lifecycle-scan-behaviour.md` |
+| Status controls in edit, activate/deactivate/archive card or type, filter cards by status | `cards`, `card-types`, `decisions/2026-07-17-card-lifecycle-edit-controls.md` |
+| Trash view, archived list, restore from trash, permanent/hard delete, empty trash | `cards`, `card-types`, `auth-tenants`, `decisions/2026-07-17-card-lifecycle-trash-view.md` |
 | CardType wizard, card type definition                | `card-types`, `fields`, `actions`, `validations`|
 | Activity feed, summary fields, dashboard settings    | `dashboard`, `cards`                            |
 | History, audit log, export, filter logs              | `history`, `dashboard` (shared table), `actions` (log producers) |

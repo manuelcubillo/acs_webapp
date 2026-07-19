@@ -56,6 +56,15 @@ export type ScanMode = Tenant["scanMode"];
 
 export type LogType = ActionLog["logType"];
 
+// ─── Lifecycle status ────────────────────────────────────────────────────────
+
+/**
+ * Lifecycle status shared by cards and card types.
+ * `expired` is reachable on cards only — `card_types` carries a CHECK
+ * constraint forbidding it.
+ */
+export type LifecycleStatus = Card["status"];
+
 // ─── Tenant inputs ──────────────────────────────────────────────────────────
 
 export interface CreateTenantInput {
@@ -71,6 +80,11 @@ export interface UpdateTenantInput {
 /** Settings the master can configure for their tenant. */
 export interface UpdateTenantSettingsInput {
   scanMode?: ScanMode;
+  /**
+   * Days an archived card / card type stays in the trash before the purge job
+   * deletes it permanently. Validated to 1..365 at the action boundary.
+   */
+  archiveRetentionDays?: number;
 }
 
 // ─── CardType inputs ────────────────────────────────────────────────────────
@@ -82,10 +96,13 @@ export interface CreateCardTypeInput {
   fieldDefinitions?: CreateFieldDefinitionInput[];
 }
 
+/**
+ * Descriptive updates only. Lifecycle status is not settable here — it goes
+ * through `src/lib/server/lifecycle/card-types.ts`.
+ */
 export interface UpdateCardTypeInput {
   name?: string;
   description?: string | null;
-  isActive?: boolean;
 }
 
 // ─── FieldDefinition inputs ─────────────────────────────────────────────────
@@ -171,11 +188,55 @@ export interface SearchFilter {
   value: unknown;
 }
 
+/**
+ * Lifecycle status filter for card search.
+ * `archived` is intentionally absent — archived cards never appear in search
+ * (the `notArchived` scope always applies). `inactive` groups `inactive` +
+ * `expired`, which behave identically. `all` (the default) imposes no filter.
+ */
+export type CardSearchStatus = "all" | "active" | "inactive";
+
 export interface SearchCardsInput {
   /** Optional partial match on card code. */
   codeContains?: string;
   /** Dynamic field filters. */
   filters?: SearchFilter[];
+  /** Lifecycle status filter. Defaults to `all` when omitted. */
+  status?: CardSearchStatus;
+}
+
+// ─── Archived (trash) views — phase 4 ────────────────────────────────────────
+
+/**
+ * One archived card as shown in the trash view.
+ *
+ * `id` is the internal UUID, carried ONLY as the argument for the restore /
+ * purge Server Actions — it is never displayed nor placed in a URL. The
+ * displayed identifier is `code` (constraint: card UUIDs are not exposed).
+ */
+export interface ArchivedCardListItem {
+  id: string;
+  code: string;
+  cardTypeName: string;
+  archivedAt: Date;
+  /** Resolved name of the user who archived it; null if that user was removed. */
+  archivedByName: string | null;
+  /**
+   * True when the card was dragged into the trash by archiving its card type.
+   * Such a card cannot be restored until its type is restored first.
+   */
+  archivedViaType: boolean;
+}
+
+/** One archived card type as shown in the trash view. */
+export interface ArchivedCardTypeListItem {
+  id: string;
+  name: string;
+  /** How many cards a hard delete would cascade away (every card of the type). */
+  cardCount: number;
+  archivedAt: Date;
+  /** Resolved name of the user who archived it; null if that user was removed. */
+  archivedByName: string | null;
 }
 
 // ─── Pagination ─────────────────────────────────────────────────────────────
@@ -327,6 +388,16 @@ export interface ScanWithAutoActionsResult {
    * Null when pausedForConfirmation is false.
    */
   pauseValidationErrors: import("@/lib/validation/scan-validator").ScanValidationCheck[] | null;
+
+  /**
+   * Verdict of the lifecycle gate evaluated once at scan time (phase 2).
+   * `allowed` for active cards; `requires_override` / `blocked` for
+   * inactive/expired cards; `denied_archived` for archived cards. Drives the
+   * operational surface colour and whether manual actions are offered. The
+   * override machinery above (`pausedForConfirmation`, `hasBlockingErrors`) is
+   * reused for the off-states, so consumers only special-case `denied_archived`.
+   */
+  lifecycleGate: import("@/lib/server/lifecycle/scan-gate").LifecycleGateResult;
 }
 
 /** Result returned by validateBeforeActionAction. */
@@ -334,6 +405,12 @@ export interface ValidateBeforeActionResult {
   scanResult: import("@/lib/validation/scan-validator").ScanValidationResult;
   /** True if any error-level validation fails on the card's current state. */
   hasBlockingErrors: boolean;
+  /**
+   * Verdict of the lifecycle gate for the card being acted upon (phase 2). Lets
+   * the client pre-empt a denied/blocked action or open the override modal for a
+   * switched-off card before invoking the mutating action.
+   */
+  lifecycleGate: import("@/lib/server/lifecycle/scan-gate").LifecycleGateResult;
 }
 
 /** Input for resumeAutoActionsAction — continues a paused auto-action flow. */
@@ -479,6 +556,17 @@ export interface SetCardTypeSummaryFieldsInput {
 // ─── Activity Feed ───────────────────────────────────────────────────────────
 
 /** A single entry in the operational dashboard activity feed. */
+/**
+ * One configured summary field of a card type, without any card's value.
+ * Shipped to the dashboard client so it can build feed rows for its own scans
+ * locally. See `getFeedSummaryFieldConfig`.
+ */
+export interface FeedSummaryFieldConfig {
+  fieldDefinitionId: string;
+  label: string;
+  fieldType: ActivityFeedSummaryField["fieldType"];
+}
+
 export interface ActivityFeedEntry {
   id: string;
   logType: LogType;
@@ -494,9 +582,10 @@ export interface ActivityFeedEntry {
   /** Action name (null for scan entries). */
   actionName: string | null;
   /**
-   * Signed read URL for the card's primary photo (lowest-position active photo
+   * Route serving the card's primary photo (lowest-position active photo
    * field), or null when the card type has no photo field or none was uploaded.
-   * Rendered as the entry's thumbnail; short-lived, minted per feed load.
+   * Stable per card and session-authenticated — NOT a signed storage URL. See
+   * `cardPhotoRoute` in `src/lib/storage/photo-routes.ts`.
    */
   cardPhotoUrl: string | null;
   executedAt: Date;

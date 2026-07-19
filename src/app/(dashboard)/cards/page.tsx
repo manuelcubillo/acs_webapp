@@ -19,8 +19,14 @@ import {
 import { signCardListPhotos } from "@/lib/dal/photo-urls";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardList from "@/components/cards/CardList";
+import FlashMessage from "@/components/shared/FlashMessage";
 import { Button } from "@/components/ui/button";
-import type { FieldDefinition, PaginatedResult, CardWithFields } from "@/lib/dal/types";
+import type {
+  FieldDefinition,
+  PaginatedResult,
+  CardWithFields,
+  CardSearchStatus,
+} from "@/lib/dal/types";
 
 export const dynamic = "force-dynamic";
 
@@ -34,8 +40,23 @@ const TEXT = {
   BTN_CREATE_TYPE: "Crear tipo de tarjeta",
 } as const;
 
+/** Flash codes surfaced after a lifecycle redirect (see FlashMessage). */
+const FLASH_MESSAGES: Record<string, string> = {
+  "card-archived": "Carnet archivado. Se ha movido a la papelera.",
+};
+
+/** Coerce a raw query value into a valid card search status. */
+function parseStatus(raw?: string): CardSearchStatus {
+  return raw === "active" || raw === "inactive" ? raw : "all";
+}
+
 interface CardsPageProps {
-  searchParams: Promise<{ cardTypeId?: string; q?: string }>;
+  searchParams: Promise<{
+    cardTypeId?: string;
+    q?: string;
+    status?: string;
+    flash?: string;
+  }>;
 }
 
 export default async function CardsPage({ searchParams }: CardsPageProps) {
@@ -53,7 +74,10 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
   const isAdmin = role === "admin" || role === "master";
 
   // ── Params ────────────────────────────────────────────────────────────────
-  const { cardTypeId: rawCardTypeId, q = "" } = await searchParams;
+  const { cardTypeId: rawCardTypeId, q = "", status: rawStatus, flash } =
+    await searchParams;
+  const statusFilter = parseStatus(rawStatus);
+  const flashMessage = flash ? FLASH_MESSAGES[flash] : undefined;
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const [cardTypes, tenant, userProfile] = await Promise.all([
@@ -80,7 +104,7 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
         searchCards(
           [activeCardType.id],
           tenantId,
-          { codeContains: q || undefined },
+          { codeContains: q || undefined, status: statusFilter },
           { limit: 50 },
         ),
       ]);
@@ -102,6 +126,9 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
       userName={userProfile.name ?? undefined}
       userAvatarUrl={userProfile.avatarUrl}
     >
+      {/* One-shot confirmation after a lifecycle redirect. */}
+      <FlashMessage message={flashMessage} />
+
       {/* Page header */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -164,6 +191,7 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
           initialCardTypeId={activeCardType.id}
           scanMode={scanMode}
           initialSearch={q}
+          initialStatus={statusFilter}
           summaryFieldIds={summaryFieldIds}
         />
       )}

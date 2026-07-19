@@ -17,6 +17,7 @@ import {
   actionHandler,
   requireOperator,
   requireAdmin,
+  CardArchivedError,
   type ActionResult,
 } from "@/lib/api";
 import {
@@ -25,7 +26,6 @@ import {
   getCardById,
   updateCard,
   updateCardCode,
-  deleteCard,
   listCards,
   searchCards,
   getScanValidationsByCardType,
@@ -44,6 +44,11 @@ import type {
   ValidateBeforeActionResult,
   ResumeAutoActionsInput,
 } from "@/lib/dal";
+import {
+  deactivateCard,
+  resolveLifecycleGate,
+  buildLifecycleScanCheck,
+} from "@/lib/server/lifecycle";
 import {
   validateScan,
   hasErrorLevelFailures,
@@ -120,6 +125,7 @@ const SearchCardsSchema = z.object({
   cardTypeIds: z.array(z.string().uuid()).min(1),
   codeContains: z.string().optional(),
   filters: z.array(SearchFilterSchema).optional(),
+  status: z.enum(["all", "active", "inactive"]).optional(),
   limit: z.number().int().min(1).max(100).optional(),
   offset: z.number().int().min(0).optional(),
 });
@@ -177,9 +183,11 @@ export async function executeScanWithAutoActionsAction(
 
     // 2. Run initial scan validations (pure — never throws)
     const svRules = await getScanValidationsByCardType(card.cardTypeId);
-    const initialScanResult = validateScan(card.fields, svRules);
+    const baseScanResult = validateScan(card.fields, svRules);
 
-    // 3. Log the scan entry (log_type = "scan")
+    // 3. Log the scan entry (log_type = "scan"). ALWAYS — an operational scan is
+    //    a real physical event and is logged even for an archived card
+    //    (constraint #10). The lifecycle gate below only affects what runs next.
     await logScanEntry({
       cardId: card.id,
       tenantId,
@@ -191,7 +199,43 @@ export async function executeScanWithAutoActionsAction(
     const settings = await getDashboardSettings(tenantId);
     const allowOverride = settings?.allowOverrideOnError ?? false;
 
-    // 5. Block or pause early if initial validations have error-level failures
+    // 5. Evaluate the lifecycle gate once — the card status does not change
+    //    during the auto-action loop, so it is never re-evaluated per action.
+    const lifecycleGate = resolveLifecycleGate(card.status, allowOverride);
+
+    // 5a. Archived → hard denial: no auto-actions, no override, no modal, even
+    //     when allow_override_on_error is true. The scan is already logged.
+    if (lifecycleGate.outcome === "denied_archived") {
+      return {
+        card,
+        scanResult: baseScanResult,
+        autoActions: [],
+        stoppedByValidation: true,
+        stoppedAtAction: null,
+        finalValidationResult: baseScanResult,
+        hasBlockingErrors: true,
+        pausedForConfirmation: false,
+        pendingAutoActionIds: null,
+        pendingAutoActionNames: null,
+        pauseValidationErrors: null,
+        lifecycleGate,
+      };
+    }
+
+    // 5b. Switched-off cards (inactive/expired) surface as an error-level
+    //     scan-validation failure by prepending a synthetic check, so the
+    //     existing pause/block machinery drives the override flow with no
+    //     special-casing. Active cards keep the real scan result untouched.
+    const initialScanResult: ScanValidationResult =
+      lifecycleGate.outcome === "allowed"
+        ? baseScanResult
+        : {
+            passed: false,
+            results: [buildLifecycleScanCheck(card.status), ...baseScanResult.results],
+          };
+
+    // 6. Block or pause early if initial validations have error-level failures
+    //    (real scan validations and/or the synthetic lifecycle check).
     if (hasErrorLevelFailures(initialScanResult)) {
       const autoActionDefs = await getAutoExecuteActions(card.cardTypeId);
       if (allowOverride) {
@@ -208,6 +252,7 @@ export async function executeScanWithAutoActionsAction(
           pendingAutoActionIds: autoActionDefs.map((a) => a.id),
           pendingAutoActionNames: autoActionDefs.map((a) => a.name),
           pauseValidationErrors: getErrorLevelChecks(initialScanResult),
+          lifecycleGate,
         };
       }
       // BLOCK — no modal, buttons disabled
@@ -223,10 +268,13 @@ export async function executeScanWithAutoActionsAction(
         pendingAutoActionIds: null,
         pendingAutoActionNames: null,
         pauseValidationErrors: null,
+        lifecycleGate,
       };
     }
 
-    // 6. Execute auto-execute actions sequentially, re-validating after each
+    // 7. Execute auto-execute actions sequentially, re-validating after each.
+    //    Only reached for active cards (off-states paused/blocked above), so the
+    //    lifecycle check is never present in this loop's re-validations.
     const autoActionDefs = await getAutoExecuteActions(card.cardTypeId);
     const autoActions: AutoActionResult[] = [];
     let currentValidationResult = initialScanResult;
@@ -274,6 +322,7 @@ export async function executeScanWithAutoActionsAction(
               pendingAutoActionIds: remainingDefs.map((a) => a.id),
               pendingAutoActionNames: remainingDefs.map((a) => a.name),
               pauseValidationErrors: getErrorLevelChecks(revalidation),
+              lifecycleGate,
             };
           }
           // STOP permanently — no override
@@ -291,7 +340,7 @@ export async function executeScanWithAutoActionsAction(
       }
     }
 
-    // 7. Fetch final card state (after all executed actions)
+    // 8. Fetch final card state (after all executed actions)
     const finalCard = await getCardByCode(code, tenantId);
 
     return {
@@ -306,6 +355,7 @@ export async function executeScanWithAutoActionsAction(
       pendingAutoActionIds: null,
       pendingAutoActionNames: null,
       pauseValidationErrors: null,
+      lifecycleGate,
     };
   });
 
@@ -336,6 +386,14 @@ export async function resumeAutoActionsAction(
     // 2. Re-check settings — setting may have changed while modal was open
     const settings = await getDashboardSettings(tenantId);
     const allowOverride = settings?.allowOverrideOnError ?? false;
+
+    // 2b. Re-evaluate the lifecycle gate — the card may have been archived while
+    //     the modal was open. Archived is never overridable, so refuse the
+    //     resume outright rather than run the pending actions.
+    const lifecycleGate = resolveLifecycleGate(card.status, allowOverride);
+    if (lifecycleGate.outcome === "denied_archived") {
+      throw new CardArchivedError(lifecycleGate.reason ?? "El carnet está archivado");
+    }
 
     // 3. Run current validations for final state tracking
     const svRules = await getScanValidationsByCardType(card.cardTypeId);
@@ -405,6 +463,7 @@ export async function resumeAutoActionsAction(
               pendingAutoActionIds: remainingIds,
               pendingAutoActionNames: remainingNames,
               pauseValidationErrors: getErrorLevelChecks(revalidation),
+              lifecycleGate,
             };
           }
           // No override allowed anymore — stop permanently
@@ -437,6 +496,7 @@ export async function resumeAutoActionsAction(
       pendingAutoActionIds: null,
       pendingAutoActionNames: null,
       pauseValidationErrors: null,
+      lifecycleGate,
     };
   });
 
@@ -458,9 +518,20 @@ export async function validateBeforeActionAction(
     const card = await getCardById(cardId, tenantId);
     const svRules = await getScanValidationsByCardType(card.cardTypeId);
     const scanResult = validateScan(card.fields, svRules);
+
+    // Lifecycle gate so the client can pre-empt a denied/blocked action or open
+    // the override modal for a switched-off card. Server-side enforcement still
+    // happens in executeActionAction (this is a hint, not the gate of record).
+    const settings = await getDashboardSettings(tenantId);
+    const lifecycleGate = resolveLifecycleGate(
+      card.status,
+      settings?.allowOverrideOnError ?? false,
+    );
+
     return {
       scanResult,
       hasBlockingErrors: hasErrorLevelFailures(scanResult),
+      lifecycleGate,
     };
   });
 }
@@ -509,6 +580,7 @@ export async function searchCardsAction(
     const searchInput: SearchCardsInput = {
       codeContains: data.codeContains,
       filters: data.filters,
+      status: data.status,
     };
 
     return searchCards(data.cardTypeIds, tenantId, searchInput, {
@@ -568,14 +640,23 @@ export async function updateCardCodeAction(
 }
 
 /**
- * Soft-delete a card (sets status → inactive).
+ * Switch a card off, looked up by its public code.
+ *
+ * @deprecated Misleading name — this never deleted anything, it set the card to
+ * `inactive`. Prefer the explicit lifecycle actions in
+ * `src/lib/actions/lifecycle.ts` (`deactivateCardAction` / `archiveCardAction`),
+ * which take a card id. Kept as a thin wrapper so the behaviour stays reachable
+ * by code; it now routes through the lifecycle service so the transition is
+ * validated and audited like every other one.
+ *
  * @role admin | master
  */
 export async function deleteCardAction(
   code: string,
 ): Promise<ActionResult<void>> {
   return actionHandler(async () => {
-    const { tenantId } = await requireAdmin();
-    await deleteCard(code, tenantId);
+    const { userId, tenantId } = await requireAdmin();
+    const card = await getCardByCode(code, tenantId);
+    await deactivateCard(card.id, { userId, tenantId });
   });
 }

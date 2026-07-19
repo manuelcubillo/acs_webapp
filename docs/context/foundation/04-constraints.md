@@ -14,7 +14,10 @@ These rules are **non-negotiable**. Any proposed change to one of them requires 
 
 ## Data integrity
 
-6. Soft delete everywhere — `is_active = false`. Hard deletes are forbidden for `field_definitions`, `card_types`, `action_definitions`, `scan_validations`, `cards`.
+6. Soft delete everywhere. Hard deletes are forbidden for `field_definitions`, `card_types`, `action_definitions`, `scan_validations`, `cards` — the sole exception is the phase-5 purge job, which physically deletes rows whose trash retention has elapsed.
+   - `field_definitions`, `action_definitions`, `scan_validations` use `is_active = false`.
+   - `cards` and `card_types` use `status` (`lifecycle_status`): `inactive` = switched off forever, `archived` = trash pending purge. Transitions go **only** through `src/lib/server/lifecycle/`, never a direct DAL update. See ADR `2026-07-17-card-lifecycle-archiving.md`.
+   - ⚠️ **This rule is enforced by the DAL alone as of 2026-07-17.** The FKs pointing at `field_definitions` / `action_definitions` were `RESTRICT` (which made an accidental hard delete error out); they are now `CASCADE` so the purge job can delete a card type in one statement. A hard delete of a `field_definition` outside the purge path now silently destroys its `field_values`.
 7. `field_type` on a `field_definition` cannot change once any `FieldValue` exists for that field. UI must block, DAL must refuse.
 8. Validation runs on both frontend and backend. The backend is the source of truth.
 

@@ -83,3 +83,25 @@ function formatRuleValue(value: unknown): string {
   if (value === null || value === undefined) return "";
   return String(value);
 }
+
+// ─── Lifecycle scan messages ──────────────────────────────────────────────────
+
+/**
+ * Field label used for the synthetic lifecycle scan-validation check. The card
+ * lifecycle status is not a real field, but it surfaces through the same
+ * ScanValidationResult channel at scan time, so it needs a label.
+ */
+export const LIFECYCLE_SCAN_FIELD_LABEL = "Estado del carnet";
+
+/**
+ * Reason shown when a card is refused — or requires an override — at scan /
+ * action time because of its lifecycle status. Displayed in the override modal,
+ * stored in the action-log override reason, and returned as the external API
+ * denial body. `expired` behaves exactly like `inactive`; the wording differs
+ * only to stay informative if a future auto-expiry mechanism ever sets it.
+ */
+export const LIFECYCLE_SCAN_MESSAGES = {
+  inactive: "El carnet está inactivo",
+  expired: "El carnet ha expirado",
+  archived: "El carnet está archivado",
+} as const;

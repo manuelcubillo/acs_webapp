@@ -17,6 +17,9 @@ import {
   actionHandler,
   requireOperator,
   requireMaster,
+  CardArchivedError,
+  LifecycleBlockedError,
+  OverrideRequiredError,
   type ActionResult,
 } from "@/lib/api";
 import {
@@ -28,7 +31,10 @@ import {
   executeAction,
   getActionLogs,
   getRecentActions,
+  getCardLifecycleStatus,
+  getDashboardSettings,
 } from "@/lib/dal";
+import { resolveLifecycleGate } from "@/lib/server/lifecycle";
 import type {
   ActionDefinitionWithField,
   ActionExecutionResult,
@@ -124,13 +130,42 @@ export async function executeActionAction(
   return actionHandler(async () => {
     const { userId, tenantId } = await requireOperator();
     const data = ExecuteActionSchema.parse(input);
+
+    // Lifecycle gate — the SERVER-SIDE source of truth for whether this action
+    // may run. Unlike scan validations (which only inform, per constraint #9),
+    // a card's lifecycle status genuinely blocks or denies execution.
+    const settings = await getDashboardSettings(tenantId);
+    const status = await getCardLifecycleStatus(data.cardId, tenantId);
+    const gate = resolveLifecycleGate(status, settings?.allowOverrideOnError ?? false);
+
+    if (gate.outcome === "denied_archived") {
+      throw new CardArchivedError(gate.reason ?? "El carnet está archivado");
+    }
+    if (gate.outcome === "blocked") {
+      throw new LifecycleBlockedError(gate.reason ?? "El carnet está inactivo");
+    }
+
+    // Switched-off card with override enabled: require the explicit operator
+    // override flag. The client surfaces the override modal and retries with it.
+    const overrideValidationErrors = [...(data.overrideValidationErrors ?? [])];
+    if (gate.outcome === "requires_override") {
+      if (!data.operatorOverride) {
+        throw new OverrideRequiredError(gate.reason ?? "El carnet está inactivo");
+      }
+      // Capture the lifecycle reason in the audit trail alongside any scan errors.
+      if (gate.reason && !overrideValidationErrors.includes(gate.reason)) {
+        overrideValidationErrors.push(gate.reason);
+      }
+    }
+
     return executeAction({
       cardId: data.cardId,
       actionDefinitionId: data.actionDefinitionId,
       tenantId,
       executedBy: userId,
       operatorOverride: data.operatorOverride,
-      overrideValidationErrors: data.overrideValidationErrors,
+      overrideValidationErrors:
+        overrideValidationErrors.length > 0 ? overrideValidationErrors : undefined,
     });
   });
 }

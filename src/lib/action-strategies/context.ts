@@ -11,7 +11,7 @@
  * imports this module).
  */
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { actionLogs, fieldDefinitions, fieldValues } from "@/lib/db/schema";
 import { extractValue, mapValueToColumn } from "@/lib/dal/field-values";
@@ -30,7 +30,8 @@ function decodeLogRow(row: typeof actionLogs.$inferSelect): ActionHistoryRecord 
   const md = (row.metadata ?? null) as Record<string, unknown> | null;
   return {
     id: row.id,
-    logType: row.logType,
+    // Safe: getCardActionHistory filters to scan|action before decoding.
+    logType: row.logType as "scan" | "action",
     actionDefinitionId: row.actionDefinitionId,
     actionType: (md?.action_type as ActionType | undefined) ?? null,
     targetField: (md?.target_field as string | undefined) ?? null,
@@ -48,7 +49,13 @@ async function getCardActionHistory(
   cardId: string,
   options: GetCardActionHistoryOptions = {},
 ): Promise<ActionHistoryRecord[]> {
-  const conditions = [eq(actionLogs.cardId, cardId)];
+  // Strategies reason about scans and action executions only. Lifecycle rows
+  // (activate / deactivate / archive / restore) are audit-only and would
+  // corrupt answers to questions like "when did the last entry happen?".
+  const conditions = [
+    eq(actionLogs.cardId, cardId),
+    inArray(actionLogs.logType, ["scan", "action"]),
+  ];
   if (options.logType) {
     conditions.push(eq(actionLogs.logType, options.logType));
   }

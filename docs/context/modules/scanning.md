@@ -1,6 +1,6 @@
 # Module: scanning
 
-**Last updated**: 2026-04-19 · **Last feature**: documentation sync against source code
+**Last updated**: 2026-07-17 · **Last feature**: operational scan conditioned by card lifecycle status (phase 2)
 
 ## Responsibility
 
@@ -46,9 +46,9 @@ Does not own action execution (see `actions`) or card resolution (see `cards`).
 Entry: `DashboardSearchBar` (manual input or external reader keystroke captured there) or `useExternalScanner` mounted in `DashboardView`.
 
 1. Code received → `DashboardView.onScan(code)` → `executeScanWithAutoActionsAction(code)`.
-2. Full pipeline in `src/lib/actions/cards.ts`: log scan entry, evaluate validations, run auto-actions sequentially, re-validate after each (see `modules/actions.md`).
-3. Result (`ScanWithAutoActionsResult`) displayed in `ActiveCardZone`: card details, auto-action feedback, manual action buttons.
-4. If `pausedForConfirmation=true`, override modal appears → operator confirms → `resumeAutoActionsAction`.
+2. Full pipeline in `src/lib/actions/cards.ts`: log scan entry (always, even for an archived card), evaluate the **lifecycle gate** (phase 2, see `modules/cards.md`) and scan validations, run auto-actions sequentially, re-validate after each (see `modules/actions.md`).
+3. Result (`ScanWithAutoActionsResult`, now carrying `lifecycleGate`) displayed in `ActiveCardZone`: card details, auto-action feedback, manual action buttons. Off-state → orange (`--state-override`) surface; archived → red denial, no actions.
+4. If `pausedForConfirmation=true` (blocking scan validations **or** an inactive/expired card with override allowed), the override modal appears → operator confirms → `resumeAutoActionsAction`. Archived never opens the modal.
 5. Entry visible in the activity feed.
 
 **The `/cards/scan` page is NOT the operational path.** See below.
@@ -98,5 +98,6 @@ Keystrokes arriving faster than `THRESHOLD_MS` (50ms) between characters are cla
 
 ## Recent changes
 
+- 2026-07-17 — Phase-2 scan behaviour by status: the operational scan now evaluates `resolveLifecycleGate` after logging. Archived → hard denial (no auto-actions, scan still logged); inactive/expired → override pause / block via a synthetic scan check. The `/cards/scan` informational path is unchanged (still no log, no actions). ADR `2026-07-17-card-lifecycle-scan-behaviour.md`.
 - 2026-04-19 — Initial extraction.
 - 2026-04-19 — Synchronized documentation against source code: completely corrected operational scan flow (dashboard, not /cards/scan); added DashboardView/DashboardSearchBar as primary operational surfaces; clarified /cards/scan as informational; added resumeAutoActionsAction cross-reference.
