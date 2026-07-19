@@ -36,8 +36,9 @@ import {
   AuthorizationError,
 } from "@/lib/api";
 import { getCardByCode, NotFoundError } from "@/lib/dal";
-import { signPhotoForRead } from "@/lib/storage/read";
+import { signPhotoForRead, signPhotoForDownload } from "@/lib/storage/read";
 import { assertObjectMatchesKind } from "@/lib/storage/validation";
+import { buildCardPhotoDownloadFilename } from "@/lib/storage/keys";
 
 /** The response depends on the session cookie — never let it be static. */
 export const dynamic = "force-dynamic";
@@ -53,8 +54,16 @@ interface RouteParams {
   params: Promise<{ code: string }>;
 }
 
-export async function GET(_request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, { params }: RouteParams) {
   const { code } = await params;
+
+  // Optional selectors: `?field=<fieldDefinitionId>` targets one specific photo
+  // field (default: the primary photo); `?download` returns the object as an
+  // attachment named `<code>_<fieldName>_<random>.<ext>` so it is both
+  // human-readable and traceable to its storage object.
+  const { searchParams } = new URL(request.url);
+  const fieldId = searchParams.get("field");
+  const isDownload = searchParams.has("download");
 
   let tenantId: string;
   try {
@@ -67,18 +76,24 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
   }
 
   let key: string | null = null;
+  let fieldName = "foto";
   try {
     const card = await getCardByCode(code, tenantId);
     // The primary photo is the first photo field that holds a value.
     // `card.fields` is ordered by field definition position and only carries
     // fields that have a value, so `find` yields exactly that. getActivityFeed
     // decides whether to show a thumbnail by the same rule — keep them in step
-    // or the feed will render an <img> pointing at a 404.
-    const photo = card.fields.find((f) => f.fieldType === "photo");
-    key =
-      typeof photo?.value === "string" && photo.value.length > 0
-        ? photo.value
-        : null;
+    // or the feed will render an <img> pointing at a 404. When `?field` is given
+    // we instead pick that exact photo field (multi-photo cards).
+    const photo = card.fields.find(
+      (f) =>
+        f.fieldType === "photo" &&
+        (fieldId ? f.fieldDefinitionId === fieldId : true),
+    );
+    if (typeof photo?.value === "string" && photo.value.length > 0) {
+      key = photo.value;
+      fieldName = photo.name ?? fieldName;
+    }
   } catch (e) {
     if (!(e instanceof NotFoundError)) throw e;
     // Fall through to 404 — never echo the DAL's message, it carries the
@@ -100,7 +115,12 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     return new NextResponse(null, { status: 404 });
   }
 
-  const signedUrl = await signPhotoForRead(key);
+  const signedUrl = isDownload
+    ? await signPhotoForDownload(
+        key,
+        buildCardPhotoDownloadFilename({ code, fieldName, key }),
+      )
+    : await signPhotoForRead(key);
 
   const response = NextResponse.redirect(signedUrl, 302);
   // `private` is load-bearing: a shared cache (CDN, corporate proxy) must never

@@ -126,7 +126,9 @@
       "Bash(sed -n '/export interface CreateCardTypeInput/,/^}/p' src/lib/dal/types.ts)",
       "Bash(git check-ignore *)",
       "Bash(git status *)",
-      "Bash(docker --version)"
+      "Bash(docker --version)",
+      "Bash(pnpm -v)",
+      "Bash(echo \"pnpm: $\\(pnpm -v 2>&1\\)\")"
     ]
   }
 }

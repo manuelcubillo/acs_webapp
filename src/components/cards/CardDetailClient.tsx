@@ -183,6 +183,8 @@ export default function CardDetailClient({
                     fieldType={fv.fieldType}
                     value={fv.value}
                     label={fv.label}
+                    cardCode={card.code}
+                    fieldDefinitionId={fv.fieldDefinitionId}
                   />
                 </div>
               ))}

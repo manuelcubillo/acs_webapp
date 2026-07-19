@@ -45,6 +45,7 @@ const TEXT = {
   EMPTY:          "Sin resultados",
   ITEM_SINGLE:    "carnet",
   ITEM_PLURAL:    "carnets",
+  ALL_TYPES:      "Todos",
 } as const;
 
 const PAGE_SIZE_TABLE = 50;
@@ -55,6 +56,7 @@ interface CardListProps {
   fields: FieldDefinition[];
   cardTypes: { id: string; name: string }[];
   initialCardTypeId: string;
+  initialSelectedTypeIds: string[];
   scanMode: ScanMode;
   initialSearch?: string;
   initialStatus?: CardSearchStatus;
@@ -66,12 +68,15 @@ export default function CardList({
   fields,
   cardTypes,
   initialCardTypeId,
+  initialSelectedTypeIds,
   scanMode,
   initialSearch = "",
   initialStatus = "all",
   summaryFieldIds = [],
 }: CardListProps) {
-  const [selectedTypeIds, setSelectedTypeIds] = useState<string[]>([initialCardTypeId]);
+  const [selectedTypeIds, setSelectedTypeIds] = useState<string[]>(initialSelectedTypeIds);
+  const allTypeIds = cardTypes.map((ct) => ct.id);
+  const effectiveTypeIds = selectedTypeIds.length > 0 ? selectedTypeIds : allTypeIds;
 
   const [view, setView] = useState<ViewMode>("table");
   const fieldIds = fields.map((f) => f.id);
@@ -93,7 +98,7 @@ export default function CardList({
 
   useEffect(() => {
     let cancelled = false;
-    getCommonFieldDefinitionsAction(selectedTypeIds).then((result) => {
+    getCommonFieldDefinitionsAction(effectiveTypeIds).then((result) => {
       if (!cancelled && result.success) {
         setFilterFields(result.data);
         setPendingFieldFilters([]);
@@ -101,7 +106,7 @@ export default function CardList({
       }
     });
     return () => { cancelled = true; };
-  }, [selectedTypeIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [effectiveTypeIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchCards = useCallback(
     (
@@ -131,33 +136,33 @@ export default function CardList({
   );
 
   const handleTypeToggle = (typeId: string) => {
-    setSelectedTypeIds((prev) => {
-      const next = prev.includes(typeId)
+    setSelectedTypeIds((prev) =>
+      prev.includes(typeId)
         ? prev.filter((id) => id !== typeId)
-        : [...prev, typeId];
-      if (next.length === 0) return prev;
-      return next;
-    });
+        : [...prev, typeId],
+    );
   };
+
+  const handleSelectAll = () => setSelectedTypeIds([]);
 
   const [hasMounted, setHasMounted] = useState(false);
   useEffect(() => {
     if (!hasMounted) { setHasMounted(true); return; }
     setCurrentPage(1);
-    fetchCards(selectedTypeIds, codeSearch, [], 1, pageSize, statusFilter);
+    fetchCards(effectiveTypeIds, codeSearch, [], 1, pageSize, statusFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTypeIds.join(",")]);
+  }, [effectiveTypeIds.join(",")]);
 
   const handleSearch = (q: string) => {
     setCodeSearch(q);
     setCurrentPage(1);
-    fetchCards(selectedTypeIds, q, fieldFilters, 1, pageSize, statusFilter);
+    fetchCards(effectiveTypeIds, q, fieldFilters, 1, pageSize, statusFilter);
   };
 
   const handleStatusChange = (next: CardSearchStatus) => {
     setStatusFilter(next);
     setCurrentPage(1);
-    fetchCards(selectedTypeIds, codeSearch, fieldFilters, 1, pageSize, next);
+    fetchCards(effectiveTypeIds, codeSearch, fieldFilters, 1, pageSize, next);
     // Reflect the choice in the URL (shareable) without a server refetch —
     // mirrors how FlashMessage manages query params via history.replaceState.
     if (typeof window !== "undefined") {
@@ -171,26 +176,26 @@ export default function CardList({
   const handleApplyFilters = () => {
     setFieldFilters(pendingFieldFilters);
     setCurrentPage(1);
-    fetchCards(selectedTypeIds, codeSearch, pendingFieldFilters, 1, pageSize, statusFilter);
+    fetchCards(effectiveTypeIds, codeSearch, pendingFieldFilters, 1, pageSize, statusFilter);
   };
 
   const handleClearFilters = () => {
     setPendingFieldFilters([]);
     setFieldFilters([]);
     setCurrentPage(1);
-    fetchCards(selectedTypeIds, codeSearch, [], 1, pageSize, statusFilter);
+    fetchCards(effectiveTypeIds, codeSearch, [], 1, pageSize, statusFilter);
   };
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
-    fetchCards(selectedTypeIds, codeSearch, fieldFilters, page, pageSize, statusFilter);
+    fetchCards(effectiveTypeIds, codeSearch, fieldFilters, page, pageSize, statusFilter);
   };
 
   const handleViewChange = (newView: ViewMode) => {
     setView(newView);
     const newPageSize = newView === "table" ? PAGE_SIZE_TABLE : PAGE_SIZE_GALLERY;
     setCurrentPage(1);
-    fetchCards(selectedTypeIds, codeSearch, fieldFilters, 1, newPageSize, statusFilter);
+    fetchCards(effectiveTypeIds, codeSearch, fieldFilters, 1, newPageSize, statusFilter);
   };
 
   const activeFilterCount = fieldFilters.length;
@@ -203,6 +208,19 @@ export default function CardList({
       {/* Card type multi-select toggle */}
       {isMultiType && (
         <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            onClick={handleSelectAll}
+            aria-pressed={selectedTypeIds.length === 0}
+            className={cn(
+              "inline-flex items-center whitespace-nowrap rounded-full border-[1.5px] px-3.5 py-1 text-sm transition-colors",
+              selectedTypeIds.length === 0
+                ? "border-primary bg-accent font-bold text-accent-foreground"
+                : "border-border bg-card font-medium text-foreground hover:bg-muted",
+            )}
+          >
+            {TEXT.ALL_TYPES}
+          </button>
           {cardTypes.map((ct) => {
             const selected = selectedTypeIds.includes(ct.id);
             return (

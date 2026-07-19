@@ -75,7 +75,18 @@ export class S3CompatibleStorage implements CardPhotoStorage {
 
   async getReadUrl(key: string, opts?: ReadUrlOptions): Promise<string> {
     const ttl = opts?.ttlSeconds ?? DEFAULT_READ_TTL;
-    const cmd = new GetObjectCommand({ Bucket: this.bucket, Key: key });
+    const cmd = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      // A signed `response-content-disposition` turns the URL into a download
+      // with a chosen filename. The value is part of the signature, so it
+      // cannot be tampered with after the URL is minted.
+      ...(opts?.downloadFilename
+        ? {
+            ResponseContentDisposition: `attachment; filename="${opts.downloadFilename}"`,
+          }
+        : {}),
+    });
     return getSignedUrl(this.client, cmd, { expiresIn: ttl });
   }
 

@@ -1,6 +1,6 @@
 # Module: fields
 
-**Last updated**: 2026-07-16 · **Last feature**: `PhotoRenderer` thumbnail preserves aspect ratio, size via `--photo-thumbnail-size`; card photos consumed by dashboard thumbnails
+**Last updated**: 2026-07-19 · **Last feature**: webcam capture + interactive crop on photo fields (two sources → `react-easy-crop` → existing optimize pipeline) + code-based photo download naming
 
 ## Responsibility
 
@@ -19,8 +19,10 @@ Validation rules per field type are stored here (in `validation_rules` jsonb) bu
 - `src/components/card-types/fields/ValidationRulesEditor.tsx` — Per-field validation toggle/config.
 - `src/components/cards/DynamicFieldRenderer.tsx` — `switch(fieldType) → *Renderer`.
 - `src/components/cards/DynamicFieldInput.tsx` — `switch(fieldType) → *Input`.
-- `src/components/cards/renderers/` — `TextRenderer`, `NumberRenderer`, `BooleanRenderer`, `DateRenderer`, `PhotoRenderer`, `SelectRenderer`.
-- `src/components/cards/inputs/` — `TextInput`, `NumberInput`, `BooleanInput`, `DateInput`, `PhotoInput` (wraps `PhotoUploader` with kind `card-photo`), `SelectInput` (reads options from `validationRules`).
+- `src/components/cards/renderers/` — `TextRenderer`, `NumberRenderer`, `BooleanRenderer`, `DateRenderer`, `PhotoRenderer` (thumbnail + lightbox; lightbox shows a **Descargar** button when given the card `code` + `fieldDefinitionId`), `SelectRenderer`.
+- `src/components/cards/inputs/` — `TextInput`, `NumberInput`, `BooleanInput`, `DateInput`, `PhotoInput` (wraps `PhotoUploader` with kind `card-photo`, `enableWebcam` + `enableCrop` on), `SelectInput` (reads options from `validationRules`).
+- `src/components/shared/WebcamCaptureDialog.tsx` + `src/hooks/useWebcamCapture.ts` — webcam capture in a shadcn `Dialog` (getUserMedia lifecycle, rear-camera preference, multi-camera switch, guaranteed track release; captures a PNG `File`).
+- `src/components/shared/ImageCropDialog.tsx` — `react-easy-crop` crop step (Free / 1:1 / 3:4 presets + zoom); returns a source-pixel `cropRect`. Used by both sources.
 
 ## Data model (relevant subset)
 
@@ -64,19 +66,27 @@ Typed columns: `value_text`, `value_number`, `value_boolean`, `value_date`, `val
 
 ### Photo upload
 
+Card photos support two capture sources and an interactive crop, in both edit + create, via the same shared `PhotoUploader` (`PhotoInput` passes `enableWebcam` + `enableCrop`; other photo kinds keep plain file upload).
+
 1. `PhotoInput` mounts `PhotoUploader` (kind: `card-photo`, owner: card UUID for edit mode, draft UUID for create).
-2. `PhotoUploader` runs `optimizeImage(file, CARD_PHOTO_PROFILE)` (canvas-based resize → max 3000×4000px, WebP @ quality 0.82, ≤ 2.5 MB output, EXIF stripped). Profile defined in `src/lib/images/profiles.ts`.
-3. `requestPhotoUploadUrlAction` returns a 60-second presigned PUT and a `<tenantId>/cards/<owner>/<random>.webp` key.
-4. Browser PUTs the optimized blob directly to R2/MinIO.
-5. `confirmPhotoUploadAction` HEADs the object, validates size + content-type, and returns the signed read URL.
-6. `PhotoInput` stores the **object key** in form state; the parent persists it via the standard card update.
-7. On render (server component), `signCardPhotos` / `buildPhotoReadUrlMap` mints fresh 15-minute signed URLs before passing to client renderers.
+2. Source is a file pick **or** a webcam still (`WebcamCaptureDialog` / `useWebcamCapture` → a PNG `File`, then the camera stream is released).
+3. Either source routes through `ImageCropDialog` (`react-easy-crop`), which returns a source-pixel `cropRect`.
+4. `PhotoUploader` runs `optimizeImage(file, CARD_PHOTO_PROFILE, { cropRect })` (canvas resize → max 3000×4000px, WebP @ 0.82, ≤ 2.5 MB, EXIF stripped; an explicit `cropRect` overrides the profile's centre-crop). Profile in `src/lib/images/profiles.ts`.
+5. `requestPhotoUploadUrlAction` returns a 60-second presigned PUT and a `<tenantId>/cards/<owner>/<random>.webp` key.
+6. Browser PUTs the optimized blob directly to R2/MinIO.
+7. `confirmPhotoUploadAction` HEADs the object, validates size + content-type, and returns the signed read URL.
+8. `PhotoInput` stores the **object key** in form state; the parent persists it via the standard card update.
+9. On render (server component), `signCardPhotos` / `buildPhotoReadUrlMap` mints fresh 15-minute signed URLs before passing to client renderers.
 
 ### Photo display
 
 `PhotoRenderer` (`src/components/cards/renderers/PhotoRenderer.tsx`) shows a thumbnail whose longer side is capped at `--photo-thumbnail-size` (Layer-3 layout-chrome var in `globals.css`, currently `6rem`/96px), consumed as `max-h-[var(--photo-thumbnail-size)] max-w-[var(--photo-thumbnail-size)]`. Aspect ratio is always preserved (no crop, no stretch); `self-start` + `shrink-0` cancel the flex-stretch imposed by the parent `flex flex-col` wrapper in `CardDetailClient.tsx`. Clicking it opens a shadcn `Dialog` lightbox with the full-size image (`max-h-[90vh] w-auto object-contain`); the `DialogContent` uses `w-fit` so the surface hugs the image (no black gutter for portrait photos).
 
 The dashboard renders card photos from its own signed URLs, **not** through `PhotoRenderer`: `ActiveCardZone` shows the `photo` summary field as a `max-h-16` thumbnail, and `ActivityFeedEntryRow` uses a 36px `object-cover` avatar for scan rows. See `modules/dashboard.md`.
+
+### Photo download (named by card code)
+
+The `PhotoRenderer` lightbox shows a **Descargar** button when the card `code` + `fieldDefinitionId` are supplied (threaded via `DynamicFieldRenderer` on the card detail page). It links to `/api/photos/cards/[code]?field=<id>&download`, which 302s to a signed URL whose `Content-Disposition` names the file `<code>_<fieldName>_<random>.<ext>`. The **stored object key is unchanged** (still random UUID); the `<random>` in the filename is that key's final segment, so a downloaded file is traceable back to its bucket object, and `<fieldName>` disambiguates multi-photo cards. Route + storage plumbing live in `infrastructure`. ADR `2026-07-19-webcam-capture-and-crop.md`.
 
 ### Select options
 
@@ -111,8 +121,8 @@ Options live inside `validation_rules.rules` (no dedicated `options` column). `S
 
 ## Recent changes
 
+- 2026-07-19 — Webcam capture + interactive crop for photo fields, in both edit + create views via the shared `PhotoUploader` (opt-in `enableWebcam` / `enableCrop`; `PhotoInput` turns both on — other photo kinds unchanged). New `useWebcamCapture` hook, `WebcamCaptureDialog`, `ImageCropDialog` (`react-easy-crop`; "Free" = source aspect, plus 1:1 / 3:4 presets + zoom), and a shadcn `Slider`. `optimizeImage` gained an optional source-pixel `cropRect` that overrides the profile centre-crop. Photo lightbox added a **Descargar** button; downloads are named `<code>_<fieldName>_<random>.<ext>` via a signed `Content-Disposition` (stored key unchanged). ADR `2026-07-19-webcam-capture-and-crop.md`.
 - 2026-07-16 — `PhotoRenderer` thumbnail now preserves aspect ratio (no square crop): removed `object-cover`, added `self-start` + `shrink-0` to defeat parent flex-stretch, and moved the size cap to the `--photo-thumbnail-size` var (`globals.css`, 6rem). Lightbox `DialogContent` set to `w-fit` (no black gutter). Corrected stale `CARD_PHOTO_PROFILE` figure (was ≤ 180 KB; code caps at 2.5 MB / 3000×4000px). Dashboard now renders card photo thumbnails (see `modules/dashboard.md`).
 - 2026-04-28 — Photo field migrated to bucket-backed storage (R2/MinIO). `value_text` now stores object keys; `PhotoInput` wraps the shared `PhotoUploader` with `CARD_PHOTO_PROFILE`. Server components must call `signCardPhotos` / `buildPhotoReadUrlMap` before passing photo values down. ADR `2026-04-27-photo-storage-r2-minio.md`.
 - 2026-04-27 — `card-designs` now consumes field definitions for editor data binding; `getCommonFieldDefinitions` pattern extended client-side in `CardDesignEditor.computeCommonFields` (intersection by name+fieldType).
 - 2026-04-19 — Initial extraction from technical handoff.
-- 2026-04-19 — Synchronized documentation against source code: corrected `getCommonFieldDefinitions` file (`common-fields.ts`) and signature (no `tenantId`); moved `TODO: STORAGE` to Future considerations (no code tag).

@@ -14,12 +14,18 @@ interface DynamicFieldRendererProps {
   fieldType: FieldType;
   value: unknown;
   label?: string;
+  /** Card code — forwarded to photo fields to enable a named download. */
+  cardCode?: string;
+  /** Field definition id — forwarded to photo fields to select the object. */
+  fieldDefinitionId?: string;
 }
 
 export default function DynamicFieldRenderer({
   fieldType,
   value,
   label,
+  cardCode,
+  fieldDefinitionId,
 }: DynamicFieldRendererProps) {
   switch (fieldType) {
     case "text":
@@ -31,7 +37,14 @@ export default function DynamicFieldRenderer({
     case "date":
       return <DateRenderer value={value} />;
     case "photo":
-      return <PhotoRenderer value={value} label={label} />;
+      return (
+        <PhotoRenderer
+          value={value}
+          label={label}
+          cardCode={cardCode}
+          fieldDefinitionId={fieldDefinitionId}
+        />
+      );
     case "select":
       return <SelectRenderer value={value} />;
     default:

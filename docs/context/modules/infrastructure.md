@@ -1,6 +1,6 @@
 # Module: infrastructure
 
-**Last updated**: 2026-07-18 · **Last feature**: daily retention purge job — `GET /api/cron/purge-archived` (CRON_SECRET-authed) + `vercel.json` cron, closing the card-archiving feature (5/5)
+**Last updated**: 2026-07-19 · **Last feature**: photo storage/pipeline support for webcam capture + crop — `optimizeImage` `cropRect`, `Content-Disposition` download URLs, `?field`/`?download` on the photo route, `react-easy-crop` dep
 
 ## Responsibility
 
@@ -24,21 +24,24 @@ Everything that keeps the app running: database connection, migrations, env vars
 - `src/lib/dal/index.ts` — Barrel export.
 - `src/lib/dal/photo-urls.ts` — Server-only helpers (`signCardPhotos`, `signCardListPhotos`, `buildPhotoReadUrlMap`) that turn photo object keys into signed read URLs before passing card data to client renderers.
 - `src/lib/storage/types.ts` — `CardPhotoStorage` interface, `PhotoKind` union, key-layout constants.
-- `src/lib/storage/keys.ts` — `buildObjectKey`, `keyMatches`, `tenantPrefix`.
-- `src/lib/storage/s3-base.ts` — Shared S3-compatible class (presigned PUT/GET, head, delete, prefix delete).
+- `src/lib/storage/keys.ts` — `buildObjectKey`, `keyMatches`, `tenantPrefix`, `buildCardPhotoDownloadFilename` (`<code>_<fieldName>_<random>.<ext>`, slugified).
+- `src/lib/storage/s3-base.ts` — Shared S3-compatible class (presigned PUT/GET, head, delete, prefix delete). `getReadUrl` takes an optional `downloadFilename` → signed `ResponseContentDisposition`.
 - `src/lib/storage/r2.ts` / `minio.ts` — Adapter shims (virtual-host vs path-style addressing).
 - `src/lib/storage/validation.ts` — `assertObjectMatchesKind`, `assertHeadOk` (server-side guards).
-- `src/lib/storage/read.ts` — `signPhotoForRead`, `signPhotoForReadOptional`, `signPhotosForRead`. 15-min TTL.
+- `src/lib/storage/read.ts` — `signPhotoForRead`, `signPhotoForReadOptional`, `signPhotosForRead`, `signPhotoForDownload` (attachment). 15-min TTL.
 - `src/lib/storage/photo-routes.ts` — `cardPhotoRoute(code)`. Dependency-free on purpose: imported by both the DAL and client components.
-- `src/app/api/photos/cards/[code]/route.ts` — Session-authed (OPERATOR+) card photo: 302 → signed URL minted per request. Stable per card, so it neither expires client-side nor busts the browser cache. ADR `2026-07-17-stable-photo-routes.md`.
+- `src/app/api/photos/cards/[code]/route.ts` — Session-authed (OPERATOR+) card photo: 302 → signed URL minted per request. Stable per card, so it neither expires client-side nor busts the browser cache. Optional `?field=<fieldDefinitionId>` picks a specific photo field; `?download` returns an attachment named `<code>_<fieldName>_<random>.<ext>` (default: primary photo, inline). ADR `2026-07-17-stable-photo-routes.md`, `2026-07-19-webcam-capture-and-crop.md`.
 - `src/app/api/cron/purge-archived/route.ts` — Daily retention purge endpoint. No session; authed by `Authorization: Bearer <CRON_SECRET>` (constant-time compare, fails closed if `CRON_SECRET` unset). Runs `purgeExpiredArchivedRecords()` and returns the per-tenant summary. In its own `/api/cron/*` tree, NOT under `/api/cards/*` (that tree is device-header-authed). ADR `2026-07-18-card-lifecycle-purge-job.md`.
 - `src/lib/server/lifecycle/purge.ts` — `hardDeleteArchivedCard` / `hardDeleteArchivedCardType` / `hardDeleteAllArchived` (phase-4 manual, per-tenant) and `purgeExpiredArchivedRecords` (phase-5 daily job, cross-tenant DELETE-with-join against each tenant's `archive_retention_days`).
 - `vercel.json` — Vercel Cron entry: `GET /api/cron/purge-archived` at `0 3 * * *` (daily, 03:00 UTC). Vercel injects the `Authorization: Bearer <CRON_SECRET>` header when `CRON_SECRET` is set in the project env.
 - `src/lib/storage/index.ts` — Factory: `getPhotoStorage()`; barrel.
 - `src/lib/images/profiles.ts` — `CARD_PHOTO_PROFILE`, `MEMBER_AVATAR_PROFILE`, `TENANT_LOGO_PROFILE`, `CARD_DESIGN_IMAGE_PROFILE`. Tweaks here re-tune storage for that kind.
-- `src/lib/images/optimize.ts` — Browser-side resize + recompress pipeline (canvas, retry-on-too-large).
+- `src/lib/images/optimize.ts` — Browser-side resize + recompress pipeline (canvas, retry-on-too-large). Optional source-pixel `cropRect` overrides the profile centre-crop — fed by the interactive cropper.
 - `src/lib/actions/uploads.ts` — `requestPhotoUploadUrlAction`, `confirmPhotoUploadAction`.
-- `src/components/shared/PhotoUploader.tsx` — Universal upload widget (optimize → presign → PUT → confirm).
+- `src/components/shared/PhotoUploader.tsx` — Universal upload widget (optimize → presign → PUT → confirm). Opt-in `enableWebcam` / `enableCrop` add a camera source + crop step (card photos only; see `modules/fields.md`).
+- `src/components/shared/WebcamCaptureDialog.tsx` + `src/hooks/useWebcamCapture.ts` — camera capture UI + getUserMedia lifecycle (rear-camera preference, multi-camera switch, guaranteed track release).
+- `src/components/shared/ImageCropDialog.tsx` — `react-easy-crop` crop dialog (Free / 1:1 / 3:4 + zoom) → source-pixel `cropRect`.
+- `src/components/ui/slider.tsx` — shadcn `Slider` primitive (unified `radix-ui` import), used by the crop zoom control.
 - `infra/storage/` — `r2-cors.json`, `README.md`. MinIO CORS is server-wide via `MINIO_API_CORS_ALLOW_ORIGIN` (no per-bucket file — community edition doesn't implement `PutBucketCors`).
 - `docker-compose.yml` (`storage`/`all` profiles) — Local MinIO + bucket-init container.
 - Scripts in `package.json`: `pnpm dev | build | start | lint`, `pnpm db:generate | db:migrate | db:studio`, `pnpm db:seed`, `pnpm test | test:watch`.
@@ -95,6 +98,7 @@ CRON_SECRET=...                        # Shared secret for the daily purge endpo
 | tsx                            | 4.21.0       | Scripts                                     |
 | @aws-sdk/client-s3             | 3.1038.0     | Photo storage (R2 + MinIO)                  |
 | @aws-sdk/s3-request-presigner  | 3.1038.0     | Presigned PUT/GET URLs for direct uploads   |
+| react-easy-crop                | 6.2.2        | Interactive image crop (photo fields)       |
 
 ## Main flows
 
@@ -190,9 +194,8 @@ scheduler — Vercel is stateless between invocations). See ADR
 
 ## Recent changes
 
+- 2026-07-19 — Photo pipeline/storage support for webcam capture + crop (feature owned by `fields`): `optimizeImage` gained an optional source-pixel `cropRect`; `getReadUrl` + new `signPhotoForDownload` sign a `Content-Disposition` attachment; `buildCardPhotoDownloadFilename` builds `<code>_<fieldName>_<random>.<ext>`; `/api/photos/cards/[code]` gained `?field` + `?download`; `PhotoUploader` gained opt-in `enableWebcam`/`enableCrop` plus new `WebcamCaptureDialog` / `ImageCropDialog` / `useWebcamCapture` / `ui/slider.tsx`. Added `react-easy-crop` 6.2.2. ADR `2026-07-19-webcam-capture-and-crop.md`.
 - 2026-07-18 — Card lifecycle phase 5 (final, 5/5): daily retention purge. New `purgeExpiredArchivedRecords()` (cross-tenant DELETE-with-join against each tenant's `archive_retention_days`, single atomic CTE, idempotent) in `src/lib/server/lifecycle/purge.ts`; new `GET /api/cron/purge-archived` endpoint (no session, `CRON_SECRET` Bearer auth, fails closed); `vercel.json` cron at `0 3 * * *`; `CRON_SECRET` added to env docs (`.env.example`, `.env.docker`). Master-gated retention UI at `/settings/retention`. Also corrected the stale Node-version note (v24, per `engines`). ADR `2026-07-18-card-lifecycle-purge-job.md`.
 - 2026-07-17 — Photos on long-lived surfaces are served by `/api/photos/cards/[code]` (session-authed, 302 → per-request signature) instead of an embedded signed URL. A signed URL is a bearer token that changes on every signing, so it both busted the browser cache and expired in place after 15 min. First session-authenticated route under `/api` — see `01-architecture.md` §6. Adopted by the dashboard feed only; other surfaces still embed signed URLs. ADR `2026-07-17-stable-photo-routes.md`.
 - 2026-04-28 — Photo storage migration: `CardPhotoStorage` (R2 + MinIO) + `src/lib/images/` optimization module + presigned-PUT Server Actions. `tenants.logo_object_key` added (migration 0015). `field_values.value_text` for `photo` fields now stores object keys (not URLs); server-side helpers in `src/lib/dal/photo-urls.ts` sign keys before render. Old `/api/upload` route removed. ADR `2026-04-27-photo-storage-r2-minio.md`.
 - 2026-04-27 — Added `card_designs` + `card_type_designs` tables (migration 0014); added konva 10.2.5, react-konva 19.2.3, qrcode 1.5.4, jsbarcode 3.12.3 to dependencies.
-- 2026-04-26 — Added `departure_feedback` table (migrations 0011, 0012). Note: snapshot files for 0008–0010 were missing; 0011 SQL was hand-trimmed to only the new table to avoid duplicate DDL errors.
-- 2026-04-25 — Added Resend (v6.12.2) for transactional email; documented `RESEND_APIKEY` and `RESEND_FROM_EMAIL` env vars.

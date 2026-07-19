@@ -14,7 +14,7 @@
  * tenant prefix + kind path, not the owner segment.
  */
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 import { Label } from "@/components/ui/label";
 import PhotoUploader from "@/components/shared/PhotoUploader";
@@ -44,8 +44,12 @@ export default function PhotoInput({
   cardId,
   initialReadUrl,
 }: PhotoInputProps) {
-  const draftOwnerRef = useRef<string>(
-    cardId ?? (typeof crypto !== "undefined" ? crypto.randomUUID() : "draft"),
+  // Stable owner id for this form's lifetime. Lazy `useState` initialiser so
+  // the random UUID (create mode) is generated once and not read from a ref
+  // during render. The server validates tenant prefix + kind path, not the
+  // owner segment.
+  const [draftOwner] = useState<string>(
+    () => cardId ?? (typeof crypto !== "undefined" ? crypto.randomUUID() : "draft"),
   );
 
   const [readUrl, setReadUrl] = useState<string | null>(
@@ -63,11 +67,14 @@ export default function PhotoInput({
 
       <PhotoUploader
         kind="card-photo"
-        ownerId={draftOwnerRef.current}
+        ownerId={draftOwner}
         currentObjectKey={objectKey}
         currentReadUrl={readUrl}
         disabled={disabled}
         alt={label}
+        // Card photos support both capture sources and an interactive crop.
+        enableWebcam
+        enableCrop
         onChange={(v) => {
           if (v === null) {
             setReadUrl(null);

@@ -67,6 +67,11 @@ export interface UploadUrlResult {
 export interface ReadUrlOptions {
   /** Presigned GET URL TTL in seconds (default 900 = 15 min). */
   ttlSeconds?: number;
+  /**
+   * When set, the signed URL forces a download with this filename via
+   * `Content-Disposition: attachment`. Omit for inline viewing (`<img>`).
+   */
+  downloadFilename?: string;
 }
 
 export interface HeadResult {

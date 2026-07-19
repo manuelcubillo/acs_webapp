@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildObjectKey, keyMatches, tenantPrefix } from "../keys";
+import {
+  buildCardPhotoDownloadFilename,
+  buildObjectKey,
+  keyMatches,
+  tenantPrefix,
+} from "../keys";
 
 const TENANT = "11111111-1111-1111-1111-111111111111";
 const OWNER = "22222222-2222-2222-2222-222222222222";
@@ -75,5 +80,49 @@ describe("keyMatches", () => {
 describe("tenantPrefix", () => {
   it("appends a trailing slash", () => {
     expect(tenantPrefix(TENANT)).toBe(`${TENANT}/`);
+  });
+});
+
+describe("buildCardPhotoDownloadFilename", () => {
+  const key = `${TENANT}/cards/${OWNER}/9f8e7d6c-1234-5678-9abc-def012345678.webp`;
+
+  it("names the file <code>_<fieldName>_<random>.<ext>", () => {
+    expect(
+      buildCardPhotoDownloadFilename({
+        code: "AB-0001",
+        fieldName: "Foto frontal",
+        key,
+      }),
+    ).toBe("ab-0001_foto-frontal_9f8e7d6c-1234-5678-9abc-def012345678.webp");
+  });
+
+  it("keeps the random segment so the file is traceable to storage", () => {
+    const name = buildCardPhotoDownloadFilename({
+      code: "X",
+      fieldName: "y",
+      key,
+    });
+    expect(name).toContain("9f8e7d6c-1234-5678-9abc-def012345678");
+    expect(name.endsWith(".webp")).toBe(true);
+  });
+
+  it("folds accents and strips unsafe characters", () => {
+    expect(
+      buildCardPhotoDownloadFilename({
+        code: "Añó/2026",
+        fieldName: "Fotografía #1",
+        key: `${TENANT}/cards/${OWNER}/abc.jpg`,
+      }),
+    ).toBe("ano-2026_fotografia-1_abc.jpg");
+  });
+
+  it("falls back to 'foto' when a token slugs to empty", () => {
+    expect(
+      buildCardPhotoDownloadFilename({
+        code: "///",
+        fieldName: "***",
+        key: `${TENANT}/cards/${OWNER}/r.png`,
+      }),
+    ).toBe("foto_foto_r.png");
   });
 });

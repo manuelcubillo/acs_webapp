@@ -88,9 +88,11 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
 
   const scanMode = tenant?.scanMode ?? "both";
 
-  // Pick the active card type (from URL param or default to first).
-  const activeCardType =
-    cardTypes.find((ct) => ct.id === rawCardTypeId) ?? cardTypes[0] ?? null;
+  // Explicit URL selection (deep link) vs. the default "All" view.
+  const requestedCardType = cardTypes.find((ct) => ct.id === rawCardTypeId) ?? null;
+  // Reference card type for schema/columns/"new card" link — falls back to the first type.
+  const activeCardType = requestedCardType ?? cardTypes[0] ?? null;
+  const initialSelectedTypeIds: string[] = requestedCardType ? [requestedCardType.id] : [];
 
   let fieldDefs: FieldDefinition[] = [];
   let initialData: PaginatedResult<CardWithFields> = { data: [], total: 0, limit: 50, offset: 0 };
@@ -98,11 +100,14 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
 
   if (activeCardType) {
     try {
+      const searchTypeIds = requestedCardType
+        ? [requestedCardType.id]
+        : cardTypes.map((ct) => ct.id);
       const [schema, summaryFields, searchResult] = await Promise.all([
         getCardTypeWithFullSchema(activeCardType.id, tenantId),
         getSummaryFieldsForCardType(activeCardType.id).catch(() => []),
         searchCards(
-          [activeCardType.id],
+          searchTypeIds,
           tenantId,
           { codeContains: q || undefined, status: statusFilter },
           { limit: 50 },
@@ -138,8 +143,8 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
           {activeCardType && (
             <p className="mt-1 text-sm text-muted-foreground">
               {initialData.total}{" "}
-              {initialData.total !== 1 ? TEXT.ITEM_PLURAL : TEXT.ITEM_SINGLE} ·{" "}
-              {activeCardType.name}
+              {initialData.total !== 1 ? TEXT.ITEM_PLURAL : TEXT.ITEM_SINGLE}
+              {requestedCardType && <> · {requestedCardType.name}</>}
             </p>
           )}
         </div>
@@ -189,6 +194,7 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
           fields={fieldDefs}
           cardTypes={cardTypes}
           initialCardTypeId={activeCardType.id}
+          initialSelectedTypeIds={initialSelectedTypeIds}
           scanMode={scanMode}
           initialSearch={q}
           initialStatus={statusFilter}

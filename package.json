@@ -45,6 +45,7 @@
     "radix-ui": "^1.5.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-easy-crop": "^6.2.2",
     "react-konva": "^19.2.3",
     "resend": "^6.12.2",
     "tailwind-merge": "^3.6.0",

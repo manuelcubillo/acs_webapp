@@ -28,6 +28,22 @@ export async function signPhotoForReadOptional(
 }
 
 /**
+ * Sign a key as an attachment download: the resulting URL forces the browser
+ * to save the file under `filename` (via `Content-Disposition`) instead of
+ * rendering it inline.
+ */
+export async function signPhotoForDownload(
+  key: string,
+  filename: string,
+  ttlSeconds: number = DEFAULT_TTL_SECONDS,
+): Promise<string> {
+  return getPhotoStorage().getReadUrl(key, {
+    ttlSeconds,
+    downloadFilename: filename,
+  });
+}
+
+/**
  * Sign many keys in parallel. De-duplicates by key so a single signature
  * is shared across multiple references (common when a list of cards has
  * repeated photo keys).

@@ -44,6 +44,44 @@ export function tenantPrefix(tenantId: string): string {
 }
 
 /**
+ * Slugify an arbitrary label (a card code or a field name) into a filename-safe
+ * token: ASCII-fold accents, drop anything but `[a-z0-9]`, collapse to single
+ * hyphens. Never empty — falls back to `foto`.
+ */
+function slugifyForFilename(input: string): string {
+  const slug = input
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // strip combining diacritics
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "foto";
+}
+
+/**
+ * Human-readable download filename for a card photo:
+ * `<code>_<fieldName>_<random>.<ext>`.
+ *
+ * The `<random>` and `<ext>` are lifted verbatim from the stored object key's
+ * final segment so a downloaded file can be traced straight back to its object
+ * in the bucket (the storage key itself keeps its random UUID). `<fieldName>`
+ * disambiguates cards that carry more than one photo field.
+ */
+export function buildCardPhotoDownloadFilename(args: {
+  code: string;
+  fieldName: string;
+  key: string;
+}): string {
+  const lastSegment = args.key.split("/").pop() ?? "";
+  const dot = lastSegment.lastIndexOf(".");
+  const random = dot > 0 ? lastSegment.slice(0, dot) : lastSegment;
+  const ext = dot > 0 ? lastSegment.slice(dot + 1) : "webp";
+  return `${slugifyForFilename(args.code)}_${slugifyForFilename(
+    args.fieldName,
+  )}_${random}.${ext}`;
+}
+
+/**
  * Returns true iff `key` is under the given tenant's prefix and matches
  * the kind's path segment.
  */
