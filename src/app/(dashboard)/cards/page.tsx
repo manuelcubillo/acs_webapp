@@ -11,10 +11,10 @@ import { Plus, QrCode } from "lucide-react";
 import { requireOperator, getCurrentUserProfile, AuthenticationError, AuthorizationError } from "@/lib/api";
 import {
   listCardTypes,
-  getCardTypeWithFullSchema,
+  getFieldDefinitionsByCardType,
   getTenantById,
   searchCards,
-  getSummaryFieldsForCardType,
+  getSummaryFieldsForCardTypes,
 } from "@/lib/dal";
 import { signCardListPhotos } from "@/lib/dal/photo-urls";
 import DashboardShell from "@/components/layout/DashboardShell";
@@ -90,9 +90,12 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
 
   // Explicit URL selection (deep link) vs. the default "All" view.
   const requestedCardType = cardTypes.find((ct) => ct.id === rawCardTypeId) ?? null;
-  // Reference card type for schema/columns/"new card" link — falls back to the first type.
+  // Reference card type for the "new card" link — falls back to the first type.
   const activeCardType = requestedCardType ?? cardTypes[0] ?? null;
   const initialSelectedTypeIds: string[] = requestedCardType ? [requestedCardType.id] : [];
+  // Column-visibility storage key: distinct from any single type's id so the
+  // merged "all types" field set never collides with a single-type view.
+  const columnsStorageKey = requestedCardType ? requestedCardType.id : "all";
 
   let fieldDefs: FieldDefinition[] = [];
   let initialData: PaginatedResult<CardWithFields> = { data: [], total: 0, limit: 50, offset: 0 };
@@ -103,9 +106,13 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
       const searchTypeIds = requestedCardType
         ? [requestedCardType.id]
         : cardTypes.map((ct) => ct.id);
-      const [schema, summaryFields, searchResult] = await Promise.all([
-        getCardTypeWithFullSchema(activeCardType.id, tenantId),
-        getSummaryFieldsForCardType(activeCardType.id).catch(() => []),
+      // Field defs are fetched per searched type and merged — a card belongs to
+      // exactly one type, so scoping the schema to a single "reference" type
+      // (e.g. only the first one) would leave every other type's cards with no
+      // matching field_definition_id and render as empty dashes.
+      const [fieldDefsByType, summaryFieldsByType, searchResult] = await Promise.all([
+        Promise.all(searchTypeIds.map((id) => getFieldDefinitionsByCardType(id))),
+        getSummaryFieldsForCardTypes(searchTypeIds, tenantId).catch(() => new Map()),
         searchCards(
           searchTypeIds,
           tenantId,
@@ -113,8 +120,10 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
           { limit: 50 },
         ),
       ]);
-      fieldDefs = schema.fieldDefinitions.filter((f) => f.isActive);
-      summaryFieldIds = summaryFields.map((sf) => sf.fieldDefinitionId);
+      fieldDefs = fieldDefsByType.flat();
+      summaryFieldIds = [...summaryFieldsByType.values()]
+        .flat()
+        .map((sf) => sf.fieldDefinitionId);
       // Sign every photo key in the page batch so client renderers receive URLs.
       const signedCards = await signCardListPhotos(searchResult.data);
       initialData = { ...searchResult, data: signedCards };
@@ -193,7 +202,7 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
           initialData={initialData}
           fields={fieldDefs}
           cardTypes={cardTypes}
-          initialCardTypeId={activeCardType.id}
+          initialCardTypeId={columnsStorageKey}
           initialSelectedTypeIds={initialSelectedTypeIds}
           scanMode={scanMode}
           initialSearch={q}

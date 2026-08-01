@@ -9,7 +9,7 @@
  * Uses searchCardsAction for all client-side data fetching.
  */
 
-import { useState, useEffect, useCallback, useTransition } from "react";
+import { useState, useEffect, useMemo, useCallback, useTransition } from "react";
 import { Filter, X } from "lucide-react";
 
 import CardSearch from "./CardSearch";
@@ -18,6 +18,7 @@ import CardTableView from "./CardTableView";
 import CardProfileView from "./CardProfileView";
 import CardViewToggle, { type ViewMode } from "./CardViewToggle";
 import CardColumnSelector from "./CardColumnSelector";
+import { mergeFieldColumns } from "./mergeFieldColumns";
 import FieldFilterBuilder from "@/components/shared/FieldFilterBuilder";
 import Pagination from "@/components/shared/Pagination";
 import { Badge } from "@/components/ui/badge";
@@ -78,8 +79,25 @@ export default function CardList({
   const allTypeIds = cardTypes.map((ct) => ct.id);
   const effectiveTypeIds = selectedTypeIds.length > 0 ? selectedTypeIds : allTypeIds;
 
+  const { columns: mergedFields, fieldIdToColumnId } = useMemo(
+    () => mergeFieldColumns(fields),
+    [fields],
+  );
+  const mergedSummaryFieldIds = useMemo(() => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const id of summaryFieldIds) {
+      const columnId = fieldIdToColumnId.get(id) ?? id;
+      if (!seen.has(columnId)) {
+        seen.add(columnId);
+        result.push(columnId);
+      }
+    }
+    return result;
+  }, [summaryFieldIds, fieldIdToColumnId]);
+
   const [view, setView] = useState<ViewMode>("table");
-  const fieldIds = fields.map((f) => f.id);
+  const fieldIds = mergedFields.map((f) => f.id);
   const { visibleColumns, toggleColumn, resetColumns } = useCardColumns(initialCardTypeId, fieldIds);
 
   const [entries, setEntries] = useState<CardWithFields[]>(initialData.data);
@@ -277,7 +295,7 @@ export default function CardList({
 
         {view === "table" && (
           <CardColumnSelector
-            fields={fields}
+            fields={mergedFields}
             visibleColumns={visibleColumns}
             onToggle={toggleColumn}
             onReset={resetColumns}
@@ -328,14 +346,16 @@ export default function CardList({
       {view === "table" ? (
         <CardTableView
           cards={entries}
-          fields={fields}
+          fields={mergedFields}
           visibleColumns={visibleColumns}
+          fieldIdToColumnId={fieldIdToColumnId}
         />
       ) : (
         <CardProfileView
           cards={entries}
-          fields={fields}
-          summaryFieldIds={summaryFieldIds}
+          fields={mergedFields}
+          summaryFieldIds={mergedSummaryFieldIds}
+          fieldIdToColumnId={fieldIdToColumnId}
         />
       )}
 

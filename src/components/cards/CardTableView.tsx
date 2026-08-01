@@ -22,12 +22,15 @@ interface CardTableViewProps {
   cards: CardWithFields[];
   fields: FieldDefinition[];
   visibleColumns: string[];
+  /** Maps a field_definition_id to the (possibly merged) display column id it belongs to. */
+  fieldIdToColumnId: Map<string, string>;
 }
 
 export default function CardTableView({
   cards,
   fields,
   visibleColumns,
+  fieldIdToColumnId,
 }: CardTableViewProps) {
   const router = useRouter();
   const visible = fields.filter((f) => visibleColumns.includes(f.id));
@@ -62,7 +65,8 @@ export default function CardTableView({
           {cards.map((card) => {
             const valueMap: Record<string, unknown> = {};
             for (const fv of card.fields) {
-              valueMap[fv.fieldDefinitionId] = fv.value;
+              const columnId = fieldIdToColumnId.get(fv.fieldDefinitionId) ?? fv.fieldDefinitionId;
+              valueMap[columnId] = fv.value;
             }
             return (
               <TableRow

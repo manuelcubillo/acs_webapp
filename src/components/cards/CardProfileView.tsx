@@ -18,12 +18,15 @@ interface CardProfileViewProps {
    * Falls back to the first 3 fields when empty or not provided.
    */
   summaryFieldIds?: string[];
+  /** Maps a field_definition_id to the (possibly merged) display column id it belongs to. */
+  fieldIdToColumnId: Map<string, string>;
 }
 
 export default function CardProfileView({
   cards,
   fields,
   summaryFieldIds = [],
+  fieldIdToColumnId,
 }: CardProfileViewProps) {
   if (cards.length === 0) {
     return (
@@ -45,7 +48,8 @@ export default function CardProfileView({
       {cards.map((card) => {
         const valueMap: Record<string, unknown> = {};
         for (const fv of card.fields) {
-          valueMap[fv.fieldDefinitionId] = fv.value;
+          const columnId = fieldIdToColumnId.get(fv.fieldDefinitionId) ?? fv.fieldDefinitionId;
+          valueMap[columnId] = fv.value;
         }
 
         return (
