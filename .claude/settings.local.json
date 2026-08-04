@@ -128,7 +128,17 @@
       "Bash(git status *)",
       "Bash(docker --version)",
       "Bash(pnpm -v)",
-      "Bash(echo \"pnpm: $\\(pnpm -v 2>&1\\)\")"
+      "Bash(echo \"pnpm: $\\(pnpm -v 2>&1\\)\")",
+      "Bash(sqlite3 *)",
+      "Bash(ps -p 98389 -o pid,command)",
+      "Bash(ps eww *)",
+      "Read(//Users/manuelcubillo/Desktop/carnets2026/Fotos/**)",
+      "Bash(pnpm import:legacy:local-db)",
+      "Bash(sed -i '' '205d' docs/context/modules/cards.md)",
+      "Bash(sed -n '/## Recent changes/,$p' docs/context/modules/cards.md)",
+      "Bash(sed -i '' '138d' docs/context/modules/history.md)",
+      "Bash(sed -i '' '3s/.*/**Last updated**: 2026-08-02 · **Last feature**: URL-state and scroll-restore primitives shared with `\\\\/cards`; page-scroll offsets now read from the dashboard container and defended against the router reset/' docs/context/modules/history.md)",
+      "Bash(sed -n '/## Recent changes/,$p' docs/context/modules/history.md)"
     ]
   }
 }

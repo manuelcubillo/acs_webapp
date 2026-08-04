@@ -48,15 +48,26 @@ interface HistoryFiltersProps {
   onApply: (filters: ActionHistoryFilters) => void;
 }
 
+/**
+ * `<input type="datetime-local">` speaks local wall-clock time with no zone,
+ * and `handleApply` reads it back with `new Date(value)` — which also reads it
+ * as local. Rendering the UTC instant instead would reopen a range set at 14:00
+ * in UTC+2 as 12:00, and shift it again on every re-apply. Visible now that
+ * filters round-trip through the URL and get re-seeded on return.
+ */
+function toDateTimeLocal(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  );
+}
+
 // Helper: convert ActionHistoryFilters → form state strings
 function filtersToForm(filters: ActionHistoryFilters): FormState {
   return {
-    dateFrom: filters.dateFrom
-      ? filters.dateFrom.toISOString().slice(0, 16)
-      : "",
-    dateTo: filters.dateTo
-      ? filters.dateTo.toISOString().slice(0, 16)
-      : "",
+    dateFrom: filters.dateFrom ? toDateTimeLocal(filters.dateFrom) : "",
+    dateTo: filters.dateTo ? toDateTimeLocal(filters.dateTo) : "",
     cardTypeIds: filters.cardTypeIds ?? [],
     actionDefinitionIds: filters.actionDefinitionIds ?? [],
     executedBy: filters.executedBy ?? "",

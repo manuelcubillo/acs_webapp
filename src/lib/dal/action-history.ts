@@ -32,6 +32,7 @@ import { extractValue } from "./field-values";
 import type {
   ActionHistoryFilters,
   ActionHistoryEntry,
+  ActionHistorySummaryField,
   HistoryFilterOptions,
   FilterableFieldDefinition,
   FieldFilter,
@@ -277,7 +278,7 @@ async function enrichWithSummaryFields(
 
   return rows.map((row): ActionHistoryEntry => {
     const defs = summaryDefsByType.get(row.cardTypeId) ?? [];
-    const summaryFields = defs.map((def) => {
+    const summaryFields = defs.map((def): ActionHistorySummaryField => {
       const fv = fvMap.get(`${row.cardId}:${def.fieldDefinitionId}`);
       const value = fv
         ? extractValue(
@@ -285,7 +286,18 @@ async function enrichWithSummaryFields(
             def.fieldType as Parameters<typeof extractValue>[1],
           )
         : null;
-      return { label: def.label, value, fieldType: def.fieldType as "text" };
+      // A photo's stored value is an object key, which the row would otherwise
+      // print as raw text. The thumbnail is addressed by route from the card
+      // code + field id, so ship presence only and keep the key server-side.
+      return {
+        fieldDefinitionId: def.fieldDefinitionId,
+        label: def.label,
+        fieldType: def.fieldType as ActionHistorySummaryField["fieldType"],
+        value:
+          def.fieldType === "photo"
+            ? typeof value === "string" && value.length > 0
+            : value,
+      };
     });
 
     return {
@@ -552,6 +564,8 @@ export function buildCsvFromEntries(
 
   const rows = entries.map((e) => {
     const summaryValues = summaryLabels.map((label) => {
+      // Photo fields carry a presence flag, so they export as Yes / No — a CSV
+      // cell cannot hold the image and must never hold the object key.
       const sf = e.summaryFields.find((f) => f.label === label);
       return sf ? formatCsvValue(sf.value) : "";
     });

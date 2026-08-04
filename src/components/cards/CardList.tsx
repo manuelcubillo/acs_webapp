@@ -5,11 +5,18 @@
  *
  * Client-side orchestrator for the /cards listing.
  * Manages: card type multi-select toggle, code search, field-level filters,
- * pagination, and view mode.
+ * status filter, pagination, and view mode.
  * Uses searchCardsAction for all client-side data fetching.
+ *
+ * The whole view is one `CardListViewState` value, mirrored into the URL after
+ * every change (`history.replaceState` — no router navigation, the rows on
+ * screen were just fetched). That is what makes the list shareable, reloadable,
+ * and restorable when the operator opens a card and comes back: the row links
+ * carry the same query string, and the mount-time scroll offset is keyed by it.
+ * See `src/lib/cards/list-params.ts`.
  */
 
-import { useState, useEffect, useMemo, useCallback, useTransition } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, useTransition } from "react";
 import { Filter, X } from "lucide-react";
 
 import CardSearch from "./CardSearch";
@@ -24,6 +31,14 @@ import Pagination from "@/components/shared/Pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import {
+  buildCardListQuery,
+  toPagination,
+  CARD_LIST_PAGE_SIZE,
+  type CardListViewState,
+} from "@/lib/cards/list-params";
+import { consumeCardListScroll } from "@/lib/cards/scroll-restore";
+import { restorePageScroll } from "@/lib/navigation/return-scroll";
 import type {
   CardWithFields,
   FieldDefinition,
@@ -49,18 +64,14 @@ const TEXT = {
   ALL_TYPES:      "Todos",
 } as const;
 
-const PAGE_SIZE_TABLE = 50;
-const PAGE_SIZE_GALLERY = 25;
-
 interface CardListProps {
   initialData: PaginatedResult<CardWithFields>;
   fields: FieldDefinition[];
   cardTypes: { id: string; name: string }[];
   initialCardTypeId: string;
-  initialSelectedTypeIds: string[];
+  /** View the server rendered — parsed from the URL, seeds every control. */
+  initialState: CardListViewState;
   scanMode: ScanMode;
-  initialSearch?: string;
-  initialStatus?: CardSearchStatus;
   summaryFieldIds?: string[];
 }
 
@@ -69,14 +80,22 @@ export default function CardList({
   fields,
   cardTypes,
   initialCardTypeId,
-  initialSelectedTypeIds,
+  initialState,
   scanMode,
-  initialSearch = "",
-  initialStatus = "all",
   summaryFieldIds = [],
 }: CardListProps) {
-  const [selectedTypeIds, setSelectedTypeIds] = useState<string[]>(initialSelectedTypeIds);
-  const allTypeIds = cardTypes.map((ct) => ct.id);
+  const [state, setState] = useState<CardListViewState>(initialState);
+  // `state.search` is not destructured: the search box owns its own input value
+  // (seeded once from `initialState`) and only reports committed searches back.
+  const {
+    cardTypeIds: selectedTypeIds,
+    status: statusFilter,
+    fieldFilters,
+    view,
+    page: currentPage,
+  } = state;
+
+  const allTypeIds = useMemo(() => cardTypes.map((ct) => ct.id), [cardTypes]);
   const effectiveTypeIds = selectedTypeIds.length > 0 ? selectedTypeIds : allTypeIds;
 
   const { columns: mergedFields, fieldIdToColumnId } = useMemo(
@@ -96,53 +115,69 @@ export default function CardList({
     return result;
   }, [summaryFieldIds, fieldIdToColumnId]);
 
-  const [view, setView] = useState<ViewMode>("table");
   const fieldIds = mergedFields.map((f) => f.id);
   const { visibleColumns, toggleColumn, resetColumns } = useCardColumns(initialCardTypeId, fieldIds);
 
   const [entries, setEntries] = useState<CardWithFields[]>(initialData.data);
   const [total, setTotal] = useState(initialData.total);
-  const [currentPage, setCurrentPage] = useState(1);
   const [isPending, startTransition] = useTransition();
 
-  const [codeSearch, setCodeSearch] = useState(initialSearch);
-  const [statusFilter, setStatusFilter] = useState<CardSearchStatus>(initialStatus);
-  const [fieldFilters, setFieldFilters] = useState<FieldFilter[]>([]);
-  const [pendingFieldFilters, setPendingFieldFilters] = useState<FieldFilter[]>([]);
+  // Draft filters — the builder's working copy, applied to the view (and so to
+  // the URL) only on "Aplicar filtros".
+  const [pendingFieldFilters, setPendingFieldFilters] = useState<FieldFilter[]>(
+    initialState.fieldFilters,
+  );
   const [filterFields, setFilterFields] = useState<CommonFieldDefinition[]>([]);
-  const [showFilters, setShowFilters] = useState(false);
+  // Open the panel when arriving with filters, so a restored view shows what it
+  // is filtered by rather than just a count on a collapsed button.
+  const [showFilters, setShowFilters] = useState(initialState.fieldFilters.length > 0);
 
-  const pageSize = view === "table" ? PAGE_SIZE_TABLE : PAGE_SIZE_GALLERY;
+  const pageSize = CARD_LIST_PAGE_SIZE[view];
+  const viewQuery = useMemo(() => buildCardListQuery(state), [state]);
 
+  // Filterable fields common to the selected types. This only refreshes the
+  // builder's field list — it must not touch the filters themselves, which on
+  // the first run are the ones restored from the URL. A card-type change clears
+  // them in its own handler, where a filter may no longer apply.
   useEffect(() => {
     let cancelled = false;
     getCommonFieldDefinitionsAction(effectiveTypeIds).then((result) => {
-      if (!cancelled && result.success) {
-        setFilterFields(result.data);
-        setPendingFieldFilters([]);
-        setFieldFilters([]);
-      }
+      if (!cancelled && result.success) setFilterFields(result.data);
     });
     return () => { cancelled = true; };
   }, [effectiveTypeIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Restore the offset a card link stored on its way out. Runs once, on mount:
+  // the entry is keyed by the query the operator left under, so a plain visit —
+  // or a return to a view whose filters changed meanwhile — finds nothing and
+  // opens at the top. Read from a ref so filtering afterwards never re-runs it.
+  const mountQuery = useRef(viewQuery);
+  // Held in a ref because the read is destructive: in development React mounts
+  // effects twice, and a plain `consume` in the effect body would hand the
+  // offset to a run that is immediately cleaned up, leaving the second run
+  // nothing to restore.
+  const pendingOffset = useRef<number | null | undefined>(undefined);
+  useEffect(() => {
+    if (pendingOffset.current === undefined) {
+      pendingOffset.current = consumeCardListScroll(mountQuery.current);
+    }
+    const offset = pendingOffset.current;
+    if (offset === null) return;
+    return restorePageScroll(offset);
+  }, []);
+
   const fetchCards = useCallback(
-    (
-      typeIds: string[],
-      code: string,
-      filters: FieldFilter[],
-      page: number,
-      ps: number,
-      status: CardSearchStatus,
-    ) => {
+    (next: CardListViewState) => {
+      const typeIds = next.cardTypeIds.length > 0 ? next.cardTypeIds : allTypeIds;
+      const { limit, offset } = toPagination(next);
       startTransition(async () => {
         const result = await searchCardsAction({
           cardTypeIds: typeIds,
-          codeContains: code || undefined,
-          filters: filters.length > 0 ? filters : undefined,
-          status,
-          limit: ps,
-          offset: (page - 1) * ps,
+          codeContains: next.search || undefined,
+          filters: next.fieldFilters.length > 0 ? next.fieldFilters : undefined,
+          status: next.status,
+          limit,
+          offset,
         });
         if (result.success) {
           setEntries(result.data.data);
@@ -150,71 +185,62 @@ export default function CardList({
         }
       });
     },
-    [],
+    [allTypeIds],
   );
 
-  const handleTypeToggle = (typeId: string) => {
-    setSelectedTypeIds((prev) =>
-      prev.includes(typeId)
-        ? prev.filter((id) => id !== typeId)
-        : [...prev, typeId],
+  /**
+   * Apply a new view: render it, publish it to the URL, fetch it. Every control
+   * goes through here so the three can never disagree.
+   */
+  const commit = useCallback(
+    (next: CardListViewState) => {
+      setState(next);
+      if (typeof window !== "undefined") {
+        window.history.replaceState(
+          null,
+          "",
+          `${window.location.pathname}${buildCardListQuery(next)}`,
+        );
+      }
+      fetchCards(next);
+    },
+    [fetchCards],
+  );
+
+  // A card-type change also drops the field filters: the builder offers only
+  // fields common to the selected types, so a filter on a field the new
+  // selection does not share would silently match nothing.
+  const commitTypeSelection = (cardTypeIds: string[]) => {
+    setPendingFieldFilters([]);
+    commit({ ...state, cardTypeIds, fieldFilters: [], page: 1 });
+  };
+
+  const handleTypeToggle = (typeId: string) =>
+    commitTypeSelection(
+      selectedTypeIds.includes(typeId)
+        ? selectedTypeIds.filter((id) => id !== typeId)
+        : [...selectedTypeIds, typeId],
     );
-  };
 
-  const handleSelectAll = () => setSelectedTypeIds([]);
+  const handleSelectAll = () => commitTypeSelection([]);
 
-  const [hasMounted, setHasMounted] = useState(false);
-  useEffect(() => {
-    if (!hasMounted) { setHasMounted(true); return; }
-    setCurrentPage(1);
-    fetchCards(effectiveTypeIds, codeSearch, [], 1, pageSize, statusFilter);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveTypeIds.join(",")]);
+  const handleSearch = (q: string) => commit({ ...state, search: q, page: 1 });
 
-  const handleSearch = (q: string) => {
-    setCodeSearch(q);
-    setCurrentPage(1);
-    fetchCards(effectiveTypeIds, q, fieldFilters, 1, pageSize, statusFilter);
-  };
+  const handleStatusChange = (next: CardSearchStatus) =>
+    commit({ ...state, status: next, page: 1 });
 
-  const handleStatusChange = (next: CardSearchStatus) => {
-    setStatusFilter(next);
-    setCurrentPage(1);
-    fetchCards(effectiveTypeIds, codeSearch, fieldFilters, 1, pageSize, next);
-    // Reflect the choice in the URL (shareable) without a server refetch —
-    // mirrors how FlashMessage manages query params via history.replaceState.
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      if (next === "all") url.searchParams.delete("status");
-      else url.searchParams.set("status", next);
-      window.history.replaceState(null, "", url.toString());
-    }
-  };
-
-  const handleApplyFilters = () => {
-    setFieldFilters(pendingFieldFilters);
-    setCurrentPage(1);
-    fetchCards(effectiveTypeIds, codeSearch, pendingFieldFilters, 1, pageSize, statusFilter);
-  };
+  const handleApplyFilters = () =>
+    commit({ ...state, fieldFilters: pendingFieldFilters, page: 1 });
 
   const handleClearFilters = () => {
     setPendingFieldFilters([]);
-    setFieldFilters([]);
-    setCurrentPage(1);
-    fetchCards(effectiveTypeIds, codeSearch, [], 1, pageSize, statusFilter);
+    commit({ ...state, fieldFilters: [], page: 1 });
   };
 
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-    fetchCards(effectiveTypeIds, codeSearch, fieldFilters, page, pageSize, statusFilter);
-  };
+  const handlePageChange = (page: number) => commit({ ...state, page });
 
-  const handleViewChange = (newView: ViewMode) => {
-    setView(newView);
-    const newPageSize = newView === "table" ? PAGE_SIZE_TABLE : PAGE_SIZE_GALLERY;
-    setCurrentPage(1);
-    fetchCards(effectiveTypeIds, codeSearch, fieldFilters, 1, newPageSize, statusFilter);
-  };
+  const handleViewChange = (next: ViewMode) =>
+    commit({ ...state, view: next, page: 1 });
 
   const activeFilterCount = fieldFilters.length;
   const pendingFilterCount = pendingFieldFilters.length;
@@ -266,7 +292,7 @@ export default function CardList({
         <div className="min-w-[240px] flex-1">
           <CardSearch
             scanMode={scanMode}
-            defaultValue={initialSearch}
+            defaultValue={initialState.search}
             placeholder={TEXT.PLACEHOLDER}
             onSearch={handleSearch}
           />
@@ -349,6 +375,7 @@ export default function CardList({
           fields={mergedFields}
           visibleColumns={visibleColumns}
           fieldIdToColumnId={fieldIdToColumnId}
+          viewQuery={viewQuery}
         />
       ) : (
         <CardProfileView
@@ -356,6 +383,7 @@ export default function CardList({
           fields={mergedFields}
           summaryFieldIds={mergedSummaryFieldIds}
           fieldIdToColumnId={fieldIdToColumnId}
+          viewQuery={viewQuery}
         />
       )}
 

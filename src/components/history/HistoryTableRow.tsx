@@ -11,13 +11,28 @@
  *   - action color (or type default) for actions
  *
  * Columns: Date/Time | Card Code | Card Type | Action | Executed By | Summary Fields | Details
+ *
+ * A `photo` summary field renders as a thumbnail served by the stable photo
+ * route, exactly like the dashboard feed — its stored value is an object key,
+ * which printed as text would be a file path. The DAL ships presence only, so
+ * the address is derived here from the card code + field id.
+ *
+ * The whole row navigates to the card detail (as in `CardTableView`), carrying
+ * the current history query in `hq` so the detail page's back link can return
+ * to this exact view, and storing the scroll offsets so it returns to this
+ * exact row.
  */
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { cardPhotoRoute } from "@/lib/storage/photo-routes";
+import { cardDetailHref } from "@/lib/cards/return-origin";
+import { rememberHistoryScroll } from "@/lib/history/scroll-restore";
+import { readPageScroll } from "@/lib/navigation/return-scroll";
 import type { ActionHistoryEntry } from "@/lib/dal";
 
 const TEXT = {
@@ -102,6 +117,8 @@ function formatDetails(entry: ActionHistoryEntry): string {
 interface HistoryTableRowProps {
   entry: ActionHistoryEntry;
   isOdd: boolean;
+  /** Current history query string — travels to the card detail as `hq`. */
+  viewQuery: string;
 }
 
 // Card-style body cell. Row dividers come from TableRow's border-b; cells allow
@@ -109,18 +126,45 @@ interface HistoryTableRowProps {
 const CELL =
   "whitespace-normal px-3 py-2.5 align-top text-xs leading-relaxed text-foreground";
 
-export default function HistoryTableRow({ entry, isOdd }: HistoryTableRowProps) {
+export default function HistoryTableRow({
+  entry,
+  isOdd,
+  viewQuery,
+}: HistoryTableRowProps) {
+  const router = useRouter();
   const isScan = entry.logType === "scan";
   const accentColor = isScan ? NEUTRAL_ACCENT : resolveColor(entry.actionColor);
   const { relative, absolute } = formatDateTime(entry.executedAt);
   const details = formatDetails(entry);
+  const cardHref = cardDetailHref(entry.cardCode, "history", viewQuery);
+
+  /** The rows scroll inside the table container, not the page — store both. */
+  const rememberScroll = (origin: HTMLElement) => {
+    const container = origin.closest<HTMLElement>('[data-slot="table-container"]');
+    rememberHistoryScroll(viewQuery, {
+      page: readPageScroll(),
+      container: container?.scrollTop ?? 0,
+    });
+  };
+
+  /**
+   * Store where we are, then navigate. Clicks inside the code cell are left to
+   * its `<Link>`: it points at the same href and handles ⌘-click / middle-click
+   * natively, which a `router.push` here would swallow.
+   */
+  const handleRowClick = (event: React.MouseEvent<HTMLTableRowElement>) => {
+    if ((event.target as HTMLElement).closest("a")) return;
+    rememberScroll(event.currentTarget);
+    router.push(cardHref);
+  };
 
   return (
     <TableRow
+      onClick={handleRowClick}
       // borderLeftColor is data-driven (action's configured color) — preserved inline.
       style={{ borderLeftColor: accentColor }}
       className={cn(
-        "border-l-[3px] hover:bg-accent/50",
+        "cursor-pointer border-l-[3px] hover:bg-accent/50",
         isOdd ? "bg-muted/30" : "bg-card",
       )}
     >
@@ -133,7 +177,8 @@ export default function HistoryTableRow({ entry, isOdd }: HistoryTableRowProps) 
       {/* Card Code */}
       <TableCell className={CELL}>
         <Link
-          href={`/cards/${encodeURIComponent(entry.cardCode)}`}
+          href={cardHref}
+          onClick={(e) => rememberScroll(e.currentTarget)}
           className="font-mono text-xs font-bold text-primary hover:underline"
         >
           {entry.cardCode}
@@ -180,11 +225,37 @@ export default function HistoryTableRow({ entry, isOdd }: HistoryTableRowProps) 
       {/* Summary Fields */}
       <TableCell className={CELL}>
         {entry.summaryFields.length > 0 ? (
-          <div className="flex flex-col gap-0.5">
-            {entry.summaryFields.slice(0, 3).map((sf, i) => (
-              <div key={i} className="text-[11px]">
-                <span className="mr-1 text-muted-foreground">{sf.label}:</span>
-                <span className="font-semibold">{formatValue(sf.value)}</span>
+          <div className="flex flex-col gap-1">
+            {entry.summaryFields.slice(0, 3).map((sf) => (
+              <div
+                key={sf.fieldDefinitionId}
+                className="flex items-center gap-1 text-[11px]"
+              >
+                <span className="text-muted-foreground">{sf.label}:</span>
+                {sf.fieldType === "photo" ? (
+                  sf.value ? (
+                    /* Same addressing as the dashboard feed: the stable route
+                       signs per request, so the thumbnail survives every
+                       client-side refetch and never expires in place. Lazy for
+                       the reason `PhotoRenderer` is — each thumbnail costs a
+                       session check plus a `getCardByCode` on the photo route,
+                       and a page here holds 50 rows. */
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={cardPhotoRoute(entry.cardCode, {
+                        fieldDefinitionId: sf.fieldDefinitionId,
+                      })}
+                      alt={sf.label}
+                      loading="lazy"
+                      decoding="async"
+                      className="size-9 shrink-0 rounded-lg border border-border object-cover"
+                    />
+                  ) : (
+                    <span className="text-muted-foreground">{TEXT.EMPTY}</span>
+                  )
+                ) : (
+                  <span className="font-semibold">{formatValue(sf.value)}</span>
+                )}
               </div>
             ))}
           </div>

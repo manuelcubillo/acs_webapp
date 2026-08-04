@@ -12,6 +12,47 @@
 
 import type { FieldType, RuleDefinition } from "./types";
 
+// ─── Select options ──────────────────────────────────────────────────────────
+
+/**
+ * Identifier of the rule that carries a select field's allowed values.
+ *
+ * Single-sourced because the name is read from three unrelated layers (the
+ * card form input, the shared field-filter builder, and the validator). Each
+ * previously hard-coded its own spelling and two of them were wrong, which
+ * silently produced empty dropdowns rather than an error.
+ */
+export const SELECT_OPTIONS_RULE = "options";
+
+/**
+ * Extract a select field's configured options from its `validation_rules` JSONB.
+ *
+ * Accepts `unknown` because callers receive this payload in different shapes:
+ * typed as `ValidationRules` from the form layer, and as an untyped JSONB blob
+ * from the DAL (`CommonFieldDefinition.validationRules`). Malformed or absent
+ * rules yield an empty array — a select with no configured options is a valid
+ * state, not an error.
+ *
+ * @param validationRules - The raw `field_definitions.validation_rules` payload.
+ * @returns The configured option values, or an empty array.
+ */
+export function getSelectOptions(validationRules: unknown): string[] {
+  if (!validationRules || typeof validationRules !== "object") return [];
+
+  const { rules } = validationRules as { rules?: unknown };
+  if (!Array.isArray(rules)) return [];
+
+  const optionsRule = rules.find(
+    (r): r is { rule: string; value: unknown } =>
+      !!r &&
+      typeof r === "object" &&
+      (r as { rule?: unknown }).rule === SELECT_OPTIONS_RULE,
+  );
+  if (!Array.isArray(optionsRule?.value)) return [];
+
+  return optionsRule.value.filter((o): o is string => typeof o === "string");
+}
+
 // ─── Pattern presets ─────────────────────────────────────────────────────────
 
 /**
@@ -130,7 +171,7 @@ export const RULES_BY_FIELD_TYPE: Record<FieldType, RuleDefinition[]> = {
 
   select: [
     {
-      rule: "options",
+      rule: SELECT_OPTIONS_RULE,
       description: "List of valid option values",
       paramType: "string[]",
       example: ["option_a", "option_b"],

@@ -35,29 +35,29 @@ export async function signCardPhotos(
 }
 
 /**
- * For an array of cards, sign every photo key in a single de-duplicated
- * batch. Returns a fresh array of cards with signed URLs in place of keys.
+ * Replace each photo field's `value` (object key) with a plain presence flag.
+ *
+ * For surfaces that address photos through the stable route
+ * (`cardPhotoRoute`, ADR `2026-07-17-stable-photo-routes.md`) the key is never
+ * the client-facing address — the renderer only needs to know whether the field
+ * holds an object at all. Shipping the key anyway would leak it into the
+ * browser, which `src/lib/storage/read.ts` forbids and which the ADR rejected
+ * explicitly when it declined to put keys in the route path.
+ *
+ * Applies to every producer of a card list, so a client-side refetch returns
+ * the same shape the server rendered.
  */
-export async function signCardListPhotos(
+export function stripCardListPhotoKeys(
   cards: CardWithFields[],
-): Promise<CardWithFields[]> {
-  const allKeys: (string | null)[] = [];
-  for (const c of cards) {
-    for (const f of c.fields) {
-      if (f.fieldType === "photo" && typeof f.value === "string") {
-        allKeys.push(f.value);
-      }
-    }
-  }
-  if (allKeys.length === 0) return cards;
-
-  const signed = await signPhotosForRead(allKeys);
+): CardWithFields[] {
   return cards.map((c) => ({
     ...c,
     fields: c.fields.map((f) => {
       if (f.fieldType !== "photo") return f;
-      const key = typeof f.value === "string" && f.value.length > 0 ? f.value : null;
-      return { ...f, value: key ? signed.get(key) ?? null : null };
+      const hasPhoto = typeof f.value === "string" && f.value.length > 0;
+      // `raw` is the untouched field_values row, so it carries the key a second
+      // time in `value_text`. Redact both or the key ships anyway.
+      return { ...f, value: hasPhoto, raw: { ...f.raw, valueText: null } };
     }),
   }));
 }

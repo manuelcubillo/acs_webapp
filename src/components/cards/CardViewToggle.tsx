@@ -3,13 +3,15 @@
 import { LayoutList, Table2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import type { CardListView } from "@/lib/cards/list-params";
 
 const TEXT = {
   TABLE:  "Tabla",
   CARDS:  "Fichas",
 } as const;
 
-export type ViewMode = "table" | "profile";
+/** The view mode is part of the URL-persisted list state — defined there. */
+export type ViewMode = CardListView;
 
 interface CardViewToggleProps {
   view: ViewMode;

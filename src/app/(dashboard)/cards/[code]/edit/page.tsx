@@ -12,6 +12,10 @@ import {
   getCardTypeWithFullSchema,
 } from "@/lib/dal";
 import { buildPhotoReadUrlMap } from "@/lib/dal/photo-urls";
+import {
+  resolveCardOrigin,
+  type RawOriginParams,
+} from "@/lib/cards/return-origin";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardEditClient from "./CardEditClient";
 import CardLifecycleControls from "@/components/cards/CardLifecycleControls";
@@ -27,9 +31,15 @@ const TEXT = {
 
 interface EditCardPageProps {
   params: Promise<{ code: string }>;
+  /**
+   * The origin the card detail was reached from, forwarded here so leaving the
+   * editor returns to that detail with its back link — and therefore the
+   * operator's filtered list — still intact. See `@/lib/cards/return-origin`.
+   */
+  searchParams: Promise<RawOriginParams>;
 }
 
-export default async function EditCardPage({ params }: EditCardPageProps) {
+export default async function EditCardPage({ params, searchParams }: EditCardPageProps) {
   // ── Auth ──────────────────────────────────────────────────────────────────
   let context;
   try {
@@ -41,8 +51,13 @@ export default async function EditCardPage({ params }: EditCardPageProps) {
   }
 
   const { tenantId, role } = context;
-  const { code } = await params;
+  const [{ code }, originParams] = await Promise.all([params, searchParams]);
   const decodedCode = decodeURIComponent(code);
+
+  // Cancelling or saving returns to the detail page carrying the same origin,
+  // so its back link still points at the list the operator started from.
+  const { forwardQuery, cardListQuery } = resolveCardOrigin(originParams);
+  const detailHref = `/cards/${encodeURIComponent(decodedCode)}${forwardQuery}`;
 
   // ── Data ──────────────────────────────────────────────────────────────────
   let card;
@@ -106,11 +121,16 @@ export default async function EditCardPage({ params }: EditCardPageProps) {
             fields={fields}
             initialValues={initialValues}
             photoReadUrls={photoReadUrls}
+            returnHref={detailHref}
           />
         </div>
 
         {/* Lifecycle state controls (admin) — activate / deactivate / archive. */}
-        <CardLifecycleControls cardId={card.id} initialStatus={card.status} />
+        <CardLifecycleControls
+          cardId={card.id}
+          initialStatus={card.status}
+          listQuery={cardListQuery}
+        />
       </div>
     </DashboardShell>
   );

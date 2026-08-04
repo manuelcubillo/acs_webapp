@@ -13,7 +13,7 @@
  *   4. Add its default message to DEFAULT_MESSAGES in messages.ts.
  */
 
-import { PATTERN_PRESETS } from "./rules";
+import { getSelectOptions, PATTERN_PRESETS, SELECT_OPTIONS_RULE } from "./rules";
 import type { FieldValidationContext, ValidatorFn } from "./types";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -314,12 +314,7 @@ export const validateAllowMultiple: ValidatorFn = (
   if (!Array.isArray(value)) return false;
 
   // Each selected item must appear in the `options` rule's list.
-  const optionsRule = context.fieldDefinition.validationRules?.rules.find(
-    (r) => r.rule === "options",
-  );
-  const options = Array.isArray(optionsRule?.value)
-    ? (optionsRule!.value as string[])
-    : [];
+  const options = getSelectOptions(context.fieldDefinition.validationRules);
 
   if (options.length === 0) return true;
   return (value as unknown[]).every((item) => options.includes(String(item)));
@@ -348,6 +343,6 @@ export const VALIDATOR_REGISTRY: Record<string, ValidatorFn> = {
   futureOnly: validateFutureOnly,
   maxSizeKb: validateMaxSizeKb,
   allowedFormats: validateAllowedFormats,
-  options: validateOptions,
+  [SELECT_OPTIONS_RULE]: validateOptions,
   allowMultiple: validateAllowMultiple,
 };

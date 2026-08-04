@@ -55,7 +55,7 @@ import {
   getErrorLevelChecks,
   type ScanValidationResult,
 } from "@/lib/validation/scan-validator";
-import { signCardPhotos } from "@/lib/dal/photo-urls";
+import { signCardPhotos, stripCardListPhotoKeys } from "@/lib/dal/photo-urls";
 
 // ─── Composite types ──────────────────────────────────────────────────────────
 
@@ -559,10 +559,13 @@ export async function listCardsAction(
   return actionHandler(async () => {
     const { tenantId } = await requireOperator();
     const data = ListCardsSchema.parse(input);
-    return listCards(data.cardTypeId, tenantId, {
+    const result = await listCards(data.cardTypeId, tenantId, {
       limit: data.limit,
       offset: data.offset,
     });
+    // List surfaces address photos through the stable route — see
+    // `stripCardListPhotoKeys`.
+    return { ...result, data: stripCardListPhotoKeys(result.data) };
   });
 }
 
@@ -583,10 +586,13 @@ export async function searchCardsAction(
       status: data.status,
     };
 
-    return searchCards(data.cardTypeIds, tenantId, searchInput, {
+    const result = await searchCards(data.cardTypeIds, tenantId, searchInput, {
       limit: data.limit,
       offset: data.offset,
     });
+    // List surfaces address photos through the stable route — see
+    // `stripCardListPhotoKeys`.
+    return { ...result, data: stripCardListPhotoKeys(result.data) };
   });
 }
 

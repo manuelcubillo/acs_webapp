@@ -17,6 +17,8 @@
     "db:seed:local-db": "dotenv -e .env.local-db -- npx tsx scripts/seed.ts",
     "import:legacy": "npx tsx scripts/legacyDBMigration/import.ts",
     "import:legacy:local-db": "dotenv -e .env.local-db -- npx tsx scripts/legacyDBMigration/import.ts",
+    "backfill-photos:legacy": "npx tsx scripts/legacyDBMigration/backfillPhotos.ts",
+    "backfill-photos:legacy:local-db": "dotenv -e .env.local-db -- npx tsx scripts/legacyDBMigration/backfillPhotos.ts",
     "db:pull-neon": "bash scripts/pull-neon-db.sh",
     "test": "vitest run",
     "test:watch": "vitest"

@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { getSelectOptions } from "@/lib/validation/rules";
 import type { ValidationRules } from "@/lib/validation/types";
 
 const TEXT = {
@@ -36,14 +37,7 @@ export default function SelectInput({
   disabled,
   validationRules,
 }: SelectInputProps) {
-  // Extract options from the "allowedValues" validation rule.
-  const options: string[] = [];
-  if (validationRules?.rules) {
-    const rule = validationRules.rules.find((r) => r.rule === "allowedValues");
-    if (rule && Array.isArray(rule.value)) {
-      options.push(...(rule.value as string[]));
-    }
-  }
+  const options = getSelectOptions(validationRules);
 
   const current = value === null || value === undefined ? "" : String(value);
 

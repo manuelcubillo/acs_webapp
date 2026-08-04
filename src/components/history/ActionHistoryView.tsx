@@ -5,6 +5,12 @@
  *
  * Main client-side orchestrator for the /history page.
  * Manages filter state, pagination, scan toggle, and export.
+ *
+ * The state it owns is mirrored into the URL after every change, which is what
+ * lets a row navigate to a card detail and the back link return to this exact
+ * view. Mirroring uses `history.replaceState` rather than the Next router: the
+ * server has already produced these rows, so a router navigation would only
+ * re-fetch what is on screen. Same trade as `CardList`'s status param.
  */
 
 import { useState, useCallback, useTransition } from "react";
@@ -15,6 +21,10 @@ import type {
   PaginatedResult,
 } from "@/lib/dal";
 import { getActionHistoryAction } from "@/lib/actions/action-history";
+import {
+  buildHistoryQuery,
+  toEffectiveFilters,
+} from "@/lib/history/filter-params";
 import HistoryFilters from "./HistoryFilters";
 import HistoryScanToggle from "./HistoryScanToggle";
 import HistoryTable from "./HistoryTable";
@@ -34,22 +44,30 @@ const TEXT = {
 interface ActionHistoryViewProps {
   initialData: PaginatedResult<ActionHistoryEntry>;
   filterOptions: HistoryFilterOptions;
+  /** View state the server rendered `initialData` with — parsed from the URL. */
+  initialFilters: ActionHistoryFilters;
+  initialShowScans: boolean;
+  initialPage: number;
 }
 
 export default function ActionHistoryView({
   initialData,
   filterOptions,
+  initialFilters,
+  initialShowScans,
+  initialPage,
 }: ActionHistoryViewProps) {
   // ── Core state ──────────────────────────────────────────────────────────────
   const [entries, setEntries] = useState<ActionHistoryEntry[]>(initialData.data);
   const [total, setTotal] = useState(initialData.total);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(initialPage);
 
   /** Filters applied (committed) — used for queries and export */
-  const [appliedFilters, setAppliedFilters] = useState<ActionHistoryFilters>({});
+  const [appliedFilters, setAppliedFilters] =
+    useState<ActionHistoryFilters>(initialFilters);
 
   /** Show/hide scan entries. True by default (no filter = show all) */
-  const [showScans, setShowScans] = useState(true);
+  const [showScans, setShowScans] = useState(initialShowScans);
 
   const [isPending, startTransition] = useTransition();
 
@@ -68,52 +86,62 @@ export default function ActionHistoryView({
     [],
   );
 
+  // ── URL mirror ──────────────────────────────────────────────────────────────
+
+  /**
+   * Reflect the committed view state in the address bar. `replaceState` keeps
+   * the browser's back button pointing at the previous PAGE rather than at
+   * every intermediate filter tweak, and never triggers a server round trip —
+   * the rows for this state have just been fetched.
+   */
+  const syncUrl = useCallback(
+    (filters: ActionHistoryFilters, scans: boolean, targetPage: number) => {
+      if (typeof window === "undefined") return;
+      const query = buildHistoryQuery({ filters, showScans: scans, page: targetPage });
+      window.history.replaceState(null, "", `${window.location.pathname}${query}`);
+    },
+    [],
+  );
+
   // ── Handlers ────────────────────────────────────────────────────────────────
 
   /** Called when the user clicks "Apply filters" */
   const handleApplyFilters = (newFilters: ActionHistoryFilters) => {
     // Preserve the scan toggle setting
-    const merged = buildEffectiveFilters(newFilters, showScans);
+    const merged = toEffectiveFilters(newFilters, showScans);
     setAppliedFilters(newFilters);
     setPage(1);
+    syncUrl(newFilters, showScans, 1);
     fetch(merged, 1);
   };
 
   /** Called when the scan toggle changes — immediately re-fetches */
   const handleScanToggle = (show: boolean) => {
     setShowScans(show);
-    const merged = buildEffectiveFilters(appliedFilters, show);
+    const merged = toEffectiveFilters(appliedFilters, show);
     setPage(1);
+    syncUrl(appliedFilters, show, 1);
     fetch(merged, 1);
   };
 
   /** Called when pagination changes */
   const handlePageChange = (newPage: number) => {
-    const merged = buildEffectiveFilters(appliedFilters, showScans);
+    const merged = toEffectiveFilters(appliedFilters, showScans);
     setPage(newPage);
+    syncUrl(appliedFilters, showScans, newPage);
     fetch(merged, newPage);
   };
 
   // ── Effective filters (for queries & export) ─────────────────────────────────
 
-  /** Merges the base filters with the scan toggle setting */
-  function buildEffectiveFilters(
-    base: ActionHistoryFilters,
-    scans: boolean,
-  ): ActionHistoryFilters {
-    if (!scans) {
-      // Exclude scan-only entries; if actions already filtered keep as-is
-      return {
-        ...base,
-        logTypes: ["action"],
-      };
-    }
-    // Show everything — no logTypes constraint (or keep user's if they filtered)
-    const { logTypes: _removed, ...rest } = base;
-    return rest;
-  }
+  const effectiveFilters = toEffectiveFilters(appliedFilters, showScans);
 
-  const effectiveFilters = buildEffectiveFilters(appliedFilters, showScans);
+  /**
+   * The query string describing what is on screen. Rows hand it to the card
+   * detail page so its back link can rebuild this view, and the scroll offsets
+   * are stored against it so they are only restored into the same result set.
+   */
+  const viewQuery = buildHistoryQuery({ filters: appliedFilters, showScans, page });
 
   const isCapped = total >= COUNT_CAP;
 
@@ -151,7 +179,7 @@ export default function ActionHistoryView({
       </div>
 
       {/* Table */}
-      <HistoryTable entries={entries} isLoading={isPending} />
+      <HistoryTable entries={entries} isLoading={isPending} viewQuery={viewQuery} />
 
       {/* Pagination */}
       <HistoryPagination

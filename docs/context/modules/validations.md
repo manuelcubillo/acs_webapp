@@ -1,6 +1,6 @@
 # Module: validations
 
-**Last updated**: 2026-07-17 · **Last feature**: lifecycle status reuses the scan-validation channel (phase 2)
+**Last updated**: 2026-08-02 · **Last feature**: select-field options extraction consolidated into one shared helper in `rules.ts`
 
 ## Responsibility
 
@@ -16,7 +16,7 @@ Critical invariant: scan validations **inform**, never **block** actions.
 ## Key files
 
 - `src/lib/validation/types.ts` — Rule definitions, result types, `ScanValidationResult`.
-- `src/lib/validation/rules.ts` — Enum + metadata for all supported rules.
+- `src/lib/validation/rules.ts` — Enum + metadata for all supported rules. Also owns `SELECT_OPTIONS_RULE` + `getSelectOptions(validationRules)` — the single source of truth for a select field's configured options.
 - `src/lib/validation/validators.ts` — Per-field-type validator functions.
 - `src/lib/validation/engine.ts` — Form validation orchestration.
 - `src/lib/validation/scan-validator.ts` — Scan-time evaluation.
@@ -73,6 +73,7 @@ Severity: `error` (red) or `warning` (yellow).
 ## Extension points
 
 - **New form validation rule** → add to `rules.ts` enum, implement in `validators.ts`, expose in `ValidationRulesEditor` UI.
+- **Reading a rule's configured value from a UI layer** → never re-derive the rule name inline. Rule names that more than one layer reads are exported as constants from `rules.ts` with an accessor beside them (`SELECT_OPTIONS_RULE` / `getSelectOptions`); accessors take `unknown` because the payload arrives typed from the form layer and as raw JSONB from the DAL.
 - **New scan validation rule** → add to `rules.ts`, implement in `scan-validator.ts`, add to `ScanValidationsStep` UI, provide `messages.ts` entry.
 - **New severity level** → extend the `severity` enum + `ScanAlerts` styling; reconsider whether the invariant "never block" still holds.
 
@@ -87,6 +88,7 @@ Severity: `error` (red) or `warning` (yellow).
 
 ## Recent changes
 
+- 2026-08-02 — `rules.ts` gained `SELECT_OPTIONS_RULE` + `getSelectOptions(validationRules)`, now the only way to read a select field's options. Three layers previously hard-coded their own access pattern and two were wrong (`SelectInput` looked up a rule named `allowedValues`; `FieldFilterBuilder` read `validationRules.options` instead of walking `rules[]`), each returning `[]` rather than throwing — so select fields silently rendered empty dropdowns and could be neither assigned on card creation nor filtered. `RULES_BY_FIELD_TYPE.select` and the `VALIDATOR_REGISTRY` key now derive from the same constant, so writer and readers cannot desync. New `__tests__/select-options.test.ts` pins the contract (mutation-verified against both original bugs). No ADR — bug fix + refactor.
 - 2026-07-17 — Phase-2 lifecycle reuses the scan-validation channel: a synthetic `lifecycle_status` check (`buildLifecycleScanCheck`) surfaces an inactive/expired card as an error-level failure so the override flow handles it. `messages.ts` gained `LIFECYCLE_SCAN_MESSAGES` + `LIFECYCLE_SCAN_FIELD_LABEL`. The engines themselves are unchanged. ADR `2026-07-17-card-lifecycle-scan-behaviour.md`.
 - 2026-04-19 — Initial extraction from architecture document.
 - 2026-04-19 — Synchronized documentation against source code: no drift found; metadata updated.

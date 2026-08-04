@@ -3,6 +3,8 @@
 import Link from "next/link";
 
 import DynamicFieldRenderer from "./DynamicFieldRenderer";
+import { cardDetailHref } from "@/lib/cards/return-origin";
+import { rememberCardListScroll } from "@/lib/cards/scroll-restore";
 import type { CardWithFields, FieldDefinition } from "@/lib/dal/types";
 
 const TEXT = {
@@ -20,6 +22,8 @@ interface CardProfileViewProps {
   summaryFieldIds?: string[];
   /** Maps a field_definition_id to the (possibly merged) display column id it belongs to. */
   fieldIdToColumnId: Map<string, string>;
+  /** Current list query — travels to the card detail so it can come back here. */
+  viewQuery: string;
 }
 
 export default function CardProfileView({
@@ -27,6 +31,7 @@ export default function CardProfileView({
   fields,
   summaryFieldIds = [],
   fieldIdToColumnId,
+  viewQuery,
 }: CardProfileViewProps) {
   if (cards.length === 0) {
     return (
@@ -47,15 +52,21 @@ export default function CardProfileView({
     <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
       {cards.map((card) => {
         const valueMap: Record<string, unknown> = {};
+        // A display column can merge fields from several card types, so the
+        // column id is not this card's field_definition_id. Photo rendering
+        // addresses the exact object by field id, so keep the card's own id.
+        const fieldIdMap: Record<string, string> = {};
         for (const fv of card.fields) {
           const columnId = fieldIdToColumnId.get(fv.fieldDefinitionId) ?? fv.fieldDefinitionId;
           valueMap[columnId] = fv.value;
+          fieldIdMap[columnId] = fv.fieldDefinitionId;
         }
 
         return (
           <Link
             key={card.id}
-            href={`/cards/${encodeURIComponent(card.code)}?from=cards`}
+            href={cardDetailHref(card.code, "cards", viewQuery)}
+            onClick={() => rememberCardListScroll(viewQuery)}
             className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 transition-shadow hover:border-ring/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span className="self-start rounded-md bg-muted px-2 py-0.5 font-mono text-xs font-bold text-muted-foreground">
@@ -72,6 +83,11 @@ export default function CardProfileView({
                     fieldType={f.fieldType}
                     value={valueMap[f.id]}
                     label={f.label}
+                    cardCode={card.code}
+                    fieldDefinitionId={fieldIdMap[f.id]}
+                    // The whole card is a link to the card detail; a photo
+                    // lightbox here would swallow that click.
+                    enlargeable={false}
                   />
                 </div>
               ))}

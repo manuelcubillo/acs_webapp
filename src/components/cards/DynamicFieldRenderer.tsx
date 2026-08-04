@@ -18,6 +18,11 @@ interface DynamicFieldRendererProps {
   cardCode?: string;
   /** Field definition id — forwarded to photo fields to select the object. */
   fieldDefinitionId?: string;
+  /**
+   * Forwarded to photo fields. Pass `false` where an ancestor owns the click
+   * (list rows navigate to the card detail), so the photo stays static.
+   */
+  enlargeable?: boolean;
 }
 
 export default function DynamicFieldRenderer({
@@ -26,6 +31,7 @@ export default function DynamicFieldRenderer({
   label,
   cardCode,
   fieldDefinitionId,
+  enlargeable,
 }: DynamicFieldRendererProps) {
   switch (fieldType) {
     case "text":
@@ -43,6 +49,7 @@ export default function DynamicFieldRenderer({
           label={label}
           cardCode={cardCode}
           fieldDefinitionId={fieldDefinitionId}
+          enlargeable={enlargeable}
         />
       );
     case "select":

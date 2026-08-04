@@ -18,6 +18,11 @@ import {
   listDesignsForCardType,
 } from "@/lib/dal";
 import { signCardPhotos } from "@/lib/dal/photo-urls";
+import {
+  resolveCardOrigin,
+  type CardOrigin,
+  type RawOriginParams,
+} from "@/lib/cards/return-origin";
 import { signPhotoForReadOptional } from "@/lib/storage/read";
 import { validateScan, hasErrorLevelFailures } from "@/lib/validation/scan-validator";
 import { resolveLifecycleGate } from "@/lib/server/lifecycle";
@@ -33,15 +38,29 @@ const TEXT = {
   SHELL_TITLE:    "Detalle de carnet",
   BACK_CARDS:     "Todos los carnets",
   BACK_ARCHIVED:  "Papelera",
+  BACK_HISTORY:   "Historial de acciones",
   BACK_DASHBOARD: "Vista principal",
   BTN_EDIT:       "Editar",
   CREATED:        "Creado:",
   UPDATED:        "Modificado:",
 } as const;
 
+/** Back link wording per origin surface. */
+const BACK_LABEL: Record<CardOrigin, string> = {
+  cards:     TEXT.BACK_CARDS,
+  archived:  TEXT.BACK_ARCHIVED,
+  history:   TEXT.BACK_HISTORY,
+  dashboard: TEXT.BACK_DASHBOARD,
+};
+
 interface CardDetailPageProps {
   params: Promise<{ code: string }>;
-  searchParams: Promise<{ from?: string }>;
+  /**
+   * Where the operator came from, and the exact list view to return to. See
+   * `src/lib/cards/return-origin.ts` — the blobs arrive from the URL and are
+   * re-validated there before any href is built from them.
+   */
+  searchParams: Promise<RawOriginParams>;
 }
 
 export default async function CardDetailPage({ params, searchParams }: CardDetailPageProps) {
@@ -56,18 +75,14 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
   }
 
   const { tenantId, role } = context;
-  const [{ code }, { from }] = await Promise.all([params, searchParams]);
+  const [{ code }, originParams] = await Promise.all([params, searchParams]);
   const decodedCode = decodeURIComponent(code);
 
-  // Dynamic back link based on where the user navigated from
-  const backHref =
-    from === "cards" ? "/cards" : from === "archived" ? "/archived" : "/dashboard";
-  const backLabel =
-    from === "cards"
-      ? TEXT.BACK_CARDS
-      : from === "archived"
-        ? TEXT.BACK_ARCHIVED
-        : TEXT.BACK_DASHBOARD;
+  // Where "back" goes, and what the edit page has to carry so its own return
+  // trip lands here with this same back link intact.
+  const { origin, backHref, forwardQuery } = resolveCardOrigin(originParams);
+  const backLabel = BACK_LABEL[origin];
+  const editHref = `/cards/${encodeURIComponent(decodedCode)}/edit${forwardQuery}`;
   const isAdmin = role === "admin" || role === "master";
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -183,7 +198,7 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
             )}
             {isAdmin && (
               <Button asChild variant="outline" size="sm">
-                <Link href={`/cards/${encodeURIComponent(decodedCode)}/edit`}>
+                <Link href={editHref}>
                   <Edit className="size-3.5" strokeWidth={1.8} />
                   {TEXT.BTN_EDIT}
                 </Link>

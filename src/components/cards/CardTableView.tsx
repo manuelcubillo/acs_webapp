@@ -11,6 +11,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import DynamicFieldRenderer from "./DynamicFieldRenderer";
+import { cardDetailHref } from "@/lib/cards/return-origin";
+import { rememberCardListScroll } from "@/lib/cards/scroll-restore";
 import type { CardWithFields, FieldDefinition } from "@/lib/dal/types";
 
 const TEXT = {
@@ -24,6 +26,8 @@ interface CardTableViewProps {
   visibleColumns: string[];
   /** Maps a field_definition_id to the (possibly merged) display column id it belongs to. */
   fieldIdToColumnId: Map<string, string>;
+  /** Current list query — travels to the card detail so it can come back here. */
+  viewQuery: string;
 }
 
 export default function CardTableView({
@@ -31,6 +35,7 @@ export default function CardTableView({
   fields,
   visibleColumns,
   fieldIdToColumnId,
+  viewQuery,
 }: CardTableViewProps) {
   const router = useRouter();
   const visible = fields.filter((f) => visibleColumns.includes(f.id));
@@ -64,18 +69,22 @@ export default function CardTableView({
         <TableBody>
           {cards.map((card) => {
             const valueMap: Record<string, unknown> = {};
+            // A display column can merge fields from several card types, so the
+            // column id is not this card's field_definition_id. Photo rendering
+            // addresses the exact object by field id, so keep the card's own id.
+            const fieldIdMap: Record<string, string> = {};
             for (const fv of card.fields) {
               const columnId = fieldIdToColumnId.get(fv.fieldDefinitionId) ?? fv.fieldDefinitionId;
               valueMap[columnId] = fv.value;
+              fieldIdMap[columnId] = fv.fieldDefinitionId;
             }
             return (
               <TableRow
                 key={card.id}
-                onClick={() =>
-                  router.push(
-                    `/cards/${encodeURIComponent(card.code)}?from=cards`,
-                  )
-                }
+                onClick={() => {
+                  rememberCardListScroll(viewQuery);
+                  router.push(cardDetailHref(card.code, "cards", viewQuery));
+                }}
                 className="cursor-pointer hover:bg-accent/40"
               >
                 <TableCell className="font-mono text-xs font-semibold text-foreground">
@@ -87,6 +96,11 @@ export default function CardTableView({
                       fieldType={f.fieldType}
                       value={valueMap[f.id]}
                       label={f.label}
+                      cardCode={card.code}
+                      fieldDefinitionId={fieldIdMap[f.id]}
+                      // The row navigates to the card detail; a photo lightbox
+                      // here would swallow that click.
+                      enlargeable={false}
                     />
                   </TableCell>
                 ))}

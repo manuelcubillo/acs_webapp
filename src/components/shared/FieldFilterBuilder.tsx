@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { getSelectOptions } from "@/lib/validation/rules";
 import type { CommonFieldDefinition, FieldFilter, FieldFilterOperator } from "@/lib/dal";
 
 const TEXT = {
@@ -89,15 +90,6 @@ export function getOperatorsForFieldType(fieldType: string): OperatorDef[] {
 
 export function defaultOperatorForType(fieldType: string): FieldFilterOperator {
   return getOperatorsForFieldType(fieldType)[0]?.value ?? "contains";
-}
-
-function getSelectOptions(validationRules: unknown): string[] {
-  if (!validationRules || typeof validationRules !== "object") return [];
-  const rules = validationRules as Record<string, unknown>;
-  if (Array.isArray(rules.options)) {
-    return rules.options.filter((o): o is string => typeof o === "string");
-  }
-  return [];
 }
 
 // ─── Field lookup helpers ───────────────────────────────────────────────────

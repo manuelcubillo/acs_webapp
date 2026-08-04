@@ -19,6 +19,16 @@ Heavy pages use a two-file pattern:
 
 This keeps auth checks and DB access off the client and keeps data-fetching co-located with the route.
 
+## List view state lives in the URL
+
+A filterable list page keeps its complete view — filters, view mode, page — in the query string, not in client state alone. The server page parses it and renders **that** result set (one query, no corrective refetch), and the client component publishes every change back with `history.replaceState` (no router navigation: the rows on screen were just fetched). This is what makes a filtered list shareable, reloadable, and restorable after opening a row.
+
+Each such surface owns a dependency-free `parse…Params` / `build…Query` / `sanitize…Query` module, built on the shared readers in `src/lib/navigation/query-codec.ts`. Parsing is deliberately lenient — it reads a URL anyone can type, so an unusable value is dropped rather than thrown at the Zod boundary, where it would surface as a silently empty list. `sanitize` is the parse-then-build round trip, and the only way a query received from another page (a `?cq=` / `?hq=` return blob) may be turned into an href.
+
+Implemented by `/history` and `/cards` — see `modules/history.md`, `modules/cards.md` and ADR `2026-08-02-card-list-url-state-and-return.md`.
+
+⚠️ Scroll offsets are the exception: they stay in `sessionStorage`, one-shot and keyed by the query they were taken under. And they are never `window.scrollY` — `DashboardShell` scrolls an inner `<main data-slot="page-scroll">`, so a dashboard page's offset comes from `readPageScroll` / `restorePageScroll` in `src/lib/navigation/return-scroll.ts`.
+
 ## Server Actions
 
 All frontend-facing mutations go through Server Actions wrapped by `actionHandler<T>`. Error mapping:
@@ -58,7 +68,7 @@ Field values are stored in type-specific columns:
 | `boolean`  | `value_boolean` |
 | `date`     | `value_date`    |
 | `photo`    | `value_text` (URL)  |
-| `select`   | `value_json` (array for multi, string for single) |
+| `select`   | `value_text` (single string; multi-select is not implemented) |
 
 Use `mapValueToColumn(fieldType, value)` when writing and `extractValue(fieldType, row)` when reading. Do not access the typed columns directly.
 

@@ -663,7 +663,22 @@ export interface ActionHistoryEntry {
   executedByName: string | null;
   metadata: Record<string, unknown> | null;
   operatorOverride: boolean;
-  summaryFields: { label: string; value: unknown; fieldType: FieldType }[];
+  summaryFields: ActionHistorySummaryField[];
+}
+
+/** A single summary field value shown in the history table's "Resumen" column. */
+export interface ActionHistorySummaryField {
+  /** The card's own field_definition_id — addresses the photo object by route. */
+  fieldDefinitionId: string;
+  label: string;
+  fieldType: FieldType;
+  /**
+   * Extracted field value. For `photo` fields this is a boolean presence flag,
+   * never the object key: the thumbnail is addressed through
+   * `cardPhotoRoute(cardCode, { fieldDefinitionId })`, so the key has no reason
+   * to reach the browser. See ADR `2026-08-02-card-list-photos-stable-route.md`.
+   */
+  value: unknown;
 }
 
 export interface HistoryFilterOptions {

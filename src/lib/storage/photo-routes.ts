@@ -14,12 +14,34 @@
  * components, so it must not pull in anything `server-only`.
  */
 
+export interface CardPhotoRouteOptions {
+  /**
+   * Target one specific photo field. Required on multi-photo cards and on any
+   * list that merges columns across card types, where the same display column
+   * maps to a different `field_definition_id` per card. Omit for the card's
+   * primary photo (its lowest-position photo field holding a value).
+   */
+  fieldDefinitionId?: string;
+  /** Serve the object as a named attachment instead of rendering it inline. */
+  download?: boolean;
+}
+
 /**
- * Route serving a card's primary photo (its lowest-position active photo
- * field). Session-authenticated — see `src/app/api/photos/cards/[code]/route.ts`.
+ * Route serving a card's photo. Session-authenticated — see
+ * `src/app/api/photos/cards/[code]/route.ts`.
  *
  * @param code - Public card code, unique per tenant.
+ * @param options - Field selector and download flag.
  */
-export function cardPhotoRoute(code: string): string {
-  return `/api/photos/cards/${encodeURIComponent(code)}`;
+export function cardPhotoRoute(
+  code: string,
+  options: CardPhotoRouteOptions = {},
+): string {
+  const params = new URLSearchParams();
+  if (options.fieldDefinitionId) params.set("field", options.fieldDefinitionId);
+  // Valueless flag on the route's side (`searchParams.has`), so an empty value
+  // is enough — it serialises to `download=`.
+  if (options.download) params.set("download", "");
+  const query = params.toString();
+  return `/api/photos/cards/${encodeURIComponent(code)}${query ? `?${query}` : ""}`;
 }

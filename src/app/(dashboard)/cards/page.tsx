@@ -16,7 +16,12 @@ import {
   searchCards,
   getSummaryFieldsForCardTypes,
 } from "@/lib/dal";
-import { signCardListPhotos } from "@/lib/dal/photo-urls";
+import { stripCardListPhotoKeys } from "@/lib/dal/photo-urls";
+import {
+  parseCardListParams,
+  toPagination,
+  type CardListRawParams,
+} from "@/lib/cards/list-params";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardList from "@/components/cards/CardList";
 import FlashMessage from "@/components/shared/FlashMessage";
@@ -25,7 +30,6 @@ import type {
   FieldDefinition,
   PaginatedResult,
   CardWithFields,
-  CardSearchStatus,
 } from "@/lib/dal/types";
 
 export const dynamic = "force-dynamic";
@@ -45,18 +49,14 @@ const FLASH_MESSAGES: Record<string, string> = {
   "card-archived": "Carnet archivado. Se ha movido a la papelera.",
 };
 
-/** Coerce a raw query value into a valid card search status. */
-function parseStatus(raw?: string): CardSearchStatus {
-  return raw === "active" || raw === "inactive" ? raw : "all";
-}
-
 interface CardsPageProps {
-  searchParams: Promise<{
-    cardTypeId?: string;
-    q?: string;
-    status?: string;
-    flash?: string;
-  }>;
+  /**
+   * The whole list view — card types, search, status, field filters, view mode
+   * and page — is read from here, so the first render is already the requested
+   * result set. See `src/lib/cards/list-params.ts`. `flash` is separate: it is
+   * a one-shot message, not view state, and `FlashMessage` strips it.
+   */
+  searchParams: Promise<CardListRawParams & { flash?: string }>;
 }
 
 export default async function CardsPage({ searchParams }: CardsPageProps) {
@@ -74,10 +74,11 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
   const isAdmin = role === "admin" || role === "master";
 
   // ── Params ────────────────────────────────────────────────────────────────
-  const { cardTypeId: rawCardTypeId, q = "", status: rawStatus, flash } =
-    await searchParams;
-  const statusFilter = parseStatus(rawStatus);
-  const flashMessage = flash ? FLASH_MESSAGES[flash] : undefined;
+  const rawParams = await searchParams;
+  const viewState = parseCardListParams(rawParams);
+  const flashMessage = rawParams.flash
+    ? FLASH_MESSAGES[rawParams.flash]
+    : undefined;
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const [cardTypes, tenant, userProfile] = await Promise.all([
@@ -88,14 +89,19 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
 
   const scanMode = tenant?.scanMode ?? "both";
 
-  // Explicit URL selection (deep link) vs. the default "All" view.
-  const requestedCardType = cardTypes.find((ct) => ct.id === rawCardTypeId) ?? null;
+  // Explicit URL selection (deep link, or a restored view) vs. the default
+  // "All". Ids that no longer belong to this tenant are dropped rather than
+  // searched — the type filter is a tenant-scoped whitelist, not free input.
+  const selectedTypeIds = viewState.cardTypeIds.filter((id) =>
+    cardTypes.some((ct) => ct.id === id),
+  );
   // Reference card type for the "new card" link — falls back to the first type.
-  const activeCardType = requestedCardType ?? cardTypes[0] ?? null;
-  const initialSelectedTypeIds: string[] = requestedCardType ? [requestedCardType.id] : [];
+  const activeCardType =
+    cardTypes.find((ct) => ct.id === selectedTypeIds[0]) ?? cardTypes[0] ?? null;
   // Column-visibility storage key: distinct from any single type's id so the
   // merged "all types" field set never collides with a single-type view.
-  const columnsStorageKey = requestedCardType ? requestedCardType.id : "all";
+  const columnsStorageKey =
+    selectedTypeIds.length === 1 ? selectedTypeIds[0] : "all";
 
   let fieldDefs: FieldDefinition[] = [];
   let initialData: PaginatedResult<CardWithFields> = { data: [], total: 0, limit: 50, offset: 0 };
@@ -103,9 +109,10 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
 
   if (activeCardType) {
     try {
-      const searchTypeIds = requestedCardType
-        ? [requestedCardType.id]
-        : cardTypes.map((ct) => ct.id);
+      const searchTypeIds =
+        selectedTypeIds.length > 0
+          ? selectedTypeIds
+          : cardTypes.map((ct) => ct.id);
       // Field defs are fetched per searched type and merged — a card belongs to
       // exactly one type, so scoping the schema to a single "reference" type
       // (e.g. only the first one) would leave every other type's cards with no
@@ -116,17 +123,28 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
         searchCards(
           searchTypeIds,
           tenantId,
-          { codeContains: q || undefined, status: statusFilter },
-          { limit: 50 },
+          {
+            codeContains: viewState.search || undefined,
+            status: viewState.status,
+            filters:
+              viewState.fieldFilters.length > 0
+                ? viewState.fieldFilters
+                : undefined,
+          },
+          toPagination(viewState),
         ),
       ]);
       fieldDefs = fieldDefsByType.flat();
       summaryFieldIds = [...summaryFieldsByType.values()]
         .flat()
         .map((sf) => sf.fieldDefinitionId);
-      // Sign every photo key in the page batch so client renderers receive URLs.
-      const signedCards = await signCardListPhotos(searchResult.data);
-      initialData = { ...searchResult, data: signedCards };
+      // The list renders photos through the stable route, not a signed URL, so
+      // the keys are redacted rather than signed — nothing here would consume a
+      // signature, and CardList's client-side refetches carry none either.
+      initialData = {
+        ...searchResult,
+        data: stripCardListPhotoKeys(searchResult.data),
+      };
     } catch {
       // Non-fatal — show empty state.
     }
@@ -153,7 +171,7 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
             <p className="mt-1 text-sm text-muted-foreground">
               {initialData.total}{" "}
               {initialData.total !== 1 ? TEXT.ITEM_PLURAL : TEXT.ITEM_SINGLE}
-              {requestedCardType && <> · {requestedCardType.name}</>}
+              {selectedTypeIds.length === 1 && <> · {activeCardType.name}</>}
             </p>
           )}
         </div>
@@ -203,10 +221,8 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
           fields={fieldDefs}
           cardTypes={cardTypes}
           initialCardTypeId={columnsStorageKey}
-          initialSelectedTypeIds={initialSelectedTypeIds}
+          initialState={{ ...viewState, cardTypeIds: selectedTypeIds }}
           scanMode={scanMode}
-          initialSearch={q}
-          initialStatus={statusFilter}
           summaryFieldIds={summaryFieldIds}
         />
       )}

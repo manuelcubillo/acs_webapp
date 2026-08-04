@@ -32,6 +32,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { UserProfileProvider, useUserProfile } from "@/components/layout/UserProfileContext";
+import { PAGE_SCROLL_SLOT } from "@/lib/navigation/return-scroll";
 import type { TenantRole } from "@/lib/api";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -153,7 +154,12 @@ function DashboardShellBody({ children, title, role, tenantName, tenantLogoUrl }
           initials={initials}
         />
 
-        <main className="flex-1 overflow-y-auto bg-background">
+        {/* The dashboard's scroll container — the window itself never scrolls.
+            Tagged so scroll restoration can find it (see `return-scroll.ts`). */}
+        <main
+          data-slot={PAGE_SCROLL_SLOT}
+          className="flex-1 overflow-y-auto bg-background"
+        >
           <div className="mx-auto w-full max-w-7xl px-6 py-6 lg:px-8">
             {children}
           </div>

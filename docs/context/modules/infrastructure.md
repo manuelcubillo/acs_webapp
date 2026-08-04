@@ -1,6 +1,6 @@
 # Module: infrastructure
 
-**Last updated**: 2026-07-19 · **Last feature**: photo storage/pipeline support for webcam capture + crop — `optimizeImage` `cropRect`, `Content-Disposition` download URLs, `?field`/`?download` on the photo route, `react-easy-crop` dep
+**Last updated**: 2026-08-02 · **Last feature**: `signCardListPhotos` deleted (last caller removed); list surfaces sign nothing and address photos by route
 
 ## Responsibility
 
@@ -22,14 +22,14 @@ Everything that keeps the app running: database connection, migrations, env vars
 - `src/lib/dal/types.ts` — All Drizzle-derived types + input/output shapes.
 - `src/lib/dal/errors.ts` — `DalError`, `NotFoundError`, `ValidationError`, `ForbiddenOperationError`, `DuplicateCodeError`.
 - `src/lib/dal/index.ts` — Barrel export.
-- `src/lib/dal/photo-urls.ts` — Server-only helpers (`signCardPhotos`, `signCardListPhotos`, `buildPhotoReadUrlMap`) that turn photo object keys into signed read URLs before passing card data to client renderers.
+- `src/lib/dal/photo-urls.ts` — Server-only helpers. `signCardPhotos` / `buildPhotoReadUrlMap` turn photo object keys into signed read URLs before passing card data to client renderers; `stripCardListPhotoKeys` does the opposite for route-addressed surfaces, replacing the key (in both `value` and `raw.value_text`) with a boolean presence flag.
 - `src/lib/storage/types.ts` — `CardPhotoStorage` interface, `PhotoKind` union, key-layout constants.
 - `src/lib/storage/keys.ts` — `buildObjectKey`, `keyMatches`, `tenantPrefix`, `buildCardPhotoDownloadFilename` (`<code>_<fieldName>_<random>.<ext>`, slugified).
 - `src/lib/storage/s3-base.ts` — Shared S3-compatible class (presigned PUT/GET, head, delete, prefix delete). `getReadUrl` takes an optional `downloadFilename` → signed `ResponseContentDisposition`.
 - `src/lib/storage/r2.ts` / `minio.ts` — Adapter shims (virtual-host vs path-style addressing).
 - `src/lib/storage/validation.ts` — `assertObjectMatchesKind`, `assertHeadOk` (server-side guards).
 - `src/lib/storage/read.ts` — `signPhotoForRead`, `signPhotoForReadOptional`, `signPhotosForRead`, `signPhotoForDownload` (attachment). 15-min TTL.
-- `src/lib/storage/photo-routes.ts` — `cardPhotoRoute(code)`. Dependency-free on purpose: imported by both the DAL and client components.
+- `src/lib/storage/photo-routes.ts` — `cardPhotoRoute(code, { fieldDefinitionId?, download? })`, the single builder for the photo route's URL and query. Dependency-free on purpose: imported by both the DAL and client components (`PhotoRenderer` builds its `<img src>` and download href with it).
 - `src/app/api/photos/cards/[code]/route.ts` — Session-authed (OPERATOR+) card photo: 302 → signed URL minted per request. Stable per card, so it neither expires client-side nor busts the browser cache. Optional `?field=<fieldDefinitionId>` picks a specific photo field; `?download` returns an attachment named `<code>_<fieldName>_<random>.<ext>` (default: primary photo, inline). ADR `2026-07-17-stable-photo-routes.md`, `2026-07-19-webcam-capture-and-crop.md`.
 - `src/app/api/cron/purge-archived/route.ts` — Daily retention purge endpoint. No session; authed by `Authorization: Bearer <CRON_SECRET>` (constant-time compare, fails closed if `CRON_SECRET` unset). Runs `purgeExpiredArchivedRecords()` and returns the per-tenant summary. In its own `/api/cron/*` tree, NOT under `/api/cards/*` (that tree is device-header-authed). ADR `2026-07-18-card-lifecycle-purge-job.md`.
 - `src/lib/server/lifecycle/purge.ts` — `hardDeleteArchivedCard` / `hardDeleteArchivedCardType` / `hardDeleteAllArchived` (phase-4 manual, per-tenant) and `purgeExpiredArchivedRecords` (phase-5 daily job, cross-tenant DELETE-with-join against each tenant's `archive_retention_days`).
@@ -187,6 +187,7 @@ scheduler — Vercel is stateless between invocations). See ADR
 
 - [ ] `TODO: API_AUTH` — external API authentication (`src/lib/api/auth.ts`).
 - [ ] Atomicity for `executeAction` (documented in `modules/actions.md`).
+- [ ] RSC payload carries a serialized node-postgres `Result` (`command`/`rowCount`/`_parsers`/`RowCtor`, rows included), which leaks a photo object key that `stripCardListPhotoKeys` cannot reach — it redacts mapped card data, not driver objects. Observed on `/cards` in dev on 2026-08-02, with the Next dev overlay active; **not verified against a production build**, so whether it is dev-only instrumentation is still open. Predates the 2026-08-02 photo work.
 
 ## Future considerations
 
@@ -194,8 +195,9 @@ scheduler — Vercel is stateless between invocations). See ADR
 
 ## Recent changes
 
+- 2026-08-02 — Deleted `signCardListPhotos` from `src/lib/dal/photo-urls.ts`: `stripCardListPhotoKeys` had taken over all three card-list producers the day before, leaving it with zero callers. `signCardPhotos` / `buildPhotoReadUrlMap` are unchanged and still the path for surfaces that sign server-side. Dead-code removal, no behaviour change.
+- 2026-08-02 — `cardPhotoRoute` now takes `{ fieldDefinitionId?, download? }` and owns the route's query construction (`URLSearchParams`), replacing hand-built strings in `PhotoRenderer`. New `stripCardListPhotoKeys` in `src/lib/dal/photo-urls.ts` replaces `signCardListPhotos` on the three card-list producers: list surfaces address photos by route, so keys are redacted (`value` **and** `raw.value_text`) rather than signed. Removes ~one signature per photo per list render; adds one hop + one `getCardByCode` per uncached image. ADR `2026-08-02-card-list-photos-stable-route.md`.
 - 2026-07-19 — Photo pipeline/storage support for webcam capture + crop (feature owned by `fields`): `optimizeImage` gained an optional source-pixel `cropRect`; `getReadUrl` + new `signPhotoForDownload` sign a `Content-Disposition` attachment; `buildCardPhotoDownloadFilename` builds `<code>_<fieldName>_<random>.<ext>`; `/api/photos/cards/[code]` gained `?field` + `?download`; `PhotoUploader` gained opt-in `enableWebcam`/`enableCrop` plus new `WebcamCaptureDialog` / `ImageCropDialog` / `useWebcamCapture` / `ui/slider.tsx`. Added `react-easy-crop` 6.2.2. ADR `2026-07-19-webcam-capture-and-crop.md`.
 - 2026-07-18 — Card lifecycle phase 5 (final, 5/5): daily retention purge. New `purgeExpiredArchivedRecords()` (cross-tenant DELETE-with-join against each tenant's `archive_retention_days`, single atomic CTE, idempotent) in `src/lib/server/lifecycle/purge.ts`; new `GET /api/cron/purge-archived` endpoint (no session, `CRON_SECRET` Bearer auth, fails closed); `vercel.json` cron at `0 3 * * *`; `CRON_SECRET` added to env docs (`.env.example`, `.env.docker`). Master-gated retention UI at `/settings/retention`. Also corrected the stale Node-version note (v24, per `engines`). ADR `2026-07-18-card-lifecycle-purge-job.md`.
 - 2026-07-17 — Photos on long-lived surfaces are served by `/api/photos/cards/[code]` (session-authed, 302 → per-request signature) instead of an embedded signed URL. A signed URL is a bearer token that changes on every signing, so it both busted the browser cache and expired in place after 15 min. First session-authenticated route under `/api` — see `01-architecture.md` §6. Adopted by the dashboard feed only; other surfaces still embed signed URLs. ADR `2026-07-17-stable-photo-routes.md`.
 - 2026-04-28 — Photo storage migration: `CardPhotoStorage` (R2 + MinIO) + `src/lib/images/` optimization module + presigned-PUT Server Actions. `tenants.logo_object_key` added (migration 0015). `field_values.value_text` for `photo` fields now stores object keys (not URLs); server-side helpers in `src/lib/dal/photo-urls.ts` sign keys before render. Old `/api/upload` route removed. ADR `2026-04-27-photo-storage-r2-minio.md`.
-- 2026-04-27 — Added `card_designs` + `card_type_designs` tables (migration 0014); added konva 10.2.5, react-konva 19.2.3, qrcode 1.5.4, jsbarcode 3.12.3 to dependencies.

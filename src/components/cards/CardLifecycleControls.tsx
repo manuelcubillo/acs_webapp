@@ -57,11 +57,18 @@ type LoadingAction = "toggle" | "archive" | null;
 interface CardLifecycleControlsProps {
   cardId: string;
   initialStatus: LifecycleStatus;
+  /**
+   * Sanitized `/cards` query the operator was filtering by, when they reached
+   * this card from the list. Archiving lands back on that view rather than on
+   * an unfiltered page 1. `""` when they came from anywhere else.
+   */
+  listQuery?: string;
 }
 
 export default function CardLifecycleControls({
   cardId,
   initialStatus,
+  listQuery = "",
 }: CardLifecycleControlsProps) {
   const router = useRouter();
 
@@ -105,9 +112,14 @@ export default function CardLifecycleControls({
         setLoadingAction(null);
         return;
       }
-      // Archived cards vanish from listings — leave the edit page for the list.
+      // Archived cards vanish from listings — leave the edit page for the list,
+      // restoring the view the operator was filtering by (minus this card).
       setConfirmOpen(false);
-      router.push(`/cards?flash=${ARCHIVE_FLASH}`);
+      const params = new URLSearchParams(
+        listQuery.startsWith("?") ? listQuery.slice(1) : listQuery,
+      );
+      params.set("flash", ARCHIVE_FLASH);
+      router.push(`/cards?${params.toString()}`);
     } catch {
       setError(TEXT.ERR_FALLBACK);
       setLoadingAction(null);

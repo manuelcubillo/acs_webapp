@@ -11,6 +11,12 @@ interface CardEditClientProps {
   fields: FieldDefinitionShape[];
   initialValues: Record<string, unknown>;
   photoReadUrls: Record<string, string>;
+  /**
+   * The card detail to return to on save or cancel. Built by the page so it
+   * still carries where the operator came from — a bare `/cards/[code]` would
+   * strand them on a detail whose back link points at the dashboard.
+   */
+  returnHref: string;
 }
 
 export default function CardEditClient({
@@ -19,6 +25,7 @@ export default function CardEditClient({
   fields,
   initialValues,
   photoReadUrls,
+  returnHref,
 }: CardEditClientProps) {
   const router = useRouter();
 
@@ -28,7 +35,7 @@ export default function CardEditClient({
   ) {
     const res = await updateCardAction(cardCode, { values });
     if (!res.success) throw new Error(res.error);
-    router.push(`/cards/${encodeURIComponent(cardCode)}`);
+    router.push(returnHref);
   }
 
   return (
@@ -39,9 +46,7 @@ export default function CardEditClient({
       cardId={cardId}
       photoReadUrls={photoReadUrls}
       onSubmit={handleSubmit}
-      onCancel={() =>
-        router.push(`/cards/${encodeURIComponent(cardCode)}`)
-      }
+      onCancel={() => router.push(returnHref)}
       submitLabel="Guardar cambios"
       codeReadOnly
     />
