@@ -20,6 +20,7 @@ export * from "./members";
 export * from "./invitations";
 export * from "./scan-validations";
 export * from "./dashboard-settings";
+export * from "./active-card-zone-fields";
 export * from "./activity-feed";
 export * from "./action-history";
 export * from "./common-fields";

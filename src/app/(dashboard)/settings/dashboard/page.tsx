@@ -22,9 +22,14 @@ import {
   listCardTypes,
   getCardTypeById,
   getSummaryFieldsForCardTypes,
+  getActiveZoneFieldsForCardTypes,
 } from "@/lib/dal";
 import DashboardSettingsView from "@/components/settings/dashboard/DashboardSettingsView";
-import type { FieldDefinition, CardTypeSummaryField } from "@/lib/dal";
+import type {
+  FieldDefinition,
+  CardTypeSummaryField,
+  CardTypeActiveZoneField,
+} from "@/lib/dal";
 
 export const dynamic = "force-dynamic";
 
@@ -64,15 +69,24 @@ export default async function DashboardSettingsPage() {
     fieldsByCardType[ct.id] = ct.fieldDefinitions;
   }
 
-  // Fetch configured summary fields for all card types in one query
-  const summaryMap = await getSummaryFieldsForCardTypes(
-    cardTypeIds,
-    tenantId,
-  ).catch(() => new Map<string, CardTypeSummaryField[]>());
+  // Fetch both per-card-type configurations in parallel. They feed different
+  // surfaces — the feed's inline summary and the ActiveCardZone grid — and are
+  // stored in separate tables on purpose. See ADR
+  // 2026-08-04-active-card-summary-grid.md.
+  const [summaryMap, activeZoneMap] = await Promise.all([
+    getSummaryFieldsForCardTypes(cardTypeIds, tenantId).catch(
+      () => new Map<string, CardTypeSummaryField[]>(),
+    ),
+    getActiveZoneFieldsForCardTypes(cardTypeIds, tenantId).catch(
+      () => new Map<string, CardTypeActiveZoneField[]>(),
+    ),
+  ]);
 
   const summaryByCardType: Record<string, CardTypeSummaryField[]> = {};
+  const activeZoneByCardType: Record<string, CardTypeActiveZoneField[]> = {};
   for (const ctId of cardTypeIds) {
     summaryByCardType[ctId] = summaryMap.get(ctId) ?? [];
+    activeZoneByCardType[ctId] = activeZoneMap.get(ctId) ?? [];
   }
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -82,6 +96,7 @@ export default async function DashboardSettingsPage() {
       cardTypes={cardTypes}
       fieldsByCardType={fieldsByCardType}
       summaryByCardType={summaryByCardType}
+      activeZoneByCardType={activeZoneByCardType}
     />
   );
 }

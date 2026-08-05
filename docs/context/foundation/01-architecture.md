@@ -1,6 +1,6 @@
 # 01 · Architecture
 
-**Last updated**: 2026-08-02 · **Last sync**: §1 gained the two long-missing `card_designs` / `card_type_designs` rows (added 2026-04-27 with migration 0014, never recorded here)
+**Last updated**: 2026-08-04 · **Last sync**: §1 gained `card_type_active_zone_fields` (migration 0018) and clarified that it and `card_type_summary_fields` drive two different surfaces
 
 ## 1. Data model — hybrid SQL + dynamic fields
 
@@ -21,7 +21,8 @@ Fixed columns for system fields (`id`, `tenant_id`, `status`, timestamps) plus d
 | `action_logs`                 | Unified log of scans, actions **and** card lifecycle transitions. `log_type: 'scan' \| 'action' \| 'lifecycle'`. `tenant_id` denormalized. |
 | `scan_validations`            | Rules evaluated at scan time. Per-field, with severity (`error` \| `warning`).                      |
 | `dashboard_settings`          | Per-tenant dashboard configuration: feed limits, entry visibility, `allow_override_on_error`.       |
-| `card_type_summary_fields`    | Per card type: which fields surface in the activity feed and summaries.                             |
+| `card_type_summary_fields`    | Per card type: which fields surface in the **activity feed** row. Photo fields excluded at read time. |
+| `card_type_active_zone_fields`| Per card type: the **`ActiveCardZone` panel** 3×3 grid — `position` 0–8 + `row_span` 1\|2 (photo only). Deliberately separate from the feed's config. ADR `2026-08-04-active-card-summary-grid.md`. |
 | `card_designs`                | Visual layout templates per tenant. `kind` (`card \| passbook`), dimensions + `unit`, `layout` jsonb (`CardDesignLayout` V1). Soft delete via `is_active`. |
 | `card_type_designs`           | Links a card type to a design, one per kind (`UNIQUE(card_type_id, kind)`). **Hard-deleted on unlink** — the only join table without soft delete. |
 | `departure_feedback`          | Anonymous deletion feedback. `name`, `email`, `tenant_name` captured before deletion; `reason`/`comment` updated post-redirect via `?fid` token. No FK constraints. |

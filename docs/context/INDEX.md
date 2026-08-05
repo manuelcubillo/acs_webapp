@@ -24,6 +24,7 @@ Router for tasks. Read `foundation/` once per session. Then read only the module
 | Trash view, archived list, restore from trash, permanent/hard delete, empty trash | `cards`, `card-types`, `auth-tenants`, `decisions/2026-07-17-card-lifecycle-trash-view.md` |
 | CardType wizard, card type definition                | `card-types`, `fields`, `actions`, `validations`|
 | Activity feed, summary fields, dashboard settings    | `dashboard`, `cards`                            |
+| Last-scanned-card panel, ActiveCardZone grid, two-row photo cell | `dashboard`, `decisions/2026-08-04-active-card-summary-grid.md` |
 | History, audit log, export, filter logs              | `history`, `dashboard` (shared table), `actions` (log producers) |
 | Role, permission, member, tenant, guard              | `auth-tenants`, `<affected module>`             |
 | DB migration, schema change, Drizzle                 | `infrastructure`, `<affected module>`           |

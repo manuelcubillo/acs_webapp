@@ -32,8 +32,14 @@ import AutoActionFeedback from "./AutoActionFeedback";
 import ScanAlerts from "@/components/cards/ScanAlerts";
 import CardStatusBadge from "@/components/shared/CardStatusBadge";
 import { Button } from "@/components/ui/button";
+import { colOf, rowOf } from "@/lib/dashboard/active-zone-layout";
 import { cn } from "@/lib/utils";
-import type { AutoActionResult, ActionDefinitionWithField, CardWithFields } from "@/lib/dal";
+import type {
+  AutoActionResult,
+  ActionDefinitionWithField,
+  ActiveZoneFieldConfig,
+  CardWithFields,
+} from "@/lib/dal";
 import type { LifecycleGateResult } from "@/lib/server/lifecycle/scan-gate";
 import type { ScanValidationResult } from "@/lib/validation/scan-validator";
 
@@ -65,6 +71,12 @@ type SurfaceState = "granted" | "warning" | "denied" | "override";
 
 interface ActiveCardZoneProps {
   activeCard: CardWithFields | null;
+  /**
+   * The card type's configured 3×3 grid layout, ordered by position. Empty when
+   * the card type has never been configured, which falls back to the legacy
+   * "first fields that hold a value" behaviour.
+   */
+  summaryLayout: ActiveZoneFieldConfig[];
   autoActions: AutoActionResult[];
   stoppedByValidation: boolean;
   stoppedAtAction: string | null;
@@ -83,6 +95,7 @@ interface ActiveCardZoneProps {
 
 export default function ActiveCardZone({
   activeCard,
+  summaryLayout,
   autoActions,
   stoppedByValidation,
   stoppedAtAction,
@@ -156,7 +169,12 @@ export default function ActiveCardZone({
   return (
     <div className="flex flex-col gap-3">
       {/* Card summary panel — surfaces the outcome via state token */}
-      <ResultPanel state={state} label={panelLabel} activeCard={activeCard} />
+      <ResultPanel
+        state={state}
+        label={panelLabel}
+        activeCard={activeCard}
+        summaryLayout={summaryLayout}
+      />
 
       {/* Lifecycle banner — the dominant reason when the card is off/archived */}
       {(isArchivedDenied || isLifecycleOff) && lifecycleGate && (
@@ -274,9 +292,10 @@ interface ResultPanelProps {
   state: SurfaceState;
   label: string;
   activeCard: CardWithFields;
+  summaryLayout: ActiveZoneFieldConfig[];
 }
 
-function ResultPanel({ state, label, activeCard }: ResultPanelProps) {
+function ResultPanel({ state, label, activeCard, summaryLayout }: ResultPanelProps) {
   const { Icon, classes, iconColorClass, chipClass, borderClass } = stateMeta(state);
 
   return (
@@ -316,38 +335,151 @@ function ResultPanel({ state, label, activeCard }: ResultPanelProps) {
         </div>
       </div>
 
-      {activeCard.fields.length > 0 && (
-        <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-border/60 pt-4 sm:grid-cols-3">
-          {activeCard.fields.slice(0, 6).map((f) => (
-            <div key={f.fieldDefinitionId} className="min-w-0">
-              <dt className="truncate text-[11px] uppercase tracking-wide text-muted-foreground">
-                {f.label}
-              </dt>
-              <dd className="mt-0.5 text-sm font-semibold text-foreground">
-                {f.fieldType === "photo" ? (
-                  typeof f.value === "string" && f.value.length > 0 ? (
-                    // Signed read URL; click navigates to the card detail, where
-                    // the full lightbox lives.
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={f.value}
-                      alt={f.label}
-                      className="block h-auto max-h-16 w-auto max-w-16 rounded-md border border-border"
-                    />
-                  ) : (
-                    <span className="text-muted-foreground">{TEXT.DASH}</span>
-                  )
-                ) : (
-                  <span className="block truncate">
-                    {formatFieldValue(f.value, f.fieldType)}
-                  </span>
-                )}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      )}
+      <SummaryGrid activeCard={activeCard} layout={summaryLayout} />
     </Link>
+  );
+}
+
+// ─── Summary grid ───────────────────────────────────────────────────────────
+
+/**
+ * Explicit grid placement classes.
+ *
+ * Tailwind compiles from literal class strings found in source, so these cannot
+ * be built by interpolation (`sm:col-start-${n}` would never be generated).
+ * Small enough to enumerate, and the lookup keeps the JSX readable.
+ */
+const COL_START_CLASS = [
+  "sm:col-start-1",
+  "sm:col-start-2",
+  "sm:col-start-3",
+] as const;
+
+const ROW_START_CLASS = [
+  "sm:row-start-1",
+  "sm:row-start-2",
+  "sm:row-start-3",
+] as const;
+
+/** How many fields the unconfigured panel shows — the pre-grid behaviour. */
+const LEGACY_FIELD_COUNT = 6;
+
+interface SummaryGridProps {
+  activeCard: CardWithFields;
+  layout: ActiveZoneFieldConfig[];
+}
+
+/**
+ * The card's field values beneath the header.
+ *
+ * Two modes:
+ *   - CONFIGURED — the card type has a layout: render exactly those cells at
+ *     their grid positions, honouring a photo's two-row span.
+ *   - UNCONFIGURED — no layout stored: fall back to the first fields that hold
+ *     a value, which is what this panel did before the grid existed. Keeping the
+ *     fallback means the feature ships without blanking every tenant's panel
+ *     until a master visits the settings page.
+ *
+ * Responsive behaviour: the explicit placement applies from the `sm` breakpoint
+ * up, matching the grid the master arranged. Below it the panel is a single
+ * column — three columns of label + value are unreadable on a phone, and the
+ * dashboard's own two-column work area collapses at the same point. Cells then
+ * flow in position order (reading order), and a spanning photo reverts to a
+ * normal cell since "two rows" carries no meaning in a single-column stack.
+ */
+function SummaryGrid({ activeCard, layout }: SummaryGridProps) {
+  if (layout.length === 0) {
+    // ── Unconfigured: legacy behaviour ──────────────────────────────────────
+    if (activeCard.fields.length === 0) return null;
+    return (
+      <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-border/60 pt-4 sm:grid-cols-3">
+        {activeCard.fields.slice(0, LEGACY_FIELD_COUNT).map((f) => (
+          <SummaryCell
+            key={f.fieldDefinitionId}
+            label={f.label}
+            fieldType={f.fieldType}
+            value={f.value}
+            tall={false}
+          />
+        ))}
+      </dl>
+    );
+  }
+
+  // ── Configured: place each cell at its position ───────────────────────────
+  // Values are resolved by field definition id, not by walking `card.fields`:
+  // a field with no value has no `field_values` row and is therefore absent
+  // from `card.fields` entirely. Looking it up here yields undefined and the
+  // cell renders "—", which keeps the arrangement the master built intact
+  // instead of silently collapsing.
+  const valueByFieldId = new Map(
+    activeCard.fields.map((f) => [f.fieldDefinitionId, f.value]),
+  );
+
+  return (
+    <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 border-t border-border/60 pt-4 sm:grid-cols-3">
+      {layout.map((cell) => {
+        const tall = cell.rowSpan === 2 && cell.fieldType === "photo";
+        return (
+          <SummaryCell
+            key={cell.fieldDefinitionId}
+            label={cell.label}
+            fieldType={cell.fieldType}
+            value={valueByFieldId.get(cell.fieldDefinitionId)}
+            tall={tall}
+            className={cn(
+              COL_START_CLASS[colOf(cell.position)],
+              ROW_START_CLASS[rowOf(cell.position)],
+              tall && "sm:row-span-2",
+            )}
+          />
+        );
+      })}
+    </dl>
+  );
+}
+
+interface SummaryCellProps {
+  label: string;
+  fieldType: string;
+  value: unknown;
+  /** Two-row photo cell — renders a larger thumbnail. */
+  tall: boolean;
+  className?: string;
+}
+
+function SummaryCell({ label, fieldType, value, tall, className }: SummaryCellProps) {
+  const hasPhoto = typeof value === "string" && value.length > 0;
+
+  return (
+    <div className={cn("min-w-0", className)}>
+      <dt className="truncate text-[11px] uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="mt-0.5 text-sm font-semibold text-foreground">
+        {fieldType === "photo" ? (
+          hasPhoto ? (
+            // Signed read URL, re-minted by every scan; click falls through the
+            // wrapping Link to the card detail, where the full lightbox lives.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={value as string}
+              alt={label}
+              className={cn(
+                "block h-auto w-auto rounded-md border border-border object-contain",
+                tall
+                  ? "max-h-[var(--photo-thumbnail-size-tall)] max-w-full"
+                  : "max-h-[var(--photo-thumbnail-size)] max-w-[var(--photo-thumbnail-size)]",
+              )}
+            />
+          ) : (
+            <span className="text-muted-foreground">{TEXT.DASH}</span>
+          )
+        ) : (
+          <span className="block truncate">{formatFieldValue(value, fieldType)}</span>
+        )}
+      </dd>
+    </div>
   );
 }
 

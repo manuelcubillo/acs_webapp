@@ -8,7 +8,7 @@
  * each activity feed entry for quick card identification.
  */
 
-import { eq, and, asc, ne } from "drizzle-orm";
+import { eq, and, asc, ne, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   dashboardSettings,
@@ -121,13 +121,13 @@ export async function getSummaryFieldsForCardTypes(
     .where(
       and(
         eq(cardTypeSummaryFields.tenantId, tenantId),
+        inArray(cardTypeSummaryFields.cardTypeId, cardTypeIds),
       ),
     )
     .orderBy(asc(cardTypeSummaryFields.cardTypeId), asc(cardTypeSummaryFields.position));
 
   const map = new Map<string, CardTypeSummaryField[]>();
   for (const row of rows) {
-    if (!cardTypeIds.includes(row.cardTypeId)) continue;
     const existing = map.get(row.cardTypeId) ?? [];
     existing.push(row);
     map.set(row.cardTypeId, existing);

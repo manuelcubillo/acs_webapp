@@ -56,6 +56,7 @@ import { buildLifecycleScanCheck } from "@/lib/server/lifecycle/scan-gate";
 import type {
   ScanWithAutoActionsResult,
   ActivityFeedEntry,
+  ActiveZoneFieldConfig,
   DashboardSettings,
   ActionDefinitionWithField,
   CardWithFields,
@@ -83,6 +84,12 @@ interface DashboardViewProps {
   kpiData: DashboardKpiData;
   /** Static per-tenant data for building feed rows client-side. */
   feedConfig: FeedBuilderConfig;
+  /**
+   * cardTypeId → the ActiveCardZone grid layout configured for that card type.
+   * Static per tenant, so it ships once at page load like `feedConfig`. A card
+   * type missing from the map is unconfigured and renders the legacy panel.
+   */
+  activeCardLayouts: Record<string, ActiveZoneFieldConfig[]>;
 }
 
 export default function DashboardView({
@@ -91,6 +98,7 @@ export default function DashboardView({
   allowOverrideOnError,
   kpiData,
   feedConfig,
+  activeCardLayouts,
 }: DashboardViewProps) {
   // ── State (UNCHANGED from previous implementation) ────────────────────────
   const [scanResult, setScanResult] = useState<ScanWithAutoActionsResult | null>(null);
@@ -450,6 +458,9 @@ export default function DashboardView({
             </h2>
             <ActiveCardZone
               activeCard={activeCard}
+              summaryLayout={
+                activeCard ? activeCardLayouts[activeCard.cardTypeId] ?? [] : []
+              }
               autoActions={scanResult?.autoActions ?? []}
               stoppedByValidation={scanResult?.stoppedByValidation ?? false}
               stoppedAtAction={scanResult?.stoppedAtAction ?? null}

@@ -20,6 +20,7 @@ import type {
   scanValidations,
   dashboardSettings,
   cardTypeSummaryFields,
+  cardTypeActiveZoneFields,
   cardDesigns,
   cardTypeDesigns,
 } from "@/lib/db/schema";
@@ -38,6 +39,7 @@ export type MemberInvitation = InferSelectModel<typeof memberInvitations>;
 export type ScanValidation = InferSelectModel<typeof scanValidations>;
 export type DashboardSettings = InferSelectModel<typeof dashboardSettings>;
 export type CardTypeSummaryField = InferSelectModel<typeof cardTypeSummaryFields>;
+export type CardTypeActiveZoneField = InferSelectModel<typeof cardTypeActiveZoneFields>;
 export type CardDesign = InferSelectModel<typeof cardDesigns>;
 export type CardTypeDesign = InferSelectModel<typeof cardTypeDesigns>;
 
@@ -551,6 +553,40 @@ export interface UpsertDashboardSettingsInput {
 export interface SetCardTypeSummaryFieldsInput {
   /** Ordered list of fieldDefinitionIds to show in the activity feed summary. */
   fieldDefinitionIds: string[];
+}
+
+// ─── Card Type Active Zone Fields (ActiveCardZone 3×3 grid) ──────────────────
+
+/**
+ * One cell assignment in the ActiveCardZone grid, as submitted by the settings
+ * editor. Geometry is validated by the Server Action before it reaches the DAL.
+ */
+export interface ActiveZoneCellInput {
+  fieldDefinitionId: string;
+  /** Cell index 0..8. row = floor(position / 3), col = position % 3. */
+  position: number;
+  /** 1 = one cell. 2 = photo also occupying the cell at position + 3. */
+  rowSpan: 1 | 2;
+}
+
+export interface SetCardTypeActiveZoneFieldsInput {
+  /** Full replacement layout. An empty array clears the card type's grid. */
+  cells: ActiveZoneCellInput[];
+}
+
+/**
+ * One configured grid cell resolved against its field definition, ready to
+ * render. Carries `label` and `fieldType` so the panel can draw a configured
+ * cell whose card holds no value for it — `card.fields` omits fields with no
+ * `field_values` row, so resolving labels from the card alone would silently
+ * drop those cells and shift the grid.
+ */
+export interface ActiveZoneFieldConfig {
+  fieldDefinitionId: string;
+  label: string;
+  fieldType: FieldType;
+  position: number;
+  rowSpan: number;
 }
 
 // ─── Activity Feed ───────────────────────────────────────────────────────────

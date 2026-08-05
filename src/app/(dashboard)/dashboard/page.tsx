@@ -19,11 +19,13 @@ import {
   getDashboardSettings,
   getActionHistory,
   getFeedSummaryFieldConfig,
+  getActiveZoneFieldConfig,
   listCardTypes,
 } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
 import DashboardView from "@/components/dashboard/DashboardView";
 import type { DashboardKpiData } from "@/components/dashboard/DashboardKpis";
+import type { ActiveZoneFieldConfig } from "@/lib/dal";
 import type { FeedBuilderConfig } from "@/lib/dashboard/feed-entries";
 
 export const dynamic = "force-dynamic";
@@ -69,6 +71,7 @@ export default async function DashboardPage() {
     actionsHistory,
     cardTypes,
     summaryFieldConfig,
+    activeZoneConfig,
   ] = await Promise.all([
     getActivityFeed(tenantId, {
       limit: feedLimit,
@@ -81,6 +84,7 @@ export default async function DashboardPage() {
       .catch(() => ({ data: [], total: 0, limit: 1, offset: 0 })),
     listCardTypes(tenantId).catch(() => []),
     getFeedSummaryFieldConfig(tenantId).catch(() => new Map()),
+    getActiveZoneFieldConfig(tenantId).catch(() => new Map()),
   ]);
 
   // Static per-tenant data the client needs to build feed rows for its own
@@ -90,6 +94,12 @@ export default async function DashboardPage() {
     cardTypeNames: Object.fromEntries(cardTypes.map((t) => [t.id, t.name])),
     summaryFields: Object.fromEntries(summaryFieldConfig),
   };
+
+  // Per-card-type layout of the "last scanned card" panel. Static per tenant,
+  // so it ships once with the page rather than being refetched per scan. Card
+  // types absent from the map are unconfigured and keep the legacy panel.
+  const activeCardLayouts: Record<string, ActiveZoneFieldConfig[]> =
+    Object.fromEntries(activeZoneConfig);
 
   const SCAN_COUNT_CAP = 10000;
   const kpiData: DashboardKpiData = {
@@ -116,6 +126,7 @@ export default async function DashboardPage() {
         allowOverrideOnError={settings?.allowOverrideOnError ?? false}
         kpiData={kpiData}
         feedConfig={feedConfig}
+        activeCardLayouts={activeCardLayouts}
       />
     </DashboardShell>
   );

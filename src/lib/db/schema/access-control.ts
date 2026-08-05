@@ -33,6 +33,7 @@ import {
   doublePrecision,
   jsonb,
   uuid,
+  smallint,
   index,
   unique,
   check,
@@ -725,6 +726,84 @@ export const cardTypeSummaryFields = pgTable(
     ),
     index("card_type_summary_fields_tenant_id_idx").on(table.tenantId),
     index("card_type_summary_fields_card_type_id_idx").on(table.cardTypeId),
+  ],
+);
+
+// ─── Card Type Active Zone Fields ─────────────────────────────────────────────
+
+/**
+ * Per-card-type layout of the "last scanned card" panel (ActiveCardZone) on the
+ * operator dashboard.
+ *
+ * Deliberately SEPARATE from card_type_summary_fields, which configures the
+ * activity feed. The two surfaces have different density budgets: a feed row is
+ * a compact inline strip of up to 3 values, while the panel is a spatial 3×3
+ * grid of up to 9. Sharing one table would have coupled them, so that widening
+ * the panel silently inflated every feed row. See ADR
+ * 2026-08-04-active-card-summary-grid.md.
+ *
+ * Grid model — 3 columns × 3 rows, cells indexed 0..8:
+ *   row = floor(position / 3)   col = position % 3
+ *
+ *   ┌───┬───┬───┐
+ *   │ 0 │ 1 │ 2 │
+ *   ├───┼───┼───┤
+ *   │ 3 │ 4 │ 5 │
+ *   ├───┼───┼───┤
+ *   │ 6 │ 7 │ 8 │
+ *   └───┴───┴───┘
+ *
+ * A `photo` field may set row_span = 2 to occupy its own cell AND the cell
+ * directly below it (position + 3, same column), consuming 2 of the 9
+ * positions. Only valid for photo fields at position <= 5 whose lower cell is
+ * free — enforced in the Server Action, which is the only writer that knows the
+ * field's type. The CHECK constraints below cover the value ranges only.
+ *
+ * Absence of rows for a card type is meaningful: the panel then falls back to
+ * its pre-configuration behaviour (first fields that hold a value). See
+ * ActiveCardZone.
+ */
+export const cardTypeActiveZoneFields = pgTable(
+  "card_type_active_zone_fields",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    cardTypeId: uuid("card_type_id")
+      .notNull()
+      .references(() => cardTypes.id, { onDelete: "cascade" }),
+    fieldDefinitionId: uuid("field_definition_id")
+      .notNull()
+      .references(() => fieldDefinitions.id, { onDelete: "cascade" }),
+    /** Cell index in the 3×3 grid, 0..8. Sparse — cells may be left empty. */
+    position: integer("position").notNull(),
+    /** 1 = one cell. 2 = photo spanning this cell and the one below it. */
+    rowSpan: smallint("row_span").notNull().default(1),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    // A field appears at most once in the grid.
+    unique("card_type_active_zone_fields_unique").on(
+      table.cardTypeId,
+      table.fieldDefinitionId,
+    ),
+    // Two fields can never claim the same cell. Note this does NOT cover the
+    // lower half of a row_span=2 photo — that overlap is checked server-side.
+    unique("card_type_active_zone_fields_position_unique").on(
+      table.cardTypeId,
+      table.position,
+    ),
+    check(
+      "card_type_active_zone_fields_position_range",
+      sql`${table.position} >= 0 AND ${table.position} <= 8`,
+    ),
+    check(
+      "card_type_active_zone_fields_row_span_range",
+      sql`${table.rowSpan} IN (1, 2)`,
+    ),
+    index("card_type_active_zone_fields_tenant_id_idx").on(table.tenantId),
+    index("card_type_active_zone_fields_card_type_id_idx").on(table.cardTypeId),
   ],
 );
 

@@ -138,7 +138,9 @@
       "Bash(sed -n '/## Recent changes/,$p' docs/context/modules/cards.md)",
       "Bash(sed -i '' '138d' docs/context/modules/history.md)",
       "Bash(sed -i '' '3s/.*/**Last updated**: 2026-08-02 · **Last feature**: URL-state and scroll-restore primitives shared with `\\\\/cards`; page-scroll offsets now read from the dashboard container and defended against the router reset/' docs/context/modules/history.md)",
-      "Bash(sed -n '/## Recent changes/,$p' docs/context/modules/history.md)"
+      "Bash(sed -n '/## Recent changes/,$p' docs/context/modules/history.md)",
+      "Bash(psql --version)",
+      "Bash(npx tsx *)"
     ]
   }
 }

@@ -19,6 +19,7 @@ import {
   scanValidations,
   dashboardSettings,
   cardTypeSummaryFields,
+  cardTypeActiveZoneFields,
 } from "./access-control";
 
 // ─── Auth Relations ──────────────────────────────────────────────────────────
@@ -55,6 +56,7 @@ export const tenantsRelations = relations(tenants, ({ one, many }) => ({
     references: [dashboardSettings.tenantId],
   }),
   cardTypeSummaryFields: many(cardTypeSummaryFields),
+  cardTypeActiveZoneFields: many(cardTypeActiveZoneFields),
 }));
 
 // ─── Card Type Relations ─────────────────────────────────────────────────────
@@ -69,6 +71,7 @@ export const cardTypesRelations = relations(cardTypes, ({ one, many }) => ({
   actionDefinitions: many(actionDefinitions),
   scanValidations: many(scanValidations),
   summaryFields: many(cardTypeSummaryFields),
+  activeZoneFields: many(cardTypeActiveZoneFields),
 }));
 
 // ─── Field Definition Relations ──────────────────────────────────────────────
@@ -84,6 +87,7 @@ export const fieldDefinitionsRelations = relations(
     actionDefinitions: many(actionDefinitions),
     scanValidations: many(scanValidations),
     summaryFields: many(cardTypeSummaryFields),
+    activeZoneFields: many(cardTypeActiveZoneFields),
   }),
 );
 
@@ -198,6 +202,26 @@ export const cardTypeSummaryFieldsRelations = relations(
     }),
     fieldDefinition: one(fieldDefinitions, {
       fields: [cardTypeSummaryFields.fieldDefinitionId],
+      references: [fieldDefinitions.id],
+    }),
+  }),
+);
+
+// ─── Card Type Active Zone Fields Relations ───────────────────────────────────
+
+export const cardTypeActiveZoneFieldsRelations = relations(
+  cardTypeActiveZoneFields,
+  ({ one }) => ({
+    tenant: one(tenants, {
+      fields: [cardTypeActiveZoneFields.tenantId],
+      references: [tenants.id],
+    }),
+    cardType: one(cardTypes, {
+      fields: [cardTypeActiveZoneFields.cardTypeId],
+      references: [cardTypes.id],
+    }),
+    fieldDefinition: one(fieldDefinitions, {
+      fields: [cardTypeActiveZoneFields.fieldDefinitionId],
       references: [fieldDefinitions.id],
     }),
   }),
