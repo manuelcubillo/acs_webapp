@@ -101,7 +101,13 @@ const SearchFilterSchema = z.object({
 
 const CreateCardSchema = z.object({
   cardTypeId: z.string().uuid(),
-  code: z.string().min(1).max(100),
+  /**
+   * Client-facing code. Optional: omit it (or send it blank) and the DAL
+   * allocates a random numeric one, unique within the tenant. A code that IS
+   * sent is used verbatim — any charset, no extra validation, because it
+   * usually comes off a pre-existing physical card.
+   */
+  code: z.string().max(100).optional(),
   /** Values keyed by fieldDefinitionId. */
   values: z.record(z.string().uuid(), z.unknown()),
 });

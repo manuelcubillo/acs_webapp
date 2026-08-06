@@ -51,6 +51,7 @@ import { buildMockPreviewData } from "@/lib/card-designs/mock-preview-data";
 import TemplatePicker from "./TemplatePicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 /** Vertical divider used between toolbar groups. */
 function ToolbarDivider() {
@@ -59,6 +60,7 @@ function ToolbarDivider() {
 
 const LABELS = {
   backBtn: "Volver",
+  designNamePlaceholder: "Nombre del diseño",
   saveBtn: "Guardar",
   savingBtn: "Guardando…",
   savedMsg: "Guardado",
@@ -95,6 +97,10 @@ export default function CardDesignEditor({
 
   // ── Parse initial layout ───────────────────────────────────────────────────
   const parsedLayout = parseLayout(design);
+
+  // ── Editable design metadata (name/description live outside the layout) ────
+  const [metaName, setMetaName] = useState(design.name);
+  const [metaDescription, setMetaDescription] = useState(design.description ?? "");
 
   // ── Linked card types (mutable — user can link/unlink without page reload) ─
   const [linkedCardTypes, setLinkedCardTypes] = useState(initialLinkedCardTypes);
@@ -196,7 +202,7 @@ export default function CardDesignEditor({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyIndex, selectedNodeId, layoutHistory]);
+  }, [historyIndex, selectedNodeId, layoutHistory, metaName, metaDescription]);
 
   // ── Broken binding detection ───────────────────────────────────────────────
   useEffect(() => {
@@ -333,6 +339,17 @@ export default function CardDesignEditor({
     pushLayout({ ...layout, canvas: { ...layout.canvas, ...patch } });
   }
 
+  // ── Design metadata (name / description) ───────────────────────────────────
+  function updateMetaName(value: string) {
+    setMetaName(value);
+    setIsDirty(true);
+  }
+
+  function updateMetaDescription(value: string) {
+    setMetaDescription(value);
+    setIsDirty(true);
+  }
+
   // ── Drop handler ───────────────────────────────────────────────────────────
   function handleDrop(type: LayoutNode["type"], designX: number, designY: number) {
     const node = createNode(type, designX, designY, layout.nodes.length);
@@ -374,13 +391,17 @@ export default function CardDesignEditor({
 
   // ── Save ───────────────────────────────────────────────────────────────────
   async function handleSave() {
+    if (metaName.trim().length === 0) return;
     setSaveStatus("saving");
     const result = await updateCardDesignAction(design.id, {
+      name: metaName.trim(),
+      description: metaDescription.trim().length > 0 ? metaDescription : null,
       layout: layout as unknown as Record<string, unknown>,
     });
     if (result.success) {
       setSaveStatus("saved");
       setIsDirty(false);
+      router.refresh();
       setTimeout(() => setSaveStatus("idle"), 2500);
     } else {
       setSaveStatus("error");
@@ -431,9 +452,13 @@ export default function CardDesignEditor({
         <ToolbarDivider />
 
         {/* Design name */}
-        <span className="max-w-60 truncate font-heading text-sm font-bold text-foreground">
-          {design.name}
-        </span>
+        <Input
+          value={metaName}
+          onChange={(e) => updateMetaName(e.target.value)}
+          placeholder={LABELS.designNamePlaceholder}
+          aria-label={LABELS.designNamePlaceholder}
+          className="h-8 w-52 border-transparent bg-transparent px-2 font-heading text-sm font-bold text-foreground shadow-none hover:border-input focus-visible:border-input focus-visible:bg-card"
+        />
 
         {isDirty && <Badge variant="secondary">Sin guardar</Badge>}
 
@@ -481,7 +506,10 @@ export default function CardDesignEditor({
         <ToolbarDivider />
 
         {/* Save */}
-        <Button onClick={handleSave} disabled={saveStatus === "saving"}>
+        <Button
+          onClick={handleSave}
+          disabled={saveStatus === "saving" || metaName.trim().length === 0}
+        >
           {saveStatus === "saving" ? (
             <>
               <Loader2 className="animate-spin" strokeWidth={2} />
@@ -547,6 +575,8 @@ export default function CardDesignEditor({
           availableFields={availableFields}
           linkedCardTypes={linkedCardTypes}
           designId={design.id}
+          description={metaDescription}
+          onDescriptionChange={updateMetaDescription}
           staticImageUrls={staticImageUrls}
           onRegisterStaticImageUrl={registerStaticImageUrl}
           onUpdateLayout={updateCanvasProps}

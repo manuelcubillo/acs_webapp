@@ -39,6 +39,7 @@ import type {
   RectNode,
   LineNode,
 } from "@/lib/card-designs/types";
+import { resolveFontWeight } from "@/lib/card-designs/types";
 import type { CommonFieldDefinition } from "@/lib/dal";
 import { computeSnap, type SnapGuides } from "./snapUtils";
 import TextEditOverlay from "./TextEditOverlay";
@@ -290,6 +291,7 @@ export default function EditorCanvas({
       text: textEditValue || " ",
       fontSizePx: node.style.fontSize,
       fontFamily: node.style.fontFamily,
+      fontWeight: node.style.fontWeight,
       wrap: node.style.multiline && node.style.overflow === "wrap",
       maxWidthPx: node.style.multiline ? node.width * pxPerUnit : undefined,
     });
@@ -356,6 +358,7 @@ export default function EditorCanvas({
           t.id,
           t.style.fontSize,
           t.style.fontFamily,
+          resolveFontWeight(t.style),
           t.style.multiline,
           t.style.overflow,
           t.content.source,
@@ -382,12 +385,20 @@ export default function EditorCanvas({
     for (const node of layout.nodes) {
       if (node.type !== "text") continue;
       if (node.id === textEditId) continue;
+      // Bound nodes display a placeholder on canvas (the field's label, or
+      // "[CÓDIGO]"), never the value the issued card will carry. Hugging that
+      // placeholder would shrink the box below what real values need, and the
+      // PNG renderer condenses text into the node width — so the author's box
+      // is kept and only static text, whose canvas content IS its final
+      // content, gets auto-sized.
+      if (node.content.source !== "static") continue;
       const display = resolveTextDisplay(node, fieldLabelById) || " ";
       const wrap = node.style.multiline && node.style.overflow === "wrap";
       const size = measureText({
         text: display,
         fontSizePx: node.style.fontSize,
         fontFamily: node.style.fontFamily,
+        fontWeight: node.style.fontWeight,
         wrap,
         maxWidthPx: wrap ? node.width * pxPerUnit : undefined,
       });
@@ -561,6 +572,7 @@ export default function EditorCanvas({
           screenRect={textEditScreenRect}
           fontSize={editingNode.style.fontSize * zoom}
           fontFamily={editingNode.style.fontFamily}
+          fontWeight={resolveFontWeight(editingNode.style)}
           color={editingNode.style.color}
           align={editingNode.style.align}
         />
@@ -662,6 +674,7 @@ function NodeShape({
         text={displayText || " "}
         fontSize={n.style.fontSize}
         fontFamily={n.style.fontFamily}
+        fontStyle={resolveFontWeight(n.style)}
         fill={n.style.color}
         align={n.style.align}
         wrap={n.style.multiline ? "word" : "none"}

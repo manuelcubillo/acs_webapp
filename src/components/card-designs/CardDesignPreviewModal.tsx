@@ -81,7 +81,7 @@ export default function CardDesignPreviewModal({
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-h-[90vh] max-w-[640px] gap-0 overflow-hidden p-0">
+      <DialogContent className="flex max-h-[95vh] max-w-[95vw] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(95vw,1100px)]">
         {/* Header */}
         <DialogHeader className="border-b p-5">
           <DialogTitle className="truncate font-heading text-[15px] font-bold">
@@ -90,7 +90,7 @@ export default function CardDesignPreviewModal({
         </DialogHeader>
 
         {/* Preview area */}
-        <div className="flex min-h-[200px] flex-1 items-center justify-center overflow-y-auto bg-muted p-6">
+        <div className="flex min-h-[200px] flex-1 items-center justify-center overflow-auto bg-muted p-6">
           {error ? (
             <div className="flex flex-col items-center gap-2 text-destructive">
               <AlertCircle className="size-7" strokeWidth={1.5} />
@@ -106,7 +106,7 @@ export default function CardDesignPreviewModal({
             <img
               src={dataUrl}
               alt={designName}
-              className="max-h-[60vh] max-w-full rounded-lg object-contain shadow-lg"
+              className="max-h-[80vh] max-w-full rounded-lg object-contain shadow-lg"
             />
           )}
         </div>

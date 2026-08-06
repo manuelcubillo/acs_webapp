@@ -1,6 +1,6 @@
 # Module: cards
 
-**Last updated**: 2026-08-02 · **Last feature**: card list view state moved into the URL; opening a card — and editing it — comes back to the same filters, view, page and scroll offset
+**Last updated**: 2026-08-06 · **Last feature**: cards can be created without typing a code — the server allocates a random numeric one, offered by an "assign automatically" switch (on by default) in the create form
 
 ## Responsibility
 
@@ -15,13 +15,14 @@ Card lifecycle: creation, editing, viewing, searching, and the multiple UI repre
 - `src/lib/navigation/query-codec.ts` — Defensive readers for URL state (`readParam`, `parseUuidList`, `parsePage`, `parseFieldFilters`), shared with `history`.
 - `src/lib/navigation/return-scroll.ts` — `createScrollMemory` (the one-shot keyed store) plus `PAGE_SCROLL_SLOT` / `readPageScroll` / `restorePageScroll`. `DashboardShell` scrolls an inner `<main>`, so page offsets never come from `window.scrollY`.
 - `src/app/(dashboard)/cards/new/page.tsx` — Create shell (ADMIN+). Requires `?cardTypeId`.
-- `src/app/(dashboard)/cards/new/CardNewClient.tsx` — `CardForm` in create mode.
+- `src/app/(dashboard)/cards/new/CardNewClient.tsx` — `CardForm` in create mode, with `allowAutoCode`. Maps an empty submitted code to an omitted `code` field, and reads the created code back from `res.data.code` for the success banner — under automatic assignment the client never knew it.
+- `src/lib/card-codes/` — Code generation, self-contained and side-effect free (no DB, no session, no env). `constants.ts` (MIN_LENGTH 5 / MAX_LENGTH 12 / MAX_ATTEMPTS_PER_LENGTH 8 — safe to import client-side, and the create form does), `generate.ts` (`generateNumericCode(length, randomBytes?)`, injectable CSPRNG, rejection sampling to avoid modulo bias), `plan.ts` (`nextAttempt` — the adaptive policy as a pure transition), `allocate.ts` (`withGeneratedCode` + `CardCodeExhaustedError`).
 - `src/app/(dashboard)/cards/[code]/page.tsx` — Detail view (OPERATOR+). Always informational. Renders `CardDetailClient`. `?from=` selects the back link — `cards` | `archived` | `history` | (default) the dashboard — and `?cq=` / `?hq=` carry the list view to return to. Resolved by `resolveCardOrigin`, which re-validates both blobs, so the href can only ever be that list with known parameters. The origin is forwarded to the Edit link. ADRs `2026-08-02-history-url-state-and-return.md`, `2026-08-02-card-list-url-state-and-return.md`.
 - `src/components/cards/CardDetailClient.tsx` — Client component managing card state, scan-result state, and action execution on the detail page. Mounts `CardActions` + `ScanAlerts`.
 - `src/app/(dashboard)/cards/[code]/edit/page.tsx` — Edit shell (ADMIN+). Renders `CardEditClient` (field values) + `CardLifecycleControls` (status). Re-reads the origin params and hands both children where to go, so leaving the editor keeps the detail's back link intact.
 - `src/app/(dashboard)/cards/[code]/edit/CardEditClient.tsx` — `CardForm` in edit mode. Save and cancel both go to `returnHref` (the detail, origin included).
 - `src/components/cards/CardLifecycleControls.tsx` — Activate / deactivate / archive a card (phase 3, ADMIN). Single action in flight, archive confirmed via `ConfirmDialog`, then redirects to the operator's filtered list (`listQuery` + `flash=card-archived`).
-- `src/components/cards/CardForm.tsx` — Uses `useCardForm`, renders `DynamicFieldInput` per field.
+- `src/components/cards/CardForm.tsx` — Uses `useCardForm`, renders `DynamicFieldInput` per field. `code` is a system column, so it is a dedicated `Input` outside that list, with its value and validation held in the component (`useCardForm` never sees it). `allowAutoCode` (create only) adds the automatic-assignment `Switch`; with it on, the code input is hidden, no code validation runs, and `onSubmit` receives `""`.
 - `src/components/cards/CardList.tsx` — Tabs: list / table / profile. Holds the view as one `CardListViewState`; every control goes through `commit`, which renders, publishes to the URL and refetches together.
 - `src/components/cards/CardStatusFilter.tsx` — Segmented status filter (Todos / Activos / Inactivos), mirrors `CardViewToggle`. `Inactivos` groups inactive + expired.
 - `src/components/shared/ConfirmDialog.tsx` — Reusable confirmation modal on the `Dialog` primitive (`tone: default | destructive`). Used by the lifecycle controls and by trash restores.
@@ -39,7 +40,7 @@ Card lifecycle: creation, editing, viewing, searching, and the multiple UI repre
 - `src/components/cards/ScanAlerts.tsx` — Displays `ScanValidationResult` entries.
 - `src/hooks/useCardForm.ts` — Field values + `validateCard` + per-field error clearing.
 - `src/hooks/useCardColumns.ts` — localStorage-persisted column visibility. Reads storage in an effect **after** mount, never in the `useState` initializer (see "Column visibility and hydration").
-- `src/lib/dal/cards.ts` — `getCardByCode`, `getCardById`, `getCardLifecycleStatus` (light status-only lookup for the action gate), `countLiveCardsForCardType` (non-archived count for the archive cascade warning), `listArchivedCards` (trash listing: only archived, joins the archiver's name), `searchCards` (accepts a `status` filter: all/active/inactive), create/update.
+- `src/lib/dal/cards.ts` — `getCardByCode`, `getCardById`, `getCardLifecycleStatus` (light status-only lookup for the action gate), `countLiveCardsForCardType` (non-archived count for the archive cascade warning), `listArchivedCards` (trash listing: only archived, joins the archiver's name), `searchCards` (accepts a `status` filter: all/active/inactive), create/update. `createCard(cardTypeId, tenantId, code: string | null | undefined, values)` — a blank code triggers generation (see "Code assignment").
 - `src/lib/dal/scopes.ts` — `notArchived` / `onlyArchived` / `archivedViaType` reusable Drizzle scopes.
 - `src/lib/server/lifecycle/` — lifecycle service: `state-machine.ts` (pure rules), `scan-gate.ts` (pure `resolveLifecycleGate` + `buildLifecycleScanCheck`), `cards.ts`, `card-types.ts`, `retention.ts`.
 - `src/lib/actions/lifecycle.ts` — Server Actions: `activate/deactivate/archive/restoreCardAction` (ADMIN), `…CardTypeAction` (MASTER), and the phase-4 hard-delete: `purgeArchivedCardNowAction` / `purgeArchivedCardTypeNowAction` / `emptyTrashAction` (MASTER).
@@ -60,8 +61,36 @@ Primary lookup: `code + tenantId`. UUID is internal only.
 ### Create
 
 1. `/cards/new?cardTypeId=...` → server component fetches `getCardTypeWithFullSchema`.
-2. `CardForm` renders `DynamicFieldInput` for each field definition.
+2. `CardForm` renders the code control (see "Code assignment") + `DynamicFieldInput` for each field definition.
 3. Submit → Server Action validates + creates `card` + writes `field_values`.
+4. `CardNewClient` shows the success banner using the **created** card's code and remounts the form.
+
+### Code assignment (manual or automatic)
+
+`cards.code` is a system column, not a field definition, so it has its own input and its
+own path through every layer.
+
+- **Manual** — the code is used verbatim, any charset (it is usually printed on a
+  pre-existing physical card). No format validation anywhere. `createCard` pre-checks
+  availability and throws `DuplicateCodeError`.
+- **Automatic** (create form default) — the form submits `""`, `CardNewClient` omits the
+  `code` field, and `createCard` allocates one: generate `MIN_LENGTH` random digits,
+  attempt the insert, and on a `(tenant_id, code)` unique violation generate another —
+  8 attempts per length, then one more digit, up to `MAX_LENGTH`.
+
+⚠️ There is deliberately **no pre-check SELECT** on the generated path. Neon HTTP has no
+interactive transactions, so check-then-insert is racy; the `cards_tenant_code_unique`
+index is the arbiter. The collision is recognised by `isUniqueViolation(err,
+CARDS_TENANT_CODE_UNIQUE)` (see `modules/infrastructure.md`) — narrowed to that one
+constraint, so no other failure can be retried away as a collision. Only the card row is
+inside the loop; `field_values` are written after a code is secured.
+
+⚠️ The code is a **string at every step**. A generated code may start with zeros
+(`"00042"`); parsing it as a number anywhere destroys it.
+
+The length policy is per code, never persisted — no tenant counter, no per-card-type
+`code_generation` column (deliberately deferred). Codes of different lengths coexist by
+design. ADR `2026-08-06-autogenerated-card-codes.md`.
 
 ### Edit
 
@@ -184,6 +213,7 @@ Restore reuses `restoreCardAction` (admin+master) / `restoreCardTypeAction` (mas
 - **New searchable dimension** → extend `searchCards` params + UI in `CardSearch`, **and** the query keys in `src/lib/cards/list-params.ts` (both directions) plus `SearchCardsSchema`. If the dimension is shared across card types, use `getCommonFieldDefinitions` from `fields`.
 - **New surface linking to a card detail** → build the href with `cardDetailHref` and add the origin to `CardOrigin` + `resolveCardOrigin`, rather than hand-writing `?from=`.
 - **New Card-level status or workflow** → extend the `lifecycle_status` enum, teach `src/lib/server/lifecycle/state-machine.ts` the new transitions (its matrix test will fail until you do), update DAL scopes and UI states.
+- **Retune generated codes** (length, attempts) → `src/lib/card-codes/constants.ts` alone. Nothing persisted depends on those values, so there is no migration and no backfill; existing codes keep whatever length they were issued at. A code **format** (prefix, checksum, fixed width) is a different change: it needs a generator alongside `generateNumericCode` and a decision about where the choice is stored — see the ADR's deferred `code_generation` column.
 
 ## Module interactions
 
@@ -197,8 +227,8 @@ Restore reuses `restoreCardAction` (admin+master) / `restoreCardTypeAction` (mas
 
 ## Recent changes
 
+- 2026-08-06 — Cards can be created without a code. `createCard` takes `code: string | null | undefined`; a blank one is allocated by the new `src/lib/card-codes/` (random digits → insert → retry on `(tenant_id, code)` violation; 5 digits, +1 after 8 collisions, cap 12), with no pre-check SELECT — the unique index arbitrates, matched via the new `isUniqueViolation` helper. `CreateCardSchema.code` relaxed from `z.string().min(1)` to `.optional()`, which had been rejecting empty submissions before they reached the DAL. `CardForm` gained the create-only `allowAutoCode` switch (default on, hides the code input, skips code validation); `CardNewClient` now takes the code from `res.data.code` for its success banner. Manual entry, edit mode and `updateCardCodeAction` untouched. ADR `2026-08-06-autogenerated-card-codes.md`.
 - 2026-08-02 — Card list view state (types, search, status, field filters, view, page) moved into the query string, parsed server-side; new `src/lib/cards/` (`list-params`, `return-origin`, `scroll-restore`) over the shared `src/lib/navigation/` primitives now used by `history` too. Rows open `/cards/[code]?from=cards&cq=…`; the detail's back link rebuilds the list, forwards the origin to the editor, and archiving redirects to the filtered list. `CardList` now holds one state object committed through `commit`. Scroll restore was fixed twice over: page offsets come from `DashboardShell`'s inner `<main data-slot="page-scroll">` (the window never scrolls) and are re-applied until they survive the router's post-navigation reset — which also fixes the same two bugs on `/history`. ADR `2026-08-02-card-list-url-state-and-return.md`.
 - 2026-08-02 — Select fields became filterable in the card list. The shared `FieldFilterBuilder` read its options from `validationRules.options`, a shape nothing ever writes (they live in `rules[]` as `{ rule: "options", value }`), so the value dropdown was always empty and a select filter could be built but never given a value. Now uses `getSelectOptions` from `@/lib/validation/rules`. The filter SQL was already correct — `equals_text` matches `fv.value_text`, which is where select values are actually stored. Bug fix, no ADR.
 - 2026-08-02 — Two card-list bug fixes. (1) `useCardColumns` no longer reads `localStorage` during render: the server rendered the default 5 columns while the client's first render used the saved set, so every `/cards` load threw a hydration error and React discarded and regenerated the whole SSR-ed `CardList`. Storage is now adopted in a post-mount effect, with the writer gated on a `loaded` flag. (2) `CardTableView` / `CardProfileView` pass `enlargeable={false}` to the photo renderer, so a thumbnail click reaches the row (which navigates to the card detail) instead of opening a lightbox that the navigation immediately unmounted; thumbnails also became `loading="lazy"`. **Descargar** is consequently card-detail-only. No ADR — bug fixes.
 - 2026-08-02 — Card list photos moved to the stable route `/api/photos/cards/[code]?field=…`. `CardTableView` / `CardProfileView` now pass `card.code` + the card's own `fieldDefinitionId` (via a new `fieldIdMap`, because merged columns span card types) and `PhotoRenderer` derives the `<img src>` itself. The three list producers replaced `signCardListPhotos` with `stripCardListPhotoKeys`, so keys no longer reach the client. Fixes thumbnails breaking after any client-side refetch (card-type filter, search, status filter, pagination, view toggle) and the 15-minute expiry on a long-open tab. ADR `2026-08-02-card-list-photos-stable-route.md`.
-- 2026-07-17 — Archived (trash) view + hard delete, phase 4 of 5. New `/archived` page (ADMIN+) with two tabs listing archived types/cards (`listArchivedCards` / `listArchivedCardTypes`), the purge countdown, restore (cards admin+master, types master) and permanent delete + "Vaciar papelera" (master, typed phrase). New hard-delete primitive `src/lib/server/lifecycle/purge.ts` (single-statement CASCADE delete, the project's only physical delete; no purge audit) and master actions `purgeArchivedCard/CardTypeNowAction` + `emptyTrashAction`. New shared `ConfirmPhraseDialog`; nav item added to `DashboardShell`. ADR `2026-07-17-card-lifecycle-trash-view.md`.

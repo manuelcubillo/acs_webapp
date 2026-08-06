@@ -41,7 +41,7 @@ export default async function DashboardSettingsPage() {
   } catch (e) {
     if (e instanceof AuthenticationError) redirect("/login");
     if (e instanceof AuthorizationError) redirect("/dashboard");
-    redirect("/login");
+    throw e;
   }
 
   const { tenantId } = context;

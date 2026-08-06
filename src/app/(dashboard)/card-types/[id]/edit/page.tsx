@@ -47,7 +47,7 @@ export default async function EditCardTypePage({ params }: PageProps) {
   } catch (e) {
     if (e instanceof AuthenticationError) redirect("/login");
     if (e instanceof AuthorizationError) redirect(`/card-types/${id}`);
-    redirect("/login");
+    throw e;
   }
 
   const { tenantId, role } = context;

@@ -67,6 +67,7 @@ export function createNode(
         style: {
           fontFamily: DEFAULT_FONT,
           fontSize: 12,
+          fontWeight: "normal",
           color: "#000000",
           align: "left",
           multiline: false,

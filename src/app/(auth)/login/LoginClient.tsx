@@ -24,6 +24,8 @@ const LABELS = {
   submit: "Iniciar sesión",
   submitting: "Entrando…",
   errorFallback: "Error al iniciar sesión",
+  errorUnexpected:
+    "No se pudo completar el inicio de sesión. Vuelve a intentarlo en unos instantes.",
   forgotPassword: "¿Olvidaste tu contraseña?",
   noAccount: "¿No tienes cuenta?",
   signUp: "Crear una",
@@ -43,23 +45,35 @@ export default function LoginClient() {
     setError("");
     setLoading(true);
 
-    const { error } = await authClient.signIn.username({ username, password });
+    try {
+      const { error: signInError } = await authClient.signIn.username({
+        username,
+        password,
+      });
 
-    if (error) {
-      setError(error.message ?? LABELS.errorFallback);
+      if (signInError) {
+        setError(signInError.message ?? LABELS.errorFallback);
+        setLoading(false);
+        return;
+      }
+
+      // Check membership status immediately — bounce deactivated/removed members
+      // before they reach the dashboard layout.
+      const statusResult = await checkOwnMembershipStatusAction();
+      if (statusResult.success && statusResult.data.status === "deactivated") {
+        router.push("/account-deactivated");
+        return;
+      }
+
+      router.push("/dashboard");
+    } catch {
+      // Reaching here means the credentials were very likely accepted and
+      // something after sign-in failed (membership check, network drop). Without
+      // this branch `loading` stays true forever and the form spins with no
+      // feedback at all, which hides the real failure from the operator.
+      setError(LABELS.errorUnexpected);
       setLoading(false);
-      return;
     }
-
-    // Check membership status immediately — bounce deactivated/removed members
-    // before they reach the dashboard layout.
-    const statusResult = await checkOwnMembershipStatusAction();
-    if (statusResult.success && statusResult.data.status === "deactivated") {
-      router.push("/account-deactivated");
-      return;
-    }
-
-    router.push("/dashboard");
   }
 
   return (

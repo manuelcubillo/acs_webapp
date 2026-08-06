@@ -18,6 +18,7 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { TextFontWeight } from "@/lib/card-designs/types";
 
 interface ScreenRect {
   left: number;
@@ -35,6 +36,7 @@ interface Props {
   screenRect: ScreenRect;
   fontSize: number;
   fontFamily: string;
+  fontWeight: TextFontWeight;
   color: string;
   align: "left" | "center" | "right";
 }
@@ -50,6 +52,7 @@ export default function TextEditOverlay({
   screenRect,
   fontSize,
   fontFamily,
+  fontWeight,
   color,
   align,
 }: Props) {
@@ -165,6 +168,7 @@ export default function TextEditOverlay({
           height,
           fontSize: displayFontSize,
           fontFamily,
+          fontWeight,
           color,
           textAlign: align,
         }}

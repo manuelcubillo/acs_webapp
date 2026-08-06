@@ -290,6 +290,15 @@ export const fieldDefinitions = pgTable(
 // ─── Cards ───────────────────────────────────────────────────────────────────
 
 /**
+ * Name of the `(tenant_id, code)` unique constraint.
+ *
+ * Exported because code allocation identifies a taken card code by matching the
+ * violated constraint by name (see `src/lib/dal/cards.ts`), so the name must not
+ * be able to drift from the schema that creates it.
+ */
+export const CARDS_TENANT_CODE_UNIQUE = "cards_tenant_code_unique";
+
+/**
  * An issued card (credential) belonging to a tenant, based on a card type.
  *
  * `code` is a tenant-scoped identifier that clients use to look up their cards
@@ -334,7 +343,7 @@ export const cards = pgTable(
   },
   (table) => [
     /** Primary lookup path — unique code per tenant */
-    unique("cards_tenant_code_unique").on(table.tenantId, table.code),
+    unique(CARDS_TENANT_CODE_UNIQUE).on(table.tenantId, table.code),
     /** Covers most queries: search by tenant + code */
     index("cards_tenant_code_idx").on(table.tenantId, table.code),
     index("cards_tenant_id_idx").on(table.tenantId),

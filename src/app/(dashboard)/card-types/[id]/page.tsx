@@ -12,6 +12,7 @@ import {
   requireOperator,
   getCurrentUserProfile,
   AuthenticationError,
+  AuthorizationError,
 } from "@/lib/api";
 import { getCardTypeWithFullSchema } from "@/lib/dal";
 import { listDesignsForCardType, countLiveCardsForCardType } from "@/lib/dal";
@@ -86,7 +87,8 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
     context = await requireOperator();
   } catch (e) {
     if (e instanceof AuthenticationError) redirect("/login");
-    redirect("/dashboard");
+    if (e instanceof AuthorizationError) redirect("/dashboard");
+    throw e;
   }
 
   const { tenantId, role } = context;

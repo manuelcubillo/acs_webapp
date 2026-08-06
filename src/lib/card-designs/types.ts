@@ -19,6 +19,12 @@ export const WEB_SAFE_FONTS = [
 
 export type WebSafeFont = (typeof WEB_SAFE_FONTS)[number];
 
+// ─── Text weight ──────────────────────────────────────────────────────────────
+
+export const TEXT_FONT_WEIGHTS = ["normal", "bold"] as const;
+
+export type TextFontWeight = (typeof TEXT_FONT_WEIGHTS)[number];
+
 // ─── Shared node base ─────────────────────────────────────────────────────────
 
 interface LayoutNodeBase {
@@ -73,6 +79,11 @@ export interface TextNode extends LayoutNodeBase {
   style: {
     fontFamily: WebSafeFont;
     fontSize: number;
+    /**
+     * Optional — absent means `"normal"`. Kept optional so V1 layouts written
+     * before weights existed stay valid without a migration.
+     */
+    fontWeight?: TextFontWeight;
     color: string;
     align: "left" | "center" | "right";
     multiline: boolean;
@@ -166,6 +177,19 @@ export function createDefaultLayout(
     },
     nodes: [],
   };
+}
+
+// ─── Text style helpers ───────────────────────────────────────────────────────
+
+/**
+ * Resolves a text node's weight, defaulting to `"normal"` for layouts written
+ * before the property existed. Canvas (`ctx.font`) and Konva (`fontStyle`)
+ * both accept the returned keyword verbatim, so every surface stays in sync.
+ */
+export function resolveFontWeight(style: {
+  fontWeight?: TextFontWeight;
+}): TextFontWeight {
+  return style.fontWeight === "bold" ? "bold" : "normal";
 }
 
 // ─── Type guards ──────────────────────────────────────────────────────────────

@@ -7,7 +7,7 @@
  */
 
 import { redirect, notFound } from "next/navigation";
-import { requireMaster, getCurrentUserProfile, AuthenticationError } from "@/lib/api";
+import { requireMaster, getCurrentUserProfile, AuthenticationError, AuthorizationError } from "@/lib/api";
 import { getCardDesignById, listCardTypesForDesign } from "@/lib/dal";
 import { signPhotoForReadOptional } from "@/lib/storage/read";
 import type { CardDesignLayout } from "@/lib/card-designs/types";
@@ -29,7 +29,8 @@ export default async function CardDesignEditPage({ params }: Props) {
     context = await requireMaster();
   } catch (e) {
     if (e instanceof AuthenticationError) redirect("/login");
-    redirect("/dashboard");
+    if (e instanceof AuthorizationError) redirect("/dashboard");
+    throw e;
   }
 
   const { tenantId, role } = context;

@@ -22,6 +22,7 @@ import type {
   RectNode,
   LineNode,
 } from "./types";
+import { resolveFontWeight } from "./types";
 
 const MM_TO_PX = 3.7795275591;
 
@@ -187,7 +188,7 @@ function drawText(
 
   const fontSize = node.style.fontSize * pxPerUnit;
   ctx.fillStyle = node.style.color;
-  ctx.font = `${fontSize}px ${node.style.fontFamily}`;
+  ctx.font = `${resolveFontWeight(node.style)} ${fontSize}px ${node.style.fontFamily}`;
   ctx.textBaseline = "top";
   ctx.textAlign = node.style.align;
 

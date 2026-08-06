@@ -47,7 +47,7 @@ export default async function EditCardPage({ params, searchParams }: EditCardPag
   } catch (e) {
     if (e instanceof AuthenticationError) redirect("/login");
     if (e instanceof AuthorizationError) redirect("/cards");
-    redirect("/login");
+    throw e;
   }
 
   const { tenantId, role } = context;

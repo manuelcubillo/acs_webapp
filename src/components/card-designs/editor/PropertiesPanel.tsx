@@ -22,7 +22,11 @@ import {
 } from "lucide-react";
 import { listCardTypesAction } from "@/lib/actions/card-types";
 import type { CardDesignLayout, LayoutNode, WebSafeFont } from "@/lib/card-designs/types";
-import { WEB_SAFE_FONTS } from "@/lib/card-designs/types";
+import {
+  WEB_SAFE_FONTS,
+  TEXT_FONT_WEIGHTS,
+  resolveFontWeight,
+} from "@/lib/card-designs/types";
 import type { CommonFieldDefinition, CardTypeWithFields, CardType } from "@/lib/dal";
 import { COMPATIBLE_FIELD_TYPES } from "./CardDesignEditor";
 import PhotoUploader from "@/components/shared/PhotoUploader";
@@ -40,6 +44,9 @@ import { cn } from "@/lib/utils";
 
 const LABELS = {
   panelTitle: "Propiedades",
+  generalSection: "General",
+  descriptionLabel: "Descripción",
+  descriptionPlaceholder: "Descripción opcional…",
   canvasSection: "Canvas",
   background: "Fondo",
   safeMargin: "Margen seguro",
@@ -65,6 +72,9 @@ const LABELS = {
   styleSection: "Estilo",
   fontFamily: "Fuente",
   fontSize: "Tamaño",
+  fontWeight: "Peso",
+  weightNormal: "Normal",
+  weightBold: "Negrita",
   color: "Color",
   textAlign: "Alineación",
   multiline: "Multilínea",
@@ -122,6 +132,9 @@ interface Props {
   availableFields: CommonFieldDefinition[];
   linkedCardTypes: CardTypeWithFields[];
   designId: string;
+  /** Design description (editable from the canvas/no-selection view). */
+  description: string;
+  onDescriptionChange: (value: string) => void;
   /** Object-key → signed URL for static image nodes (read by uploader for previews). */
   staticImageUrls: Record<string, string>;
   /** Called by the uploader to register a fresh signed URL after upload. */
@@ -145,6 +158,8 @@ export default function PropertiesPanel({
   availableFields,
   linkedCardTypes,
   designId,
+  description,
+  onDescriptionChange,
   staticImageUrls,
   onRegisterStaticImageUrl,
   onUpdateLayout,
@@ -172,6 +187,8 @@ export default function PropertiesPanel({
             canvas={layout.canvas}
             unit={unit}
             linkedCardTypes={linkedCardTypes}
+            description={description}
+            onDescriptionChange={onDescriptionChange}
             onUpdate={onUpdateLayout}
             onLink={onLink}
             onUnlink={onUnlink}
@@ -201,6 +218,8 @@ function CanvasProperties({
   canvas,
   unit,
   linkedCardTypes,
+  description,
+  onDescriptionChange,
   onUpdate,
   onLink,
   onUnlink,
@@ -208,12 +227,26 @@ function CanvasProperties({
   canvas: CardDesignLayout["canvas"];
   unit: string;
   linkedCardTypes: CardTypeWithFields[];
+  description: string;
+  onDescriptionChange: (value: string) => void;
   onUpdate: (patch: Partial<CardDesignLayout["canvas"]>) => void;
   onLink: (cardTypeId: string) => Promise<string | null>;
   onUnlink: (cardTypeId: string) => Promise<string | null>;
 }) {
   return (
     <>
+      <Section title={LABELS.generalSection}>
+        <Row label={LABELS.descriptionLabel}>
+          <Textarea
+            rows={3}
+            className="resize-y text-xs"
+            placeholder={LABELS.descriptionPlaceholder}
+            value={description}
+            onChange={(e) => onDescriptionChange(e.target.value)}
+          />
+        </Row>
+      </Section>
+
       <Section title={LABELS.canvasSection}>
         <Row label={LABELS.background}>
           <ColorInput
@@ -475,6 +508,26 @@ function NodeProperties({
                 />
               </Row>
             </div>
+            <Row label={LABELS.fontWeight}>
+              <div className="flex gap-1">
+                {TEXT_FONT_WEIGHTS.map((weight) => (
+                  <button
+                    key={weight}
+                    type="button"
+                    onClick={() =>
+                      onUpdate({ style: { ...node.style, fontWeight: weight } })
+                    }
+                    className={toggleBtnClass(
+                      resolveFontWeight(node.style) === weight,
+                    )}
+                  >
+                    {weight === "bold"
+                      ? LABELS.weightBold
+                      : LABELS.weightNormal}
+                  </button>
+                ))}
+              </div>
+            </Row>
             <Row label={LABELS.textAlign}>
               <div className="flex gap-1">
                 {(["left", "center", "right"] as const).map((align) => (

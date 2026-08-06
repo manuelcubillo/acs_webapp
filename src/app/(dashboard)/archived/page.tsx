@@ -12,6 +12,7 @@ import {
   requireAdmin,
   getCurrentUserProfile,
   AuthenticationError,
+  AuthorizationError,
 } from "@/lib/api";
 import { listArchivedCards, listArchivedCardTypes } from "@/lib/dal";
 import {
@@ -33,7 +34,8 @@ export default async function ArchivedPage() {
     context = await requireAdmin();
   } catch (e) {
     if (e instanceof AuthenticationError) redirect("/login");
-    redirect("/dashboard");
+    if (e instanceof AuthorizationError) redirect("/dashboard");
+    throw e;
   }
 
   const { tenantId, role } = context;
