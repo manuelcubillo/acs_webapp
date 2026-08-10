@@ -10,6 +10,12 @@
  *     `staticImageUrls`) and fall back to `staticUrl` for legacy data.
  *   - source "field"     → fieldValues[fieldDefinitionId]
  *   - source "card_code" → cardCode argument
+ *
+ * Output size:
+ *   By default the raster is the design's px footprint multiplied by a uniform
+ *   `scale` (2 = retina). Passing `output` instead rasterises to a physical
+ *   centimetre size at a fixed 300 DPI — used only by the download button, never
+ *   by the on-screen preview.
  */
 
 import type {
@@ -22,6 +28,8 @@ import type {
   RectNode,
   LineNode,
 } from "./types";
+import { resolveFontWeight } from "./types";
+import { resolveOutputRaster } from "./export-size";
 
 const MM_TO_PX = 3.7795275591;
 
@@ -38,8 +46,14 @@ export interface RenderInput {
    */
   staticImageUrls?: Record<string, string>;
   cardCode: string;
-  /** Output scale multiplier — 2 produces retina-quality output. */
+  /** Output scale multiplier — 2 produces retina-quality output. Ignored when `output` is set. */
   scale?: number;
+  /**
+   * Physical size of the produced image, in centimetres, rasterised at
+   * EXPORT_DPI. Set only by the download path; when absent (or incomplete) the
+   * renderer keeps its legacy uniform-`scale` output byte for byte.
+   */
+  output?: { widthCm: number; heightCm: number } | null;
 }
 
 /**
@@ -53,19 +67,35 @@ export async function renderDesignToDataURL({
   staticImageUrls = {},
   cardCode,
   scale = 2,
+  output = null,
 }: RenderInput): Promise<string> {
   const pxPerUnit = layout.canvas.unit === "mm" ? MM_TO_PX : 1;
   const artW = Math.round(layout.canvas.width * pxPerUnit);
   const artH = Math.round(layout.canvas.height * pxPerUnit);
 
+  // Resolve the raster size and the per-axis scales used to get there.
+  // With no `output` this is the legacy uniform `scale`; with one, the design
+  // stretches to fill the requested physical size. Text / QR / barcode stretch
+  // non-uniformly when the cm values ignore the design's aspect ratio — the
+  // accepted trade-off of unlocking the padlock, not a bug.
+  const { canvasW, canvasH, scaleX, scaleY } = resolveOutputRaster(
+    artW,
+    artH,
+    scale,
+    output,
+  );
+
   const canvas = document.createElement("canvas");
-  canvas.width = artW * scale;
-  canvas.height = artH * scale;
+  canvas.width = canvasW;
+  canvas.height = canvasH;
 
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas 2D context not available");
 
-  ctx.scale(scale, scale);
+  // Every node below is drawn in base (scale-1) design px coordinates; this
+  // transform is what maps them onto the output raster. On a fresh context this
+  // is exactly equivalent to the previous `ctx.scale(scale, scale)`.
+  ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
 
   // Background
   ctx.fillStyle = layout.canvas.background || "#ffffff";
@@ -74,7 +104,11 @@ export async function renderDesignToDataURL({
   // Sort by zIndex
   const sorted = [...layout.nodes].sort((a, b) => a.zIndex - b.zIndex);
 
-  // Pre-render async assets (images, QR codes, barcodes) in parallel
+  // Pre-render async assets (images, QR codes, barcodes) in parallel.
+  // Codes are rasterised at the scale they will actually be drawn at, so the
+  // export path stays crisp instead of upscaling a preview-sized bitmap.
+  // A QR is square, so it takes the larger of the two axes.
+  const codeScale = Math.max(scaleX, scaleY);
   const assets = new Map<string, HTMLImageElement | HTMLCanvasElement | null>();
 
   await Promise.allSettled(
@@ -84,7 +118,7 @@ export async function renderDesignToDataURL({
         assets.set(node.id, url ? await loadImage(url).catch(() => null) : null);
       } else if (node.type === "qr") {
         const value = resolveCode(node as QrNode, fieldValues, cardCode);
-        assets.set(node.id, value ? await renderQR(value, Math.round((node as QrNode).width * pxPerUnit * scale)).catch(() => null) : null);
+        assets.set(node.id, value ? await renderQR(value, Math.round((node as QrNode).width * pxPerUnit * codeScale)).catch(() => null) : null);
       } else if (node.type === "barcode128") {
         const value = resolveCode(node as Barcode128Node, fieldValues, cardCode);
         const n = node as Barcode128Node;
@@ -93,8 +127,8 @@ export async function renderDesignToDataURL({
           value
             ? await renderBarcode(
                 value,
-                Math.round(n.width * pxPerUnit * scale),
-                Math.round(n.height * pxPerUnit * scale),
+                Math.round(n.width * pxPerUnit * scaleX),
+                Math.round(n.height * pxPerUnit * scaleY),
               ).catch(() => null)
             : null,
         );
@@ -187,7 +221,7 @@ function drawText(
 
   const fontSize = node.style.fontSize * pxPerUnit;
   ctx.fillStyle = node.style.color;
-  ctx.font = `${fontSize}px ${node.style.fontFamily}`;
+  ctx.font = `${resolveFontWeight(node.style)} ${fontSize}px ${node.style.fontFamily}`;
   ctx.textBaseline = "top";
   ctx.textAlign = node.style.align;
 

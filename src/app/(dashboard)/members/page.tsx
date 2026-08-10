@@ -6,7 +6,7 @@
  */
 
 import { redirect } from "next/navigation";
-import { requireAdmin, AuthenticationError } from "@/lib/api";
+import { requireAdmin, AuthenticationError, AuthorizationError } from "@/lib/api";
 import { listMembers, listPendingInvitations } from "@/lib/dal";
 import { signPhotosForRead } from "@/lib/storage/read";
 import DashboardShell from "@/components/layout/DashboardShell";
@@ -21,7 +21,8 @@ export default async function MembersPage() {
     context = await requireAdmin();
   } catch (e) {
     if (e instanceof AuthenticationError) redirect("/login");
-    redirect("/dashboard");
+    if (e instanceof AuthorizationError) redirect("/dashboard");
+    throw e;
   }
 
   const { tenantId, userId, role } = context;

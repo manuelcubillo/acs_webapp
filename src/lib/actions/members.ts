@@ -37,7 +37,7 @@ import {
   countActiveMasters,
   setUserAvatar,
 } from "@/lib/dal";
-import { ValidationError, ForbiddenOperationError } from "@/lib/dal/errors";
+import { ValidationError, ForbiddenOperationError, NotFoundError } from "@/lib/dal/errors";
 import { canManage, canAssignRole } from "@/lib/auth/role-hierarchy";
 import type { TenantMember, MemberWithUser } from "@/lib/dal";
 
@@ -384,8 +384,15 @@ export async function checkOwnMembershipStatusAction(): Promise<
       // so reaching here means the membership is valid.
       void member;
       return { status: "ok" as const };
-    } catch {
-      return { status: "deactivated" as const };
+    } catch (err) {
+      // Only a missing row means the membership is genuinely gone. Any other
+      // error (DB connectivity, driver failure) must NOT be reported as
+      // "deactivated": that signs a valid member out and sends them to
+      // /account-deactivated, masking the real fault. Let actionHandler map it.
+      if (err instanceof NotFoundError) {
+        return { status: "deactivated" as const };
+      }
+      throw err;
     }
   });
 }

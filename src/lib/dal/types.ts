@@ -40,7 +40,25 @@ export type ScanValidation = InferSelectModel<typeof scanValidations>;
 export type DashboardSettings = InferSelectModel<typeof dashboardSettings>;
 export type CardTypeSummaryField = InferSelectModel<typeof cardTypeSummaryFields>;
 export type CardTypeActiveZoneField = InferSelectModel<typeof cardTypeActiveZoneFields>;
-export type CardDesign = InferSelectModel<typeof cardDesigns>;
+/** Raw `card_designs` row as Drizzle returns it (numeric columns come back as strings). */
+export type CardDesignRow = InferSelectModel<typeof cardDesigns>;
+
+/**
+ * Card design as the DAL exposes it.
+ *
+ * The export-size columns are `numeric` in Postgres, which the driver returns
+ * as `string`. The DAL maps them to `number | null` so every consumer — the
+ * editor, the preview modal, the renderer — sees one numeric shape. Both cm
+ * values are always set together or both NULL (NULL = legacy export size).
+ */
+export type CardDesign = Omit<
+  CardDesignRow,
+  "outputWidthCm" | "outputHeightCm"
+> & {
+  outputWidthCm: number | null;
+  outputHeightCm: number | null;
+};
+
 export type CardTypeDesign = InferSelectModel<typeof cardTypeDesigns>;
 
 /** Role a user holds within a tenant. Hierarchical: master > admin > operator. */
@@ -516,6 +534,12 @@ export interface CreateCardDesignInput {
   widthUnits: number;
   heightUnits: number;
   unit: DimensionUnit;
+  /**
+   * Optional physical download size in centimetres. Left unset by the create
+   * modal — a new design exports at the legacy size until configured.
+   */
+  outputWidthCm?: number | null;
+  outputHeightCm?: number | null;
 }
 
 export interface UpdateCardDesignInput {
@@ -525,6 +549,15 @@ export interface UpdateCardDesignInput {
   heightUnits?: number;
   unit?: DimensionUnit;
   layout?: Record<string, unknown>;
+  /**
+   * Physical download size in centimetres. Both-or-neither: passing `null` for
+   * both clears the configuration and reverts that design to the legacy export
+   * size. Omitting them leaves the stored values untouched.
+   */
+  outputWidthCm?: number | null;
+  outputHeightCm?: number | null;
+  /** Editor-only: whether the two cm fields follow the design's aspect ratio. */
+  outputLockAspect?: boolean;
 }
 
 export interface ListCardDesignsOptions {

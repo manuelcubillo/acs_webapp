@@ -17,6 +17,7 @@ import { NotFoundError, ValidationError } from "./errors";
 import { getCardTypeById } from "./card-types";
 import type {
   CardDesign,
+  CardDesignRow,
   CardTypeDesign,
   CardTypeWithFields,
   CreateCardDesignInput,
@@ -26,6 +27,24 @@ import type {
 } from "./types";
 import type { CardDesignLayout, LayoutNode } from "@/lib/card-designs/types";
 import { isBindableNode } from "@/lib/card-designs/types";
+
+// ─── Row mapping ──────────────────────────────────────────────────────────────
+
+/**
+ * Normalise a raw `card_designs` row into the DAL's `CardDesign` shape.
+ *
+ * `output_width_cm` / `output_height_cm` are `numeric` columns, which the
+ * Postgres driver returns as strings to preserve precision. Every read path
+ * goes through here so no consumer ever has to think about that.
+ */
+function mapDesignRow(row: CardDesignRow): CardDesign {
+  return {
+    ...row,
+    outputWidthCm: row.outputWidthCm == null ? null : Number(row.outputWidthCm),
+    outputHeightCm:
+      row.outputHeightCm == null ? null : Number(row.outputHeightCm),
+  };
+}
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
@@ -48,11 +67,13 @@ export async function listCardDesigns(
     conditions.push(eq(cardDesigns.kind, opts.kind));
   }
 
-  return db
+  const rows = await db
     .select()
     .from(cardDesigns)
     .where(and(...conditions))
     .orderBy(asc(cardDesigns.name));
+
+  return rows.map(mapDesignRow);
 }
 
 /**
@@ -77,7 +98,7 @@ export async function getCardDesignById(
     .limit(1);
 
   if (!row) throw new NotFoundError("CardDesign", id);
-  return row;
+  return mapDesignRow(row);
 }
 
 /**
@@ -100,7 +121,7 @@ export async function listDesignsForCardType(
 
   if (!links.length) return [];
 
-  return db
+  const rows = await db
     .select()
     .from(cardDesigns)
     .where(
@@ -114,6 +135,8 @@ export async function listDesignsForCardType(
       ),
     )
     .orderBy(asc(cardDesigns.kind));
+
+  return rows.map(mapDesignRow);
 }
 
 /**
@@ -155,10 +178,14 @@ export async function createCardDesign(
       heightUnits: input.heightUnits,
       unit: input.unit,
       layout: {},
+      // Export size starts unset (NULL) — legacy export behaviour until the
+      // user configures it in the editor. The padlock defaults to ON.
+      outputWidthCm: input.outputWidthCm?.toString() ?? null,
+      outputHeightCm: input.outputHeightCm?.toString() ?? null,
     })
     .returning();
 
-  return row;
+  return mapDesignRow(row);
 }
 
 /**
@@ -178,6 +205,18 @@ export async function updateCardDesign(
   if (input.heightUnits !== undefined) set.heightUnits = input.heightUnits;
   if (input.unit !== undefined) set.unit = input.unit;
   if (input.layout !== undefined) set.layout = input.layout;
+  // Export size — numerics are written as strings so no float rounding creeps
+  // in on the way to a numeric(6,2) column. `null` clears the configuration
+  // and reverts the design to the legacy export size.
+  if (input.outputWidthCm !== undefined) {
+    set.outputWidthCm = input.outputWidthCm?.toString() ?? null;
+  }
+  if (input.outputHeightCm !== undefined) {
+    set.outputHeightCm = input.outputHeightCm?.toString() ?? null;
+  }
+  if (input.outputLockAspect !== undefined) {
+    set.outputLockAspect = input.outputLockAspect;
+  }
 
   const [updated] = await db
     .update(cardDesigns)
@@ -192,7 +231,7 @@ export async function updateCardDesign(
     .returning();
 
   if (!updated) throw new NotFoundError("CardDesign", id);
-  return updated;
+  return mapDesignRow(updated);
 }
 
 /**
@@ -221,7 +260,7 @@ export async function archiveCardDesign(
     .returning();
 
   if (!archived) throw new NotFoundError("CardDesign", id);
-  return archived;
+  return mapDesignRow(archived);
 }
 
 /**
@@ -248,10 +287,14 @@ export async function duplicateCardDesign(
       heightUnits: original.heightUnits,
       unit: original.unit,
       layout: original.layout ?? {},
+      // A duplicate is the same artwork at the same physical size.
+      outputWidthCm: original.outputWidthCm?.toString() ?? null,
+      outputHeightCm: original.outputHeightCm?.toString() ?? null,
+      outputLockAspect: original.outputLockAspect,
     })
     .returning();
 
-  return copy;
+  return mapDesignRow(copy);
 }
 
 // ─── Linking ──────────────────────────────────────────────────────────────────

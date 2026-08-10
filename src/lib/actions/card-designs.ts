@@ -32,6 +32,7 @@ import type {
   ListCardDesignsOptions,
   CardDesignValidationResult,
 } from "@/lib/dal";
+import { MAX_EXPORT_CM, MIN_EXPORT_CM } from "@/lib/card-designs/export-size";
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
 
@@ -44,15 +45,47 @@ const CreateCardDesignSchema = z.object({
   unit: z.enum(["mm", "px"]),
 });
 
-const UpdateCardDesignSchema = z.object({
-  name: z.string().min(1).max(200).optional(),
-  description: z.string().max(1000).nullable().optional(),
-  widthUnits: z.number().positive().optional(),
-  heightUnits: z.number().positive().optional(),
-  unit: z.enum(["mm", "px"]).optional(),
-  /** Loosely validated here; structural validation runs in validateDesignAgainstCardType. */
-  layout: z.record(z.string(), z.unknown()).optional(),
-});
+/**
+ * Physical download size in centimetres. Bounded so the exported raster stays
+ * sane (MAX_EXPORT_CM at 300 DPI ≈ 3543 px). Anything under MIN_EXPORT_CM is
+ * rejected rather than stored, because the renderer would ignore it and fall
+ * back to the legacy size — a silently misleading save.
+ */
+const ExportCmSchema = z
+  .number()
+  .min(MIN_EXPORT_CM)
+  .max(MAX_EXPORT_CM)
+  .nullable()
+  .optional();
+
+const UpdateCardDesignSchema = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    description: z.string().max(1000).nullable().optional(),
+    widthUnits: z.number().positive().optional(),
+    heightUnits: z.number().positive().optional(),
+    unit: z.enum(["mm", "px"]).optional(),
+    /** Loosely validated here; structural validation runs in validateDesignAgainstCardType. */
+    layout: z.record(z.string(), z.unknown()).optional(),
+    /** Export-only physical size of the downloaded PNG. Both-or-neither. */
+    outputWidthCm: ExportCmSchema,
+    outputHeightCm: ExportCmSchema,
+    outputLockAspect: z.boolean().optional(),
+  })
+  /**
+   * Both-or-neither: the renderer only honours the export size when BOTH
+   * dimensions are present, so a half-set pair is normalised to "cleared"
+   * instead of being persisted as a value that can never take effect.
+   */
+  .transform((data) => {
+    const { outputWidthCm: w, outputHeightCm: h } = data;
+    // Neither mentioned → leave whatever is stored untouched.
+    if (w === undefined && h === undefined) return data;
+    // Both real numbers → a complete, usable export size.
+    if (typeof w === "number" && typeof h === "number") return data;
+    // Anything else (one side only, or one side explicitly null) clears both.
+    return { ...data, outputWidthCm: null, outputHeightCm: null };
+  });
 
 const DuplicateCardDesignSchema = z.object({
   newName: z.string().min(1).max(200),

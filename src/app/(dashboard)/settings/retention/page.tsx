@@ -38,7 +38,7 @@ export default async function RetentionSettingsPage() {
   } catch (e) {
     if (e instanceof AuthenticationError) redirect("/login");
     if (e instanceof AuthorizationError) redirect("/settings/account");
-    redirect("/login");
+    throw e;
   }
 
   const { tenantId } = context;

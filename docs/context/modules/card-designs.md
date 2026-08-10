@@ -1,6 +1,6 @@
 # Module: card-designs
 
-**Last updated**: 2026-06-07 · **Last feature**: Phase 3 token/shadcn migration of card-design chrome; Konva canvas + node data colours preserved as documented exceptions (ADR `2026-06-07-phase3-inline-style-migration.md`)
+**Last updated**: 2026-08-06 · **Last feature**: configurable physical export size (cm at 300 DPI) for the downloaded PNG, with an aspect-ratio padlock
 
 ## Responsibility
 
@@ -10,8 +10,9 @@ Does **not** own field definitions (see `fields`) or card type configuration (se
 
 ## Key files
 
-- `src/lib/card-designs/types.ts` — `CardDesignLayout` V1 schema, node type union, `createDefaultLayout`, `isBindableNode`.
-- `src/lib/card-designs/render.ts` — `renderDesignToDataURL()`: Canvas API renderer (all 6 node types, async image/QR/barcode loading, scale parameter).
+- `src/lib/card-designs/types.ts` — `CardDesignLayout` V1 schema, node type union, `createDefaultLayout`, `isBindableNode`, `TEXT_FONT_WEIGHTS` + `resolveFontWeight` (the one place `fontWeight?` defaults to `"normal"`).
+- `src/lib/card-designs/render.ts` — `renderDesignToDataURL()`: Canvas API renderer (all 6 node types, async image/QR/barcode loading, `scale` parameter, optional `output` cm size).
+- `src/lib/card-designs/export-size.ts` — dependency-free cm↔px conversions for the **download only**: `EXPORT_DPI` (300), `cmToPx`, `hasExportSize`, `designAspect`, `clampExportCm` / `roundExportCm`, `heightFromWidthCm` / `widthFromHeightCm` (padlock maths), and `resolveOutputRaster` (the one place that decides legacy-vs-export raster dimensions). Unit-tested in `__tests__/export-size.unit.test.ts`.
 - `src/lib/card-designs/mock-preview-data.ts` — `buildMockPreviewData()`: builds plausible sample `fieldValues` / `photoValues` keyed by every fieldDefinitionId across the linked card types, plus a sample card code; used by the in-editor preview.
 - `src/lib/card-designs/templates.ts` — `SAMPLE_TEMPLATES` (3 starter layouts: photo card, event pass, passbook), `getTemplatesForKind`, `cloneTemplateLayout` (re-IDs nodes on apply).
 - `src/lib/dal/card-designs.ts` — `listCardDesigns`, `getCardDesignById`, `createCardDesign`, `updateCardDesign`, `archiveCardDesign`, `duplicateCardDesign`, `linkDesignToCardType`, `unlinkDesignFromCardType`, `listDesignsForCardType`, `listCardTypesForDesign`, `getDesignLinkCounts`, `validateDesignAgainstCardType`.
@@ -25,15 +26,16 @@ Does **not** own field definitions (see `fields`) or card type configuration (se
 - `src/components/card-designs/editor/CardDesignEditor.tsx` — Three-pane editor: state (layoutHistory, zoom, linkedCardTypes), undo/redo, link/unlink handlers, keyboard shortcuts. Hosts the toolbar Plantillas/Vista previa buttons and exposes `replaceCurrentLayout` so derived patches (e.g. text auto-resize) ride along with the user's history entry.
 - `src/components/card-designs/editor/EditorCanvas.tsx` — Konva Stage + artboard Group; drag-drop, snap, Transformer, inline text overlay. Receives `availableFields` to label field-bound text (`resolveTextDisplay`) and runs an auto-size effect via `replaceCurrent`.
 - `src/components/card-designs/editor/ElementPalette.tsx` — HTML5 drag source for 6 node types; double-click on an item calls `onAddCentered` to drop it in the canvas centre.
-- `src/components/card-designs/editor/PropertiesPanel.tsx` — Right panel: canvas props + linked card types section (canvas view) / node props + data-source section (node selected). `NumberInput` accepts `decimals` (used by Posición y tamaño to round display to 3 places while keeping a draft string for fluid typing).
+- `src/components/card-designs/editor/PropertiesPanel.tsx` — Right panel: canvas props + **Tamaño de exportación** + linked card types section (canvas view) / node props + data-source section (node selected). `NumberInput` accepts `decimals` (used by Posición y tamaño to round display to 3 places while keeping a draft string for fluid typing); `CmInput` is its nullable sibling for the export-size fields (empty = not configured).
 - `src/components/card-designs/editor/nodeFactory.ts` — `createNode(type, x, y, existingCount)` plus `NODE_DEFAULT_SIZE` and `getCenteredPosition(type, canvasW, canvasH)`.
 - `src/components/card-designs/editor/snapUtils.ts` — `computeSnap()`: 5 px threshold against canvas edges/center and sibling bounds.
 - `src/components/card-designs/editor/textMetrics.ts` — `measureText()` using a shared offscreen 2D canvas; powers text auto-resize on commit + on style/binding change.
 - `src/components/card-designs/editor/TextEditOverlay.tsx` — Portal `<textarea>` positioned via the node's `getAbsolutePosition()`-derived screen rect, with floating ✓/✗ toolbar; Enter commits, Shift+Enter inserts newline, Escape cancels, click-outside commits.
 - `src/components/card-designs/editor/TemplatePicker.tsx` — Modal listing kind-matched starter templates with `renderDesignToDataURL` thumbnails; confirms before replacing a non-empty design.
 - `src/components/card-designs/CardDesignPreviewButton.tsx` — "Ver diseño" button on card detail; opens modal with no extra fetch.
-- `src/components/card-designs/CardDesignPreviewModal.tsx` — Preview + "Descargar PNG" modal; renders on mount, closes on Escape/backdrop. Reused by the in-editor preview using `buildMockPreviewData`.
+- `src/components/card-designs/CardDesignPreviewModal.tsx` — Preview + "Descargar PNG" modal; renders on mount, closes on Escape/backdrop. Reused by the in-editor preview using `buildMockPreviewData`. The on-screen `<img>` never uses the export size; only the download re-renders at it.
 - `src/components/card-types/CardTypeLinkedDesigns.tsx` — Linked designs section on card-type detail; supports link/unlink per kind slot.
+- `scripts/veredillasPersonalCardDesign.ts` — Re-runnable script that writes the "Carnet Personal Veredillas II" design (488×296 px transcription of the legacy printed card) and links it to that card type. Logo asset in `scripts/assets/veredillas-logo.png`. `pnpm design:veredillas-personal[:local-db]`.
 
 ## Data model
 
@@ -50,9 +52,18 @@ Does **not** own field definitions (see `fields`) or card type configuration (se
 | `height_units` | Design height in `unit`                                           |
 | `unit`         | Enum: `mm \| px`                                                  |
 | `layout`       | jsonb — `CardDesignLayout` V1 (version field + canvas + nodes[]) |
+| `output_width_cm`  | `numeric(6,2)` — physical width of the DOWNLOADED PNG. NULL = legacy export |
+| `output_height_cm` | `numeric(6,2)` — same for height. Both-or-neither, enforced at the action boundary |
+| `output_lock_aspect` | Editor-only: cm fields follow the design's aspect ratio. Default `true` |
 | `is_active`    | Soft delete                                                        |
 
 Default dimensions: CR80 card = 85.6 × 54 mm; passbook = 340 × 440 px.
+
+The three `output_*` columns are **export-only** and deliberately outside the
+`layout` jsonb — they never affect the editor canvas, node coordinates, the
+stored layout, or the on-screen preview. Drizzle returns `numeric` as `string`,
+so the DAL's `mapDesignRow` normalises both to `number | null` on every read;
+writes pass `.toString()`. See ADR `2026-08-06-card-design-export-size.md`.
 
 ### `card_type_designs`
 
@@ -79,6 +90,7 @@ Default dimensions: CR80 card = 85.6 × 54 mm; passbook = 340 × 440 px.
 ```
 
 Node types: `text | image | qr | barcode128 | rect | line`.
+Text style: `fontFamily` (web-safe list), `fontSize`, optional `fontWeight` (`normal | bold`, absent = normal), `color`, `align`, `multiline`, `overflow`. Always read the weight through `resolveFontWeight` so canvas (`ctx.font`), Konva (`fontStyle`) and `measureText` cannot drift.
 Bindable nodes (text/image/qr/barcode128) have a `content` discriminated union:
 - `{ source: "static", staticValue }` — fixed value (text/qr/barcode)
 - `{ source: "static", staticObjectKey }` — uploaded image (preferred for `image` nodes)
@@ -101,9 +113,10 @@ Bindable nodes (text/image/qr/barcode128) have a `content` discriminated union:
 - Transform: Konva `Transformer` handles resize/rotate; `handleTransformEnd` resets scale to 1 and uses `Math.abs` so flips don't collapse a node.
 - Snap guides: `computeSnap()` called on `handleDragMove`, cleared on `handleDragEnd`.
 - Inline text edit: double-click → `TextEditOverlay` (portal positioned via `shape.getAbsolutePosition()`); on commit `EditorCanvas` re-measures via `measureText` and writes width/height alongside the new value in one history entry.
-- Auto-size text: any change to a text node's font/family/multiline/overflow/static-value/field-binding (or to the bound field's label) triggers a measure → patch via `onNodeUpdate(..., { replaceCurrent: true })`. In wrap mode only height is auto-fit.
+- Auto-size text: any change to a **static** text node's font/family/weight/multiline/overflow/value triggers a measure → patch via `onNodeUpdate(..., { replaceCurrent: true })`. In wrap mode only height is auto-fit. Bound nodes (`field` / `card_code`) are skipped on purpose — their canvas text is a placeholder (the field's label, `[CÓDIGO]`), so hugging it would shrink the box below what real values need and `render.ts` condenses text into the node width.
 - Field name on canvas: bound text shows the field's label/name (`resolveTextDisplay`) instead of the legacy `[Campo]` placeholder.
-- Save: `⌘S` / Ctrl+S or toolbar button → `updateCardDesignAction(id, { layout })`.
+- Export size: canvas-view **Tamaño de exportación** section writes design-level meta state (`outputWidthCm` / `outputHeightCm` / `outputLockAspect`) in `CardDesignEditor`, not the layout. Padlock ON (default) derives one cm value from the other via `designAspect(width_units, height_units)`; clearing either field clears both. Persisted on Save, never per keystroke — so the ⌘S listener's dep array must include all three.
+- Save: `⌘S` / Ctrl+S or toolbar button → `updateCardDesignAction(id, { layout, outputWidthCm, outputHeightCm, outputLockAspect })`.
 
 ### Field data binding
 
@@ -133,10 +146,12 @@ Unlink from either surface → `unlinkDesignFromCardTypeAction` (hard-deletes jo
 `/cards/[code]` server component: parallel-fetches `listDesignsForCardType` → picks first `card` kind design → serialises `fieldValues` + `photoValues` from `card.fields` → passes to `CardDesignPreviewButton`.
 
 On click → `CardDesignPreviewModal` mounts → `renderDesignToDataURL()`:
-1. Computes canvas size = `layout dimensions × pxPerUnit × scale(2)`.
-2. Parallel-loads all image / QR / barcode assets.
-3. Draws all nodes sorted by `zIndex`.
-4. Returns `data:image/png` URL → shown as `<img>`; "Descargar PNG" triggers `<a download>`.
+1. `resolveOutputRaster` picks the raster: no `output` → `layout dimensions × pxPerUnit × scale(2)`, one uniform scale (legacy).
+2. Parallel-loads all image / QR / barcode assets, rasterised at the scale they will be drawn at.
+3. Draws all nodes sorted by `zIndex`, in base (scale-1) design px, under `ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0)`.
+4. Returns `data:image/png` URL → shown as `<img>`.
+
+**"Descargar PNG"** is the only consumer of the export size. If the design has both cm values (`hasExportSize`), the modal re-renders with `output: { widthCm, heightCm }` → canvas = `cmToPx(cm)` at 300 DPI, with independent `scaleX` / `scaleY`; otherwise it downloads the preview data URL unchanged. Locked to the design's aspect the two scales match; unlocked they differ and the artwork stretches — intended, see the ADR.
 
 Note: export uses the browser Canvas API, **not** `Stage.toDataURL()` — the Konva stage is only active inside the editor route, not on the card detail page.
 
@@ -145,6 +160,7 @@ Note: export uses the browser Canvas API, **not** `Stage.toDataURL()` — the Ko
 - **New node type** → add to `LayoutNode` union (`types.ts`), `nodeFactory.ts` (incl. `NODE_DEFAULT_SIZE`), `EditorCanvas.tsx` switch, `PropertiesPanel.tsx` sections, `render.ts` `drawNode`.
 - **New starter template** → append a `DesignTemplate` to `SAMPLE_TEMPLATES` in `templates.ts`. Use `static` content for user-customisable text/colour/logo and `card_code` for codes/QR/barcode so each issued card resolves them automatically.
 - **Apple Wallet `.pkpass` export** → deferred; needs Apple Developer cert + PKCS#7 signing service. See ADR.
+- **New export target (PDF, print sheet)** → reuse `export-size.ts`; it is dependency-free and already owns the cm↔px contract. A configurable DPI would mean a fourth column plus a `EXPORT_DPI` parameter.
 - **Layout versioning** → bump `version` field; add migration transform in `parseLayout()` in `CardDesignEditor.tsx`.
 - **Multi-select in editor** → Konva `Transformer` already supports it; extend `selectedNodeId` to `selectedNodeIds[]`.
 
@@ -160,6 +176,8 @@ Note: export uses the browser Canvas API, **not** `Stage.toDataURL()` — the Ko
 
 ## Recent changes
 
+- 2026-08-06 — Designs gained a configurable **physical export size**: `output_width_cm` / `output_height_cm` / `output_lock_aspect` on `card_designs` (migration `0019_lucky_gateway.sql`), a new dependency-free `export-size.ts` (300 DPI conversions + padlock maths + `resolveOutputRaster`), an optional `output` on `renderDesignToDataURL` that swaps the uniform `scale` for independent axis scales, a "Tamaño de exportación" section in the canvas properties panel (two nullable cm inputs, padlock locked by default, px caption, "Usar tamaño del diseño" for mm designs, "Quitar"), and cm props threaded from `/cards/[code]` → `CardDesignPreviewButton` → `CardDesignPreviewModal`. Export-only by construction: editor canvas, `layout` jsonb, `width_units` / `height_units` / `unit` and the on-screen preview are untouched, and a design with NULL cm exports exactly as before (verified: 976 × 592 legacy vs 1011 × 613 configured). ADR `2026-08-06-card-design-export-size.md`.
+- 2026-08-05 — Text nodes gained an optional `fontWeight` (`normal | bold`), threaded through `render.ts`, `EditorCanvas` (Konva `fontStyle`), `textMetrics`, `TextEditOverlay` and a "Peso" toggle in `PropertiesPanel`; `resolveFontWeight` in `types.ts` is the single default. Optional by design — V1 layouts stay valid, no migration. The auto-size effect now skips bound nodes (see "Edit layout"), which previously shrank a field-bound box to its label's width and made the PNG export condense real values into it. Added `scripts/veredillasPersonalCardDesign.ts`, which recreates the legacy Veredillas II personal card as a design (frames, logo, framed photo, data rows bound to `nombre`/`apellido`/`calle`/`bloque`/`vivienda`/`letra`, card code as text + CODE128). No ADR (feature + bug fix, no reversed decision).
 - 2026-04-28 — Image nodes now upload via `PhotoUploader` (kind `card-design-image`) and store `staticObjectKey` in the layout. Editor + page server components pre-sign every static key into a `staticImageUrls` map that flows through `EditorCanvas` (`ImageShape`), `CardDesignPreviewModal`, and `renderDesignToDataURL`. `staticUrl` is retained read-only for legacy nodes. ADR `2026-04-27-photo-storage-r2-minio.md`.
 - 2026-04-27 — Editor polish: text auto-resize (`textMetrics.ts`) on commit + on style/binding change via new `replaceCurrent` history mode; field-bound text shows the field's label on canvas; Posición y tamaño rounds display to 3 decimals; double-click in `ElementPalette` adds the element centred; in-editor **Vista previa** with `buildMockPreviewData`; **Plantillas** picker (`TemplatePicker.tsx`) with 3 starter layouts (`templates.ts`); `NewDesignModal` now requires a card type and links it on create; misc bug fixes (Rules-of-Hooks split for `ImageShape`, `codeImages` cache GC, artboard-bg deselect, `Math.abs` on transform flip, corrected text overlay positioning math).
 - 2026-04-27 — V1 complete: list + Konva editor (Phases 1–3), field binding (Phase 4), link/unlink from editor + card-type detail (Phase 5), PNG preview + export from card detail (Phase 6).

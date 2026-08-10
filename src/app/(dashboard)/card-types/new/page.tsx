@@ -25,7 +25,7 @@ export default async function NewCardTypePage() {
   } catch (e) {
     if (e instanceof AuthenticationError) redirect("/login");
     if (e instanceof AuthorizationError) redirect("/card-types");
-    redirect("/login");
+    throw e;
   }
 
   const { role } = context;

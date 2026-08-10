@@ -43,7 +43,7 @@ export default async function NewCardPage({ searchParams }: NewCardPageProps) {
   } catch (e) {
     if (e instanceof AuthenticationError) redirect("/login");
     if (e instanceof AuthorizationError) redirect("/cards");
-    redirect("/login");
+    throw e;
   }
 
   const { tenantId, role } = context;

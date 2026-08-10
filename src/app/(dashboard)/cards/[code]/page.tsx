@@ -71,7 +71,7 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
   } catch (e) {
     if (e instanceof AuthenticationError) redirect("/login");
     if (e instanceof AuthorizationError) redirect("/login");
-    redirect("/login");
+    throw e;
   }
 
   const { tenantId, role } = context;
@@ -194,6 +194,8 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
                 staticImageUrls={staticImageUrls}
                 cardCode={card.code}
                 designName={previewDesign!.name}
+                outputWidthCm={previewDesign!.outputWidthCm}
+                outputHeightCm={previewDesign!.outputHeightCm}
               />
             )}
             {isAdmin && (

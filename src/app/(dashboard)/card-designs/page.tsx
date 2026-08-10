@@ -6,7 +6,7 @@
  */
 
 import { redirect } from "next/navigation";
-import { requireMaster, getCurrentUserProfile, AuthenticationError } from "@/lib/api";
+import { requireMaster, getCurrentUserProfile, AuthenticationError, AuthorizationError } from "@/lib/api";
 import { listCardDesigns, getDesignLinkCounts } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardDesignListClient from "@/components/card-designs/CardDesignListClient";
@@ -20,7 +20,8 @@ export default async function CardDesignsPage() {
     context = await requireMaster();
   } catch (e) {
     if (e instanceof AuthenticationError) redirect("/login");
-    redirect("/dashboard");
+    if (e instanceof AuthorizationError) redirect("/dashboard");
+    throw e;
   }
 
   const { tenantId, role } = context;

@@ -51,6 +51,7 @@ import { buildMockPreviewData } from "@/lib/card-designs/mock-preview-data";
 import TemplatePicker from "./TemplatePicker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 /** Vertical divider used between toolbar groups. */
 function ToolbarDivider() {
@@ -59,6 +60,7 @@ function ToolbarDivider() {
 
 const LABELS = {
   backBtn: "Volver",
+  designNamePlaceholder: "Nombre del diseño",
   saveBtn: "Guardar",
   savingBtn: "Guardando…",
   savedMsg: "Guardado",
@@ -95,6 +97,24 @@ export default function CardDesignEditor({
 
   // ── Parse initial layout ───────────────────────────────────────────────────
   const parsedLayout = parseLayout(design);
+
+  // ── Editable design metadata (name/description live outside the layout) ────
+  const [metaName, setMetaName] = useState(design.name);
+  const [metaDescription, setMetaDescription] = useState(design.description ?? "");
+
+  // ── Export size (physical size of the DOWNLOADED PNG) ──────────────────────
+  // Design-level meta, NOT part of the layout: it never affects the canvas,
+  // the node coordinates or the on-screen preview. Both cm values NULL means
+  // "legacy export size". Persisted with the rest of the design on Save.
+  const [outputWidthCm, setOutputWidthCm] = useState<number | null>(
+    design.outputWidthCm,
+  );
+  const [outputHeightCm, setOutputHeightCm] = useState<number | null>(
+    design.outputHeightCm,
+  );
+  const [outputLockAspect, setOutputLockAspect] = useState(
+    design.outputLockAspect,
+  );
 
   // ── Linked card types (mutable — user can link/unlink without page reload) ─
   const [linkedCardTypes, setLinkedCardTypes] = useState(initialLinkedCardTypes);
@@ -195,8 +215,19 @@ export default function CardDesignEditor({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  // The listener closes over handleSave — every value it persists must be a
+  // dependency, or ⌘S writes a stale snapshot.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyIndex, selectedNodeId, layoutHistory]);
+  }, [
+    historyIndex,
+    selectedNodeId,
+    layoutHistory,
+    metaName,
+    metaDescription,
+    outputWidthCm,
+    outputHeightCm,
+    outputLockAspect,
+  ]);
 
   // ── Broken binding detection ───────────────────────────────────────────────
   useEffect(() => {
@@ -333,6 +364,33 @@ export default function CardDesignEditor({
     pushLayout({ ...layout, canvas: { ...layout.canvas, ...patch } });
   }
 
+  // ── Design metadata (name / description) ───────────────────────────────────
+  function updateMetaName(value: string) {
+    setMetaName(value);
+    setIsDirty(true);
+  }
+
+  function updateMetaDescription(value: string) {
+    setMetaDescription(value);
+    setIsDirty(true);
+  }
+
+  /**
+   * Apply an export-size patch from the properties panel. Only the keys present
+   * in the patch change; the values are written to the DB on Save, not on every
+   * keystroke.
+   */
+  function updateOutputSize(patch: {
+    widthCm?: number | null;
+    heightCm?: number | null;
+    lockAspect?: boolean;
+  }) {
+    if (patch.widthCm !== undefined) setOutputWidthCm(patch.widthCm);
+    if (patch.heightCm !== undefined) setOutputHeightCm(patch.heightCm);
+    if (patch.lockAspect !== undefined) setOutputLockAspect(patch.lockAspect);
+    setIsDirty(true);
+  }
+
   // ── Drop handler ───────────────────────────────────────────────────────────
   function handleDrop(type: LayoutNode["type"], designX: number, designY: number) {
     const node = createNode(type, designX, designY, layout.nodes.length);
@@ -374,13 +432,20 @@ export default function CardDesignEditor({
 
   // ── Save ───────────────────────────────────────────────────────────────────
   async function handleSave() {
+    if (metaName.trim().length === 0) return;
     setSaveStatus("saving");
     const result = await updateCardDesignAction(design.id, {
+      name: metaName.trim(),
+      description: metaDescription.trim().length > 0 ? metaDescription : null,
       layout: layout as unknown as Record<string, unknown>,
+      outputWidthCm,
+      outputHeightCm,
+      outputLockAspect,
     });
     if (result.success) {
       setSaveStatus("saved");
       setIsDirty(false);
+      router.refresh();
       setTimeout(() => setSaveStatus("idle"), 2500);
     } else {
       setSaveStatus("error");
@@ -431,9 +496,13 @@ export default function CardDesignEditor({
         <ToolbarDivider />
 
         {/* Design name */}
-        <span className="max-w-60 truncate font-heading text-sm font-bold text-foreground">
-          {design.name}
-        </span>
+        <Input
+          value={metaName}
+          onChange={(e) => updateMetaName(e.target.value)}
+          placeholder={LABELS.designNamePlaceholder}
+          aria-label={LABELS.designNamePlaceholder}
+          className="h-8 w-52 border-transparent bg-transparent px-2 font-heading text-sm font-bold text-foreground shadow-none hover:border-input focus-visible:border-input focus-visible:bg-card"
+        />
 
         {isDirty && <Badge variant="secondary">Sin guardar</Badge>}
 
@@ -481,7 +550,10 @@ export default function CardDesignEditor({
         <ToolbarDivider />
 
         {/* Save */}
-        <Button onClick={handleSave} disabled={saveStatus === "saving"}>
+        <Button
+          onClick={handleSave}
+          disabled={saveStatus === "saving" || metaName.trim().length === 0}
+        >
           {saveStatus === "saving" ? (
             <>
               <Loader2 className="animate-spin" strokeWidth={2} />
@@ -547,6 +619,19 @@ export default function CardDesignEditor({
           availableFields={availableFields}
           linkedCardTypes={linkedCardTypes}
           designId={design.id}
+          description={metaDescription}
+          onDescriptionChange={updateMetaDescription}
+          outputSize={{
+            widthCm: outputWidthCm,
+            heightCm: outputHeightCm,
+            lockAspect: outputLockAspect,
+            // Aspect + footprint hints come from the design's own dimensions,
+            // which are unit-agnostic for ratio purposes.
+            designWidthUnits: design.widthUnits,
+            designHeightUnits: design.heightUnits,
+            designUnit: design.unit,
+          }}
+          onOutputSizeChange={updateOutputSize}
           staticImageUrls={staticImageUrls}
           onRegisterStaticImageUrl={registerStaticImageUrl}
           onUpdateLayout={updateCanvasProps}
@@ -570,6 +655,9 @@ export default function CardDesignEditor({
             staticImageUrls={staticImageUrls}
             cardCode={mock.cardCode}
             designName={`${design.name} (datos de muestra)`}
+            // In-memory values, so "Descargar PNG" reflects unsaved edits.
+            outputWidthCm={outputWidthCm}
+            outputHeightCm={outputHeightCm}
             onClose={() => setPreviewOpen(false)}
           />
         );

@@ -26,6 +26,9 @@ interface Props {
   staticImageUrls?: Record<string, string>;
   cardCode: string;
   designName: string;
+  /** Design's configured download size in centimetres (null = legacy size). */
+  outputWidthCm?: number | null;
+  outputHeightCm?: number | null;
 }
 
 export default function CardDesignPreviewButton({
@@ -35,6 +38,8 @@ export default function CardDesignPreviewButton({
   staticImageUrls,
   cardCode,
   designName,
+  outputWidthCm = null,
+  outputHeightCm = null,
 }: Props) {
   const [open, setOpen] = useState(false);
 
@@ -58,6 +63,8 @@ export default function CardDesignPreviewButton({
           staticImageUrls={staticImageUrls}
           cardCode={cardCode}
           designName={designName}
+          outputWidthCm={outputWidthCm}
+          outputHeightCm={outputHeightCm}
           onClose={() => setOpen(false)}
         />
       )}

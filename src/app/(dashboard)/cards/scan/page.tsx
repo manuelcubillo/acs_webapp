@@ -19,7 +19,7 @@ export default async function ScanPage() {
   } catch (e) {
     if (e instanceof AuthenticationError) redirect("/login");
     if (e instanceof AuthorizationError) redirect("/login");
-    redirect("/login");
+    throw e;
   }
 
   const { tenantId, role } = context;

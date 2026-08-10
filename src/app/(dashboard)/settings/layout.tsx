@@ -36,7 +36,7 @@ export default async function SettingsLayout({ children }: SettingsLayoutProps) 
   } catch (e) {
     if (e instanceof AuthenticationError) redirect("/login");
     if (e instanceof AuthorizationError) redirect("/dashboard");
-    redirect("/login");
+    throw e;
   }
 
   const { role } = context;

@@ -33,10 +33,18 @@ export default function CardNewClient({
     code: string,
     values: Record<string, unknown>,
   ) {
-    const res = await createCardAction({ cardTypeId, code, values });
+    // An empty code means the operator left automatic assignment on: omit the
+    // field so the server generates one. A typed code goes through verbatim.
+    const res = await createCardAction({
+      cardTypeId,
+      code: code === "" ? undefined : code,
+      values,
+    });
     if (!res.success) throw new Error(res.error);
-    // Success: show banner and remount the form (clears all fields)
-    setCreatedCode(code);
+    // Take the code from the created card, never from the submission: under
+    // automatic assignment the client never knew it, and the banner below both
+    // displays it and links to its detail page.
+    setCreatedCode(res.data.code);
     setResetKey((k) => k + 1);
   }
 
@@ -71,6 +79,7 @@ export default function CardNewClient({
         onSubmit={handleSubmit}
         onCancel={() => router.push("/cards")}
         submitLabel={TEXT.SUBMIT}
+        allowAutoCode
       />
     </div>
   );

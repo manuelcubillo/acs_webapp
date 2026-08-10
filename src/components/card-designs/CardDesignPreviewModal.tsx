@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { Download, Loader2, AlertCircle } from "lucide-react";
 import type { CardDesignLayout } from "@/lib/card-designs/types";
 import { renderDesignToDataURL } from "@/lib/card-designs/render";
+import { hasExportSize } from "@/lib/card-designs/export-size";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +38,13 @@ interface Props {
   staticImageUrls?: Record<string, string>;
   cardCode: string;
   designName: string;
+  /**
+   * Physical size of the DOWNLOADED image, in centimetres. Both must be set for
+   * it to take effect; the on-screen preview below ignores them entirely and
+   * keeps rendering at its usual size.
+   */
+  outputWidthCm?: number | null;
+  outputHeightCm?: number | null;
   onClose: () => void;
 }
 
@@ -47,6 +55,8 @@ export default function CardDesignPreviewModal({
   staticImageUrls,
   cardCode,
   designName,
+  outputWidthCm = null,
+  outputHeightCm = null,
   onClose,
 }: Props) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
@@ -69,19 +79,48 @@ export default function CardDesignPreviewModal({
     return () => { cancelled = true; };
   }, [layout, fieldValues, photoValues, staticImageUrls, cardCode]);
 
-  function handleDownload() {
-    if (!dataUrl) return;
-    setDownloading(true);
+  /** Fires the browser download for an already-rendered data URL. */
+  function triggerDownload(url: string) {
     const a = document.createElement("a");
-    a.href = dataUrl;
+    a.href = url;
     a.download = `${designName.replace(/[^a-z0-9]/gi, "_")}.png`;
     a.click();
-    setTimeout(() => setDownloading(false), 500);
+  }
+
+  /**
+   * Downloads the design. When the design carries a configured export size the
+   * file is re-rendered at that physical size (300 DPI) instead of reusing the
+   * preview bitmap; otherwise the preview data URL is downloaded as before.
+   */
+  async function handleDownload() {
+    if (!dataUrl) return;
+    setDownloading(true);
+    try {
+      if (hasExportSize(outputWidthCm, outputHeightCm)) {
+        // hasExportSize guarantees both dimensions; a type predicate can only
+        // narrow its first parameter, hence the cast on the height.
+        const exportUrl = await renderDesignToDataURL({
+          layout,
+          fieldValues,
+          photoValues,
+          staticImageUrls,
+          cardCode,
+          output: { widthCm: outputWidthCm, heightCm: outputHeightCm as number },
+        });
+        triggerDownload(exportUrl);
+      } else {
+        triggerDownload(dataUrl);
+      }
+    } catch {
+      setError(LABELS.renderError);
+    } finally {
+      setDownloading(false);
+    }
   }
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-h-[90vh] max-w-[640px] gap-0 overflow-hidden p-0">
+      <DialogContent className="flex max-h-[95vh] max-w-[95vw] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(95vw,1100px)]">
         {/* Header */}
         <DialogHeader className="border-b p-5">
           <DialogTitle className="truncate font-heading text-[15px] font-bold">
@@ -90,7 +129,7 @@ export default function CardDesignPreviewModal({
         </DialogHeader>
 
         {/* Preview area */}
-        <div className="flex min-h-[200px] flex-1 items-center justify-center overflow-y-auto bg-muted p-6">
+        <div className="flex min-h-[200px] flex-1 items-center justify-center overflow-auto bg-muted p-6">
           {error ? (
             <div className="flex flex-col items-center gap-2 text-destructive">
               <AlertCircle className="size-7" strokeWidth={1.5} />
@@ -106,7 +145,7 @@ export default function CardDesignPreviewModal({
             <img
               src={dataUrl}
               alt={designName}
-              className="max-h-[60vh] max-w-full rounded-lg object-contain shadow-lg"
+              className="max-h-[80vh] max-w-full rounded-lg object-contain shadow-lg"
             />
           )}
         </div>
@@ -116,7 +155,7 @@ export default function CardDesignPreviewModal({
           <Button variant="outline" onClick={onClose}>
             {LABELS.close}
           </Button>
-          <Button onClick={handleDownload} disabled={!dataUrl || downloading}>
+          <Button onClick={() => void handleDownload()} disabled={!dataUrl || downloading}>
             {downloading ? (
               <Loader2 className="animate-spin" strokeWidth={2} />
             ) : (

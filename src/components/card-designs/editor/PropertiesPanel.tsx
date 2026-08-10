@@ -13,6 +13,7 @@ import {
   ChevronsUp,
   ChevronsDown,
   Lock,
+  LockOpen,
   Unlock,
   Trash2,
   Copy,
@@ -22,7 +23,22 @@ import {
 } from "lucide-react";
 import { listCardTypesAction } from "@/lib/actions/card-types";
 import type { CardDesignLayout, LayoutNode, WebSafeFont } from "@/lib/card-designs/types";
-import { WEB_SAFE_FONTS } from "@/lib/card-designs/types";
+import {
+  WEB_SAFE_FONTS,
+  TEXT_FONT_WEIGHTS,
+  resolveFontWeight,
+} from "@/lib/card-designs/types";
+import {
+  EXPORT_DPI,
+  MAX_EXPORT_CM,
+  MIN_EXPORT_CM,
+  clampExportCm,
+  cmToPx,
+  designAspect,
+  heightFromWidthCm,
+  roundExportCm,
+  widthFromHeightCm,
+} from "@/lib/card-designs/export-size";
 import type { CommonFieldDefinition, CardTypeWithFields, CardType } from "@/lib/dal";
 import { COMPATIBLE_FIELD_TYPES } from "./CardDesignEditor";
 import PhotoUploader from "@/components/shared/PhotoUploader";
@@ -40,6 +56,9 @@ import { cn } from "@/lib/utils";
 
 const LABELS = {
   panelTitle: "Propiedades",
+  generalSection: "General",
+  descriptionLabel: "Descripción",
+  descriptionPlaceholder: "Descripción opcional…",
   canvasSection: "Canvas",
   background: "Fondo",
   safeMargin: "Margen seguro",
@@ -65,6 +84,9 @@ const LABELS = {
   styleSection: "Estilo",
   fontFamily: "Fuente",
   fontSize: "Tamaño",
+  fontWeight: "Peso",
+  weightNormal: "Normal",
+  weightBold: "Negrita",
   color: "Color",
   textAlign: "Alineación",
   multiline: "Multilínea",
@@ -81,6 +103,19 @@ const LABELS = {
   y1: "Y1",
   x2: "X2",
   y2: "Y2",
+  exportSizeSection: "Tamaño de exportación",
+  exportWidth: "Ancho (cm)",
+  exportHeight: "Alto (cm)",
+  exportLockOn: "Proporción bloqueada",
+  exportLockOff: "Proporción libre",
+  exportPixels: (w: number, h: number) =>
+    `≈ ${w} × ${h} px @ ${EXPORT_DPI} DPI`,
+  exportDesignCm: (w: string, h: string) => `Diseño: ${w} × ${h} cm`,
+  exportDesignPx: (w: string, h: string) => `Diseño: ${w} × ${h} px`,
+  exportUseDesignSize: "Usar tamaño del diseño",
+  exportClear: "Quitar",
+  exportEmptyHint:
+    "Sin definir: la descarga mantiene el tamaño actual del diseño.",
   noSelection: "Selecciona un elemento para editar sus propiedades.",
   linkedTypesSection: "Tipos de tarjeta",
   noLinkedTypes: "Sin tipos vinculados.",
@@ -105,6 +140,29 @@ const LABELS = {
 // Sentinel for the field-selector "no field" option (Select can't use "").
 const NO_FIELD = "__none__";
 
+/**
+ * Export size as the panel sees it: the two configurable cm values, the padlock
+ * state, and the design's own dimensions (used for the aspect ratio and the
+ * footprint hint). Both cm values are null when the design has no configured
+ * export size — the inputs then show placeholders, never a prefilled guess, so
+ * an untouched design keeps NULL in the DB and its legacy export behaviour.
+ */
+export interface ExportSizeState {
+  widthCm: number | null;
+  heightCm: number | null;
+  lockAspect: boolean;
+  designWidthUnits: number;
+  designHeightUnits: number;
+  designUnit: "mm" | "px";
+}
+
+/** Partial update emitted by the export-size section. */
+export interface ExportSizePatch {
+  widthCm?: number | null;
+  heightCm?: number | null;
+  lockAspect?: boolean;
+}
+
 /** Segmented-toggle button class (active = brand accent). */
 function toggleBtnClass(active: boolean): string {
   return cn(
@@ -122,6 +180,12 @@ interface Props {
   availableFields: CommonFieldDefinition[];
   linkedCardTypes: CardTypeWithFields[];
   designId: string;
+  /** Design description (editable from the canvas/no-selection view). */
+  description: string;
+  onDescriptionChange: (value: string) => void;
+  /** Physical size of the downloaded PNG (canvas/no-selection view). */
+  outputSize: ExportSizeState;
+  onOutputSizeChange: (patch: ExportSizePatch) => void;
   /** Object-key → signed URL for static image nodes (read by uploader for previews). */
   staticImageUrls: Record<string, string>;
   /** Called by the uploader to register a fresh signed URL after upload. */
@@ -145,6 +209,10 @@ export default function PropertiesPanel({
   availableFields,
   linkedCardTypes,
   designId,
+  description,
+  onDescriptionChange,
+  outputSize,
+  onOutputSizeChange,
   staticImageUrls,
   onRegisterStaticImageUrl,
   onUpdateLayout,
@@ -172,6 +240,10 @@ export default function PropertiesPanel({
             canvas={layout.canvas}
             unit={unit}
             linkedCardTypes={linkedCardTypes}
+            description={description}
+            onDescriptionChange={onDescriptionChange}
+            outputSize={outputSize}
+            onOutputSizeChange={onOutputSizeChange}
             onUpdate={onUpdateLayout}
             onLink={onLink}
             onUnlink={onUnlink}
@@ -201,6 +273,10 @@ function CanvasProperties({
   canvas,
   unit,
   linkedCardTypes,
+  description,
+  onDescriptionChange,
+  outputSize,
+  onOutputSizeChange,
   onUpdate,
   onLink,
   onUnlink,
@@ -208,12 +284,28 @@ function CanvasProperties({
   canvas: CardDesignLayout["canvas"];
   unit: string;
   linkedCardTypes: CardTypeWithFields[];
+  description: string;
+  onDescriptionChange: (value: string) => void;
+  outputSize: ExportSizeState;
+  onOutputSizeChange: (patch: ExportSizePatch) => void;
   onUpdate: (patch: Partial<CardDesignLayout["canvas"]>) => void;
   onLink: (cardTypeId: string) => Promise<string | null>;
   onUnlink: (cardTypeId: string) => Promise<string | null>;
 }) {
   return (
     <>
+      <Section title={LABELS.generalSection}>
+        <Row label={LABELS.descriptionLabel}>
+          <Textarea
+            rows={3}
+            className="resize-y text-xs"
+            placeholder={LABELS.descriptionPlaceholder}
+            value={description}
+            onChange={(e) => onDescriptionChange(e.target.value)}
+          />
+        </Row>
+      </Section>
+
       <Section title={LABELS.canvasSection}>
         <Row label={LABELS.background}>
           <ColorInput
@@ -248,12 +340,181 @@ function CanvasProperties({
         </div>
       </Section>
 
+      <ExportSizeSection state={outputSize} onChange={onOutputSizeChange} />
+
       <LinkedCardTypesSection
         linkedCardTypes={linkedCardTypes}
         onLink={onLink}
         onUnlink={onUnlink}
       />
     </>
+  );
+}
+
+// ─── Export size section ──────────────────────────────────────────────────────
+
+/**
+ * "Tamaño de exportación" — the physical size of the PNG produced by
+ * "Descargar PNG", in centimetres, rasterised at a fixed 300 DPI.
+ *
+ * Export-only: nothing here touches the canvas, the layout or the on-screen
+ * preview. Leaving both fields empty keeps the design on its legacy export size.
+ *
+ * The padlock links the two values to the design's aspect ratio. Unlocked, the
+ * export stretches the artwork to fill the target raster (non-uniform scale) —
+ * the accepted trade-off of unlocking.
+ */
+function ExportSizeSection({
+  state,
+  onChange,
+}: {
+  state: ExportSizeState;
+  onChange: (patch: ExportSizePatch) => void;
+}) {
+  const {
+    widthCm,
+    heightCm,
+    lockAspect,
+    designWidthUnits,
+    designHeightUnits,
+    designUnit,
+  } = state;
+
+  const aspect = designAspect(designWidthUnits, designHeightUnits);
+  const isConfigured = widthCm !== null && heightCm !== null;
+
+  /** Snap a typed value onto the grid the numeric(6,2) column can hold. */
+  const normalize = (cm: number) => clampExportCm(roundExportCm(cm));
+
+  function handleWidth(next: number | null) {
+    // Both-or-neither: clearing one field clears the other.
+    if (next === null) {
+      onChange({ widthCm: null, heightCm: null });
+      return;
+    }
+    const w = normalize(next);
+    // Locked → recompute the counterpart. Unlocked but still empty → seed it
+    // from the aspect ratio so the pair is never half-set; the user is then
+    // free to edit it independently.
+    const h =
+      lockAspect || heightCm === null ? heightFromWidthCm(w, aspect) : heightCm;
+    onChange({ widthCm: w, heightCm: h });
+  }
+
+  function handleHeight(next: number | null) {
+    if (next === null) {
+      onChange({ widthCm: null, heightCm: null });
+      return;
+    }
+    const h = normalize(next);
+    const w =
+      lockAspect || widthCm === null ? widthFromHeightCm(h, aspect) : widthCm;
+    onChange({ widthCm: w, heightCm: h });
+  }
+
+  function toggleLock() {
+    const nextLock = !lockAspect;
+    // Re-locking keeps the width authoritative and re-derives the height.
+    if (nextLock && widthCm !== null) {
+      onChange({ lockAspect: true, heightCm: heightFromWidthCm(widthCm, aspect) });
+    } else {
+      onChange({ lockAspect: nextLock });
+    }
+  }
+
+  /** Fill both fields from the design's own mm footprint, padlock on. */
+  function useDesignSize() {
+    onChange({
+      widthCm: normalize(designWidthUnits / 10),
+      heightCm: normalize(designHeightUnits / 10),
+      lockAspect: true,
+    });
+  }
+
+  return (
+    <Section title={LABELS.exportSizeSection}>
+      <div className="flex items-end gap-1.5">
+        <div className="flex-1">
+          <Row label={LABELS.exportWidth}>
+            <CmInput
+              value={widthCm}
+              placeholder={LABELS.exportWidth}
+              onChange={handleWidth}
+            />
+          </Row>
+        </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          onClick={toggleLock}
+          title={lockAspect ? LABELS.exportLockOn : LABELS.exportLockOff}
+          aria-pressed={lockAspect}
+          aria-label={lockAspect ? LABELS.exportLockOn : LABELS.exportLockOff}
+          className={cn(
+            "mb-0.5 shrink-0",
+            lockAspect && "border-primary bg-accent text-primary",
+          )}
+        >
+          {lockAspect ? <Lock strokeWidth={2} /> : <LockOpen strokeWidth={2} />}
+        </Button>
+
+        <div className="flex-1">
+          <Row label={LABELS.exportHeight}>
+            <CmInput
+              value={heightCm}
+              placeholder={LABELS.exportHeight}
+              onChange={handleHeight}
+            />
+          </Row>
+        </div>
+      </div>
+
+      {/* Helper captions */}
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        {isConfigured
+          ? LABELS.exportPixels(cmToPx(widthCm), cmToPx(heightCm))
+          : LABELS.exportEmptyHint}
+      </p>
+      <p className="text-[11px] leading-relaxed text-muted-foreground">
+        {designUnit === "mm"
+          ? LABELS.exportDesignCm(
+              formatNumber(designWidthUnits / 10, 2),
+              formatNumber(designHeightUnits / 10, 2),
+            )
+          : LABELS.exportDesignPx(
+              formatNumber(designWidthUnits, 2),
+              formatNumber(designHeightUnits, 2),
+            )}
+      </p>
+
+      <div className="mt-0.5 flex gap-1.5">
+        {/* Only a mm design has a physical footprint to copy from. */}
+        {designUnit === "mm" && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={useDesignSize}
+            className="flex-1 overflow-hidden px-1.5 text-[10.5px]"
+          >
+            <span className="truncate">{LABELS.exportUseDesignSize}</span>
+          </Button>
+        )}
+        {isConfigured && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onChange({ widthCm: null, heightCm: null })}
+            className="flex-1 overflow-hidden px-1.5 text-[10.5px]"
+          >
+            <span className="truncate">{LABELS.exportClear}</span>
+          </Button>
+        )}
+      </div>
+    </Section>
   );
 }
 
@@ -475,6 +736,26 @@ function NodeProperties({
                 />
               </Row>
             </div>
+            <Row label={LABELS.fontWeight}>
+              <div className="flex gap-1">
+                {TEXT_FONT_WEIGHTS.map((weight) => (
+                  <button
+                    key={weight}
+                    type="button"
+                    onClick={() =>
+                      onUpdate({ style: { ...node.style, fontWeight: weight } })
+                    }
+                    className={toggleBtnClass(
+                      resolveFontWeight(node.style) === weight,
+                    )}
+                  >
+                    {weight === "bold"
+                      ? LABELS.weightBold
+                      : LABELS.weightNormal}
+                  </button>
+                ))}
+              </div>
+            </Row>
             <Row label={LABELS.textAlign}>
               <div className="flex gap-1">
                 {(["left", "center", "right"] as const).map((align) => (
@@ -929,6 +1210,51 @@ function NumberInput({
       onChange={(e) => {
         setDraft(e.target.value);
         const v = parseFloat(e.target.value);
+        if (!isNaN(v)) onChange(v);
+      }}
+      onBlur={() => setDraft(null)}
+    />
+  );
+}
+
+/**
+ * Centimetre input for the export size. Same draft-string typing model as
+ * `NumberInput`, but nullable: an empty field means "not configured" and emits
+ * `null` rather than a number, which is what keeps the DB column NULL and the
+ * design on its legacy export size.
+ */
+function CmInput({
+  value,
+  placeholder,
+  onChange,
+}: {
+  value: number | null;
+  placeholder: string;
+  onChange: (v: number | null) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const display =
+    draft !== null ? draft : value === null ? "" : formatNumber(value, 2);
+
+  return (
+    <Input
+      type="number"
+      className="h-8 text-xs"
+      value={display}
+      placeholder={placeholder}
+      min={MIN_EXPORT_CM}
+      max={MAX_EXPORT_CM}
+      step={0.1}
+      onFocus={() => setDraft(display)}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setDraft(raw);
+        if (raw.trim() === "") {
+          onChange(null);
+          return;
+        }
+        const v = parseFloat(raw);
         if (!isNaN(v)) onChange(v);
       }}
       onBlur={() => setDraft(null)}

@@ -14,6 +14,7 @@ import {
   requireOperator,
   getCurrentUserProfile,
   AuthenticationError,
+  AuthorizationError,
 } from "@/lib/api";
 import { getCardTypeWithFullSchema, listCardTypes } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
@@ -59,7 +60,8 @@ export default async function CardTypesPage({
     context = await requireOperator();
   } catch (e) {
     if (e instanceof AuthenticationError) redirect("/login");
-    redirect("/dashboard");
+    if (e instanceof AuthorizationError) redirect("/dashboard");
+    throw e;
   }
 
   const { tenantId, role } = context;

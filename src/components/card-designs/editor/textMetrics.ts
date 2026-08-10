@@ -6,6 +6,8 @@
  * back into design units.
  */
 
+import { resolveFontWeight, type TextFontWeight } from "@/lib/card-designs/types";
+
 let measureCtx: CanvasRenderingContext2D | null = null;
 
 function getCtx(): CanvasRenderingContext2D | null {
@@ -23,6 +25,8 @@ export interface MeasureInput {
   fontSizePx: number;
   /** Font family (must match the rendered Konva text). */
   fontFamily: string;
+  /** Font weight (must match the rendered Konva text). Defaults to normal. */
+  fontWeight?: TextFontWeight;
   /** When true, soft-wraps long lines at maxWidthPx (approx word wrap). */
   wrap?: boolean;
   /** Optional max width in canvas pixels for soft-wrap mode. */
@@ -48,6 +52,7 @@ export function measureText({
   text,
   fontSizePx,
   fontFamily,
+  fontWeight,
   wrap,
   maxWidthPx,
 }: MeasureInput): TextSize {
@@ -64,7 +69,7 @@ export function measureText({
     };
   }
 
-  ctx.font = `${fontSizePx}px ${fontFamily}`;
+  ctx.font = `${resolveFontWeight({ fontWeight })} ${fontSizePx}px ${fontFamily}`;
 
   const paragraphs = safeText.split("\n");
   const lines: string[] = [];
