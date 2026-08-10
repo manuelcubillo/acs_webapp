@@ -144,7 +144,9 @@
       "Bash(vercel --version)",
       "Bash(vercel project *)",
       "Bash(curl -s -o /dev/null -D - https://acs-mc.vercel.app/dashboard)",
-      "Bash(lsof -i :3000 -sTCP:LISTEN -t)"
+      "Bash(lsof -i :3000 -sTCP:LISTEN -t)",
+      "Bash(pnpm vitest *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" -m 3 http://localhost:3000/login)"
     ]
   }
 }
