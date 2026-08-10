@@ -194,6 +194,8 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
                 staticImageUrls={staticImageUrls}
                 cardCode={card.code}
                 designName={previewDesign!.name}
+                outputWidthCm={previewDesign!.outputWidthCm}
+                outputHeightCm={previewDesign!.outputHeightCm}
               />
             )}
             {isAdmin && (

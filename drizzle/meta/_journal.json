@@ -134,6 +134,13 @@
       "when": 1785872043552,
       "tag": "0018_outstanding_maddog",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786043276462,
+      "tag": "0019_lucky_gateway",
+      "breakpoints": true
     }
   ]
 }

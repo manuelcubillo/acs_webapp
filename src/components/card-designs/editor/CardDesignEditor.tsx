@@ -102,6 +102,20 @@ export default function CardDesignEditor({
   const [metaName, setMetaName] = useState(design.name);
   const [metaDescription, setMetaDescription] = useState(design.description ?? "");
 
+  // ── Export size (physical size of the DOWNLOADED PNG) ──────────────────────
+  // Design-level meta, NOT part of the layout: it never affects the canvas,
+  // the node coordinates or the on-screen preview. Both cm values NULL means
+  // "legacy export size". Persisted with the rest of the design on Save.
+  const [outputWidthCm, setOutputWidthCm] = useState<number | null>(
+    design.outputWidthCm,
+  );
+  const [outputHeightCm, setOutputHeightCm] = useState<number | null>(
+    design.outputHeightCm,
+  );
+  const [outputLockAspect, setOutputLockAspect] = useState(
+    design.outputLockAspect,
+  );
+
   // ── Linked card types (mutable — user can link/unlink without page reload) ─
   const [linkedCardTypes, setLinkedCardTypes] = useState(initialLinkedCardTypes);
 
@@ -201,8 +215,19 @@ export default function CardDesignEditor({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  // The listener closes over handleSave — every value it persists must be a
+  // dependency, or ⌘S writes a stale snapshot.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historyIndex, selectedNodeId, layoutHistory, metaName, metaDescription]);
+  }, [
+    historyIndex,
+    selectedNodeId,
+    layoutHistory,
+    metaName,
+    metaDescription,
+    outputWidthCm,
+    outputHeightCm,
+    outputLockAspect,
+  ]);
 
   // ── Broken binding detection ───────────────────────────────────────────────
   useEffect(() => {
@@ -350,6 +375,22 @@ export default function CardDesignEditor({
     setIsDirty(true);
   }
 
+  /**
+   * Apply an export-size patch from the properties panel. Only the keys present
+   * in the patch change; the values are written to the DB on Save, not on every
+   * keystroke.
+   */
+  function updateOutputSize(patch: {
+    widthCm?: number | null;
+    heightCm?: number | null;
+    lockAspect?: boolean;
+  }) {
+    if (patch.widthCm !== undefined) setOutputWidthCm(patch.widthCm);
+    if (patch.heightCm !== undefined) setOutputHeightCm(patch.heightCm);
+    if (patch.lockAspect !== undefined) setOutputLockAspect(patch.lockAspect);
+    setIsDirty(true);
+  }
+
   // ── Drop handler ───────────────────────────────────────────────────────────
   function handleDrop(type: LayoutNode["type"], designX: number, designY: number) {
     const node = createNode(type, designX, designY, layout.nodes.length);
@@ -397,6 +438,9 @@ export default function CardDesignEditor({
       name: metaName.trim(),
       description: metaDescription.trim().length > 0 ? metaDescription : null,
       layout: layout as unknown as Record<string, unknown>,
+      outputWidthCm,
+      outputHeightCm,
+      outputLockAspect,
     });
     if (result.success) {
       setSaveStatus("saved");
@@ -577,6 +621,17 @@ export default function CardDesignEditor({
           designId={design.id}
           description={metaDescription}
           onDescriptionChange={updateMetaDescription}
+          outputSize={{
+            widthCm: outputWidthCm,
+            heightCm: outputHeightCm,
+            lockAspect: outputLockAspect,
+            // Aspect + footprint hints come from the design's own dimensions,
+            // which are unit-agnostic for ratio purposes.
+            designWidthUnits: design.widthUnits,
+            designHeightUnits: design.heightUnits,
+            designUnit: design.unit,
+          }}
+          onOutputSizeChange={updateOutputSize}
           staticImageUrls={staticImageUrls}
           onRegisterStaticImageUrl={registerStaticImageUrl}
           onUpdateLayout={updateCanvasProps}
@@ -600,6 +655,9 @@ export default function CardDesignEditor({
             staticImageUrls={staticImageUrls}
             cardCode={mock.cardCode}
             designName={`${design.name} (datos de muestra)`}
+            // In-memory values, so "Descargar PNG" reflects unsaved edits.
+            outputWidthCm={outputWidthCm}
+            outputHeightCm={outputHeightCm}
             onClose={() => setPreviewOpen(false)}
           />
         );

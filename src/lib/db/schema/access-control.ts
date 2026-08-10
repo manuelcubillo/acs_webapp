@@ -31,6 +31,7 @@ import {
   boolean,
   integer,
   doublePrecision,
+  numeric,
   jsonb,
   uuid,
   smallint,
@@ -845,6 +846,17 @@ export const cardDesigns = pgTable(
     unit: dimensionUnitEnum("unit").notNull(),
     /** Full layout as CardDesignLayout JSON (version 1 schema). */
     layout: jsonb("layout").notNull().default({}),
+    /**
+     * Physical size of the DOWNLOADED card image, in centimetres.
+     * NULL => legacy export size (the renderer's uniform scale). Export-only:
+     * these never affect the editor canvas, the layout, or the on-screen
+     * preview. Rasterised at a fixed 300 DPI — see
+     * src/lib/card-designs/export-size.ts.
+     */
+    outputWidthCm: numeric("output_width_cm", { precision: 6, scale: 2 }),
+    outputHeightCm: numeric("output_height_cm", { precision: 6, scale: 2 }),
+    /** Whether the two cm fields are locked to the design's aspect ratio in the editor UI. */
+    outputLockAspect: boolean("output_lock_aspect").notNull().default(true),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
