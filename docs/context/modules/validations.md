@@ -1,6 +1,6 @@
 # Module: validations
 
-**Last updated**: 2026-08-02 · **Last feature**: select-field options extraction consolidated into one shared helper in `rules.ts`
+**Last updated**: 2026-08-15 · **Last feature**: scan validations skip an empty value on a non-mandatory field
 
 ## Responsibility
 
@@ -22,6 +22,7 @@ Critical invariant: scan validations **inform**, never **block** actions.
 - `src/lib/validation/scan-validator.ts` — Scan-time evaluation.
 - `src/lib/validation/messages.ts` — Message templates (i18n-ready).
 - `src/lib/validation/index.ts` — Barrel export.
+- `src/lib/validation/__tests__/scan-validator.test.ts` — Pins the empty-value contract (skip on optional, fail on required, `false`/`0` still evaluated).
 - `src/lib/dal/scan-validations.ts` — `getScanValidationsByCardType`, `validateScan`.
 - `src/components/card-types/steps/ScanValidationsStep.tsx` — Wizard step for scan validation rules.
 - `src/components/cards/ScanAlerts.tsx` — Renders `ScanValidationResult`.
@@ -54,6 +55,8 @@ Critical invariant: scan validations **inform**, never **block** actions.
 
 Severity: `error` (red) or `warning` (yellow).
 
+**Empty values.** A rule whose target field is **optional** and holds no value is skipped — reported as `passed: true` plus `skipped: true`, never as a failure. On a **required** field an empty value still fails. Empty means `undefined` / `null` / `""`; `false` and `0` are real values and are still evaluated. The mandatory flag reaches the engine through `ScanValidationWithField.fieldIsRequired` (joined in `getScanValidationsByCardType`), **not** through `EnrichedFieldValue.isRequired` — a field left blank on card creation has no `field_values` row at all, so it is absent from the card's enriched values entirely. ADR `2026-08-15-scan-validation-empty-optional-fields.md`.
+
 ## Main flows
 
 ### Form validation
@@ -66,9 +69,10 @@ Severity: `error` (red) or `warning` (yellow).
 ### Scan validation
 
 1. Card detail page calls `validateScan(card, scanValidations)`.
-2. Returns `ScanValidationResult { passed, results[] }` with per-rule `passed`, `severity`, `message`.
-3. `ScanAlerts` renders the failing rules (errors first, then warnings).
-4. After a successful action, client re-evaluates because values may have changed — handled in `CardActions` / `ActiveCardZone` callbacks.
+2. Per rule: if the field is optional and its value is empty the rule is skipped (`passed: true`, `skipped: true`); otherwise the evaluator runs.
+3. Returns `ScanValidationResult { passed, results[] }` with per-rule `passed`, `severity`, `message`.
+4. `ScanAlerts` renders the failing rules (errors first, then warnings). Every UI surface filters on `!passed`, so a skipped check renders nothing.
+5. After a successful action, client re-evaluates because values may have changed — handled in `CardActions` / `ActiveCardZone` callbacks.
 
 ## Extension points
 
@@ -88,6 +92,7 @@ Severity: `error` (red) or `warning` (yellow).
 
 ## Recent changes
 
+- 2026-08-15 — Scan validations no longer fail on an empty value when the target field is not mandatory: `validateScan` skips the rule (`passed: true`, new `skipped` marker) before reaching the evaluator. Every evaluator is a positive type guard, so the absence of a value used to surface as an error-level failure and deny the scan. The mandatory flag now travels with the rule (`ScanValidationWithField.fieldIsRequired`, joined in `getScanValidationsByCardType` — no extra query) because a field blank since creation has no `field_values` row and is missing from `EnrichedFieldValue[]`. Required fields still fail; `false` and `0` are still evaluated. New `__tests__/scan-validator.test.ts` (the engine had no direct coverage). ADR `2026-08-15-scan-validation-empty-optional-fields.md`.
 - 2026-08-02 — `rules.ts` gained `SELECT_OPTIONS_RULE` + `getSelectOptions(validationRules)`, now the only way to read a select field's options. Three layers previously hard-coded their own access pattern and two were wrong (`SelectInput` looked up a rule named `allowedValues`; `FieldFilterBuilder` read `validationRules.options` instead of walking `rules[]`), each returning `[]` rather than throwing — so select fields silently rendered empty dropdowns and could be neither assigned on card creation nor filtered. `RULES_BY_FIELD_TYPE.select` and the `VALIDATOR_REGISTRY` key now derive from the same constant, so writer and readers cannot desync. New `__tests__/select-options.test.ts` pins the contract (mutation-verified against both original bugs). No ADR — bug fix + refactor.
 - 2026-07-17 — Phase-2 lifecycle reuses the scan-validation channel: a synthetic `lifecycle_status` check (`buildLifecycleScanCheck`) surfaces an inactive/expired card as an error-level failure so the override flow handles it. `messages.ts` gained `LIFECYCLE_SCAN_MESSAGES` + `LIFECYCLE_SCAN_FIELD_LABEL`. The engines themselves are unchanged. ADR `2026-07-17-card-lifecycle-scan-behaviour.md`.
 - 2026-04-19 — Initial extraction from architecture document.

@@ -1,6 +1,6 @@
 # Module: fields
 
-**Last updated**: 2026-08-02 · **Last feature**: select options read through one shared helper; corrected the documented storage column for `select`
+**Last updated**: 2026-08-15 · **Last feature**: `is_required` gained a second consumer — it now drives the scan-validation empty-value skip
 
 ## Responsibility
 
@@ -35,7 +35,7 @@ Validation rules per field type are stored here (in `validation_rules` jsonb) bu
 | `name`              | Internal identifier                                                                |
 | `label`             | UI label                                                                           |
 | `field_type`        | Enum: `text | number | boolean | date | photo | select`                            |
-| `is_required`       | bool                                                                               |
+| `is_required`       | bool. Read by both engines: the form engine rejects a blank value, and at scan time a **non-mandatory** field with no value makes its scan validations skip instead of fail. See `modules/validations.md`. |
 | `position`          | Order in card layout                                                               |
 | `default_value`     | jsonb                                                                              |
 | `validation_rules`  | jsonb — interpreted by form validation engine; `select` options live here too      |
@@ -140,8 +140,8 @@ Read them **only** via `getSelectOptions(validationRules)` from `@/lib/validatio
 
 ## Recent changes
 
+- 2026-08-15 — `is_required` now has a second consumer: at scan time a non-mandatory field with no value makes its scan validations skip rather than fail. No code changed in this module — the flag is joined onto the rule in `src/lib/dal/scan-validations.ts`, because a field blank since creation has no `field_values` row and never reaches `EnrichedFieldValue[]`. ADR `2026-08-15-scan-validation-empty-optional-fields.md`.
 - 2026-08-02 — Select options are now read through one shared helper, `getSelectOptions` in `@/lib/validation/rules`. `SelectInput` was looking up a rule named `allowedValues` (nothing writes that name), so the card form's select dropdown was always empty and a select field could not be assigned on create or edit. Corrected the storage table above: `select` lives in **`value_text`**, not `value_json` — the doc described a multi-select design that was never implemented. Bug fix, no ADR.
 - 2026-08-02 — `PhotoRenderer` lightbox became opt-out via a new `enlargeable` prop (default `true`), threaded through `DynamicFieldRenderer`. Both list views pass `false`: their row navigates to the card detail, and the photo's `onClick` was swallowing that click, so the thumbnail advertised "Ampliar foto" and then never enlarged. Static variant drops the handler, `cursor-pointer` and `aria-label`; the shared footprint moved to a `THUMBNAIL_CLASS` constant. Thumbnails also gained `loading="lazy"` + `decoding="async"` — a 50-row list was firing 50 photo-route round trips to paint ~4 visible rows. Side effect: **Descargar** is now card-detail-only. Bug fix, no ADR.
 - 2026-08-02 — `PhotoRenderer` gained a second addressing mode: with `cardCode` + `fieldDefinitionId` it builds its own `<img src>` from `cardPhotoRoute` (stable, per-request signature) instead of consuming a URL from `value`, which becomes a pure presence signal. Adopted by both card list views and, since it already passed both props, card detail. Fixes list thumbnails breaking on every client-side refetch and the 15-minute expiry. The download href now comes from the same helper. ADR `2026-08-02-card-list-photos-stable-route.md`.
 - 2026-07-19 — Webcam capture + interactive crop for photo fields, in both edit + create views via the shared `PhotoUploader` (opt-in `enableWebcam` / `enableCrop`; `PhotoInput` turns both on — other photo kinds unchanged). New `useWebcamCapture` hook, `WebcamCaptureDialog`, `ImageCropDialog` (`react-easy-crop`; "Free" = source aspect, plus 1:1 / 3:4 presets + zoom), and a shadcn `Slider`. `optimizeImage` gained an optional source-pixel `cropRect` that overrides the profile centre-crop. Photo lightbox added a **Descargar** button; downloads are named `<code>_<fieldName>_<random>.<ext>` via a signed `Content-Disposition` (stored key unchanged). ADR `2026-07-19-webcam-capture-and-crop.md`.
-- 2026-07-16 — `PhotoRenderer` thumbnail now preserves aspect ratio (no square crop): removed `object-cover`, added `self-start` + `shrink-0` to defeat parent flex-stretch, and moved the size cap to the `--photo-thumbnail-size` var (`globals.css`, 6rem). Lightbox `DialogContent` set to `w-fit` (no black gutter). Corrected stale `CARD_PHOTO_PROFILE` figure (was ≤ 180 KB; code caps at 2.5 MB / 3000×4000px). Dashboard now renders card photo thumbnails (see `modules/dashboard.md`).

@@ -3,9 +3,10 @@
 /**
  * HistoryFieldFilters
  *
- * Loads common field definitions for the selected card types and renders
- * the shared FieldFilterBuilder. Appears in the HistoryFilters panel when
- * at least one card type is selected.
+ * Loads common field definitions for the given card types and renders the
+ * shared FieldFilterBuilder. The caller passes the *effective* types — the
+ * selection, or every active type when nothing is selected — so the builder is
+ * available without picking a type first, as on the card list.
  */
 
 import { useEffect, useState } from "react";

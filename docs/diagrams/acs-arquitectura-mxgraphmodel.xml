@@ -1,0 +1,578 @@
+<mxGraphModel dx="1800" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="2600" math="0" shadow="0">
+  <root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+    <mxCell id="title_main" value="ACS · Sistema de Control de Accesos multi-tenant (Next.js 16 · Drizzle · PostgreSQL)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=20;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="40" y="8" width="1100" height="30" as="geometry" />
+    </mxCell>
+    <mxCell id="title_zone1" value="ZONA 1 · DIAGRAMA DE CLASES — estructura del dominio" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=15;fontStyle=1;fontColor=#6C8EBF;" vertex="1" parent="1">
+      <mxGeometry x="40" y="45" width="900" height="28" as="geometry" />
+    </mxCell>
+    <mxCell id="title_zone2" value="ZONA 2 · WORKFLOWS — caminos lógicos y estados de proceso" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=15;fontStyle=1;fontColor=#82B366;" vertex="1" parent="1">
+      <mxGeometry x="40" y="1100" width="900" height="28" as="geometry" />
+    </mxCell>
+    <mxCell id="zone1_box" value="" style="rounded=0;html=1;fillColor=#F7F9FC;strokeColor=#6C8EBF;dashed=1;dashPattern=8 8;strokeWidth=2;opacity=60;" vertex="1" parent="1">
+      <mxGeometry x="20" y="80" width="1900" height="1000" as="geometry" />
+    </mxCell>
+    <mxCell id="zone2_box" value="" style="rounded=0;html=1;fillColor=#F7FCF7;strokeColor=#82B366;dashed=1;dashPattern=8 8;strokeWidth=2;opacity=60;" vertex="1" parent="1">
+      <mxGeometry x="20" y="1140" width="1900" height="1360" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_user" value="User &lt;i&gt;(Better Auth)&lt;/i&gt;" style="swimlane;html=1;whiteSpace=wrap;startSize=30;fontStyle=1;fontSize=13;align=center;fillColor=#D5E8D4;strokeColor=#82B366;" vertex="1" parent="1">
+      <mxGeometry x="60" y="140" width="250" height="130" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_user_b" value="+ id: text «PK»&lt;br&gt;+ name: text&lt;br&gt;+ email: text «unique»&lt;br&gt;+ username: text&lt;br&gt;+ emailVerified: boolean" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontSize=11;" vertex="1" parent="cls_user">
+      <mxGeometry y="30" width="250" height="100" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_member" value="TenantMember" style="swimlane;html=1;whiteSpace=wrap;startSize=30;fontStyle=1;fontSize=13;align=center;fillColor=#D5E8D4;strokeColor=#82B366;" vertex="1" parent="1">
+      <mxGeometry x="60" y="360" width="250" height="150" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_member_b" value="+ id: uuid «PK»&lt;br&gt;+ tenantId: uuid «FK»&lt;br&gt;+ userId: text «FK»&lt;br&gt;+ role: operator|admin|master&lt;br&gt;+ isActive: boolean&lt;br&gt;+ removedAt: timestamp «soft-remove»" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontSize=11;" vertex="1" parent="cls_member">
+      <mxGeometry y="30" width="250" height="120" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_tenant" value="Tenant" style="swimlane;html=1;whiteSpace=wrap;startSize=30;fontStyle=1;fontSize=13;align=center;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+      <mxGeometry x="380" y="140" width="250" height="155" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_tenant_b" value="+ id: uuid «PK»&lt;br&gt;+ name: text&lt;br&gt;+ scanMode: camera|external_reader|both&lt;br&gt;+ scanStrategy: text&lt;br&gt;+ archiveRetentionDays: int = 30&lt;br&gt;+ logoObjectKey: text" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontSize=11;" vertex="1" parent="cls_tenant">
+      <mxGeometry y="30" width="250" height="125" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_invitation" value="MemberInvitation" style="swimlane;html=1;whiteSpace=wrap;startSize=30;fontStyle=1;fontSize=13;align=center;fillColor=#D5E8D4;strokeColor=#82B366;" vertex="1" parent="1">
+      <mxGeometry x="380" y="360" width="250" height="165" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_invitation_b" value="+ id: uuid «PK»&lt;br&gt;+ tenantId: uuid «FK»&lt;br&gt;+ email: text&lt;br&gt;+ role: tenant_role&lt;br&gt;+ token: text «unique»&lt;br&gt;+ expiresAt: timestamp (+7 días)&lt;br&gt;+ acceptedAt / revokedAt: timestamp" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontSize=11;" vertex="1" parent="cls_invitation">
+      <mxGeometry y="30" width="250" height="135" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_dashsettings" value="DashboardSettings" style="swimlane;html=1;whiteSpace=wrap;startSize=30;fontStyle=1;fontSize=13;align=center;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+      <mxGeometry x="380" y="590" width="250" height="150" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_dashsettings_b" value="+ id: uuid «PK»&lt;br&gt;+ tenantId: uuid «FK, unique»&lt;br&gt;+ feedLimit: int = 20&lt;br&gt;+ showScanEntries: boolean&lt;br&gt;+ showActionEntries: boolean&lt;br&gt;&lt;b&gt;+ allowOverrideOnError: boolean&lt;/b&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontSize=11;" vertex="1" parent="cls_dashsettings">
+      <mxGeometry y="30" width="250" height="120" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_carddesign" value="CardDesign" style="swimlane;html=1;whiteSpace=wrap;startSize=30;fontStyle=1;fontSize=13;align=center;fillColor=#FFE6CC;strokeColor=#D79B00;" vertex="1" parent="1">
+      <mxGeometry x="380" y="820" width="250" height="170" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_carddesign_b" value="+ id: uuid «PK»&lt;br&gt;+ tenantId: uuid «FK»&lt;br&gt;+ name: text&lt;br&gt;+ kind: card | passbook&lt;br&gt;+ layout: jsonb (CardDesignLayout V1)&lt;br&gt;+ outputWidthCm / outputHeightCm&lt;br&gt;+ isActive: boolean «soft delete»" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontSize=11;" vertex="1" parent="cls_carddesign">
+      <mxGeometry y="30" width="250" height="140" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_cardtype" value="CardType" style="swimlane;html=1;whiteSpace=wrap;startSize=30;fontStyle=1;fontSize=13;align=center;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+      <mxGeometry x="700" y="140" width="250" height="165" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_cardtype_b" value="+ id: uuid «PK»&lt;br&gt;+ tenantId: uuid «FK»&lt;br&gt;+ name / description: text&lt;br&gt;+ status: lifecycle_status (sin 'expired')&lt;br&gt;+ archivedAt: timestamp&lt;br&gt;+ archivedBy: text «FK User»&lt;br&gt;+ statusBeforeArchive: lifecycle_status" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontSize=11;" vertex="1" parent="cls_cardtype">
+      <mxGeometry y="30" width="250" height="135" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_fielddef" value="FieldDefinition" style="swimlane;html=1;whiteSpace=wrap;startSize=30;fontStyle=1;fontSize=13;align=center;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+      <mxGeometry x="1020" y="140" width="250" height="200" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_fielddef_b" value="+ id: uuid «PK»&lt;br&gt;+ cardTypeId: uuid «FK»&lt;br&gt;+ name / label: text&lt;br&gt;+ fieldType: field_type &lt;i&gt;(inmutable si hay valores)&lt;/i&gt;&lt;br&gt;+ isRequired: boolean&lt;br&gt;+ position: int&lt;br&gt;+ defaultValue: text&lt;br&gt;+ validationRules: jsonb&lt;br&gt;+ isActive: boolean «soft delete»" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontSize=11;" vertex="1" parent="cls_fielddef">
+      <mxGeometry y="30" width="250" height="170" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_actiondef" value="ActionDefinition" style="swimlane;html=1;whiteSpace=wrap;startSize=30;fontStyle=1;fontSize=13;align=center;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+      <mxGeometry x="1340" y="140" width="250" height="200" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_actiondef_b" value="+ id: uuid «PK»&lt;br&gt;+ cardTypeId: uuid «FK»&lt;br&gt;+ name: text&lt;br&gt;+ actionType: increment|decrement|&lt;br&gt;   check|uncheck&lt;br&gt;+ targetFieldDefinitionId: uuid «FK»&lt;br&gt;+ config: jsonb — { amount }&lt;br&gt;&lt;b&gt;+ isAutoExecute: boolean&lt;/b&gt;&lt;br&gt;+ position: int · isActive: boolean" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontSize=11;" vertex="1" parent="cls_actiondef">
+      <mxGeometry y="30" width="250" height="170" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_scanval" value="ScanValidation" style="swimlane;html=1;whiteSpace=wrap;startSize=30;fontStyle=1;fontSize=13;align=center;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+      <mxGeometry x="1340" y="360" width="250" height="200" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_scanval_b" value="+ id: uuid «PK»&lt;br&gt;+ cardTypeId: uuid «FK»&lt;br&gt;+ fieldDefinitionId: uuid «FK»&lt;br&gt;+ rule: text&lt;br&gt;+ value: jsonb&lt;br&gt;+ errorMessage: text&lt;br&gt;+ severity: error | warning&lt;br&gt;+ isActive: boolean&lt;br&gt;&lt;i&gt;informa, NUNCA bloquea acciones&lt;/i&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontSize=11;" vertex="1" parent="cls_scanval">
+      <mxGeometry y="30" width="250" height="170" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_summary" value="CardTypeSummaryField" style="swimlane;html=1;whiteSpace=wrap;startSize=30;fontStyle=1;fontSize=13;align=center;fillColor=#FFE6CC;strokeColor=#D79B00;" vertex="1" parent="1">
+      <mxGeometry x="1020" y="360" width="250" height="135" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_summary_b" value="+ id: uuid «PK»&lt;br&gt;+ tenantId / cardTypeId: uuid «FK»&lt;br&gt;+ fieldDefinitionId: uuid «FK»&lt;br&gt;+ position: int&lt;br&gt;&lt;i&gt;→ fila del feed de actividad&lt;/i&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontSize=11;" vertex="1" parent="cls_summary">
+      <mxGeometry y="30" width="250" height="105" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_card" value="Card" style="swimlane;html=1;whiteSpace=wrap;startSize=30;fontStyle=1;fontSize=13;align=center;fillColor=#DAE8FC;strokeColor=#6C8EBF;strokeWidth=2;" vertex="1" parent="1">
+      <mxGeometry x="700" y="590" width="250" height="185" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_card_b" value="+ id: uuid «PK» &lt;i&gt;nunca al cliente&lt;/i&gt;&lt;br&gt;&lt;b&gt;+ code: text «identificador público»&lt;/b&gt;&lt;br&gt;+ cardTypeId: uuid «FK»&lt;br&gt;+ tenantId: uuid «FK»&lt;br&gt;+ status: lifecycle_status&lt;br&gt;+ archivedAt / archivedBy&lt;br&gt;+ archivedViaTypeId: uuid «FK CardType»&lt;br&gt;&lt;i&gt;UNIQUE (tenantId, code)&lt;/i&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontSize=11;" vertex="1" parent="cls_card">
+      <mxGeometry y="30" width="250" height="155" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_fieldvalue" value="FieldValue" style="swimlane;html=1;whiteSpace=wrap;startSize=30;fontStyle=1;fontSize=13;align=center;fillColor=#DAE8FC;strokeColor=#6C8EBF;" vertex="1" parent="1">
+      <mxGeometry x="1020" y="590" width="250" height="170" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_fieldvalue_b" value="+ id: uuid «PK»&lt;br&gt;+ cardId: uuid «FK»&lt;br&gt;+ fieldDefinitionId: uuid «FK»&lt;br&gt;+ valueText / valueNumber&lt;br&gt;+ valueBoolean / valueDate&lt;br&gt;+ valueJson: jsonb&lt;br&gt;&lt;i&gt;acceso vía mapValueToColumn/extractValue&lt;/i&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontSize=11;" vertex="1" parent="cls_fieldvalue">
+      <mxGeometry y="30" width="250" height="140" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_actionlog" value="ActionLog &lt;i&gt;(auditoría unificada)&lt;/i&gt;" style="swimlane;html=1;whiteSpace=wrap;startSize=30;fontStyle=1;fontSize=13;align=center;fillColor=#E1D5E7;strokeColor=#9673A6;" vertex="1" parent="1">
+      <mxGeometry x="1340" y="590" width="250" height="185" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_actionlog_b" value="+ id: uuid «PK»&lt;br&gt;+ tenantId: uuid «FK, desnormalizado»&lt;br&gt;+ cardId: uuid «FK»&lt;br&gt;+ actionDefinitionId: uuid «FK»&lt;br&gt;&lt;b&gt;+ logType: scan | action | lifecycle&lt;/b&gt;&lt;br&gt;+ executedAt: timestamp&lt;br&gt;+ executedBy: text «FK User»&lt;br&gt;+ metadata: jsonb (before/after, override)" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontSize=11;" vertex="1" parent="cls_actionlog">
+      <mxGeometry y="30" width="250" height="155" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_ctdesign" value="CardTypeDesign &lt;i&gt;«join»&lt;/i&gt;" style="swimlane;html=1;whiteSpace=wrap;startSize=30;fontStyle=1;fontSize=13;align=center;fillColor=#FFE6CC;strokeColor=#D79B00;" vertex="1" parent="1">
+      <mxGeometry x="700" y="820" width="250" height="135" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_ctdesign_b" value="+ id: uuid «PK»&lt;br&gt;+ tenantId / cardTypeId: uuid «FK»&lt;br&gt;+ cardDesignId: uuid «FK»&lt;br&gt;+ kind: card | passbook&lt;br&gt;&lt;i&gt;UNIQUE(cardTypeId, kind) · hard delete&lt;/i&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontSize=11;" vertex="1" parent="cls_ctdesign">
+      <mxGeometry y="30" width="250" height="105" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_activezone" value="CardTypeActiveZoneField" style="swimlane;html=1;whiteSpace=wrap;startSize=30;fontStyle=1;fontSize=13;align=center;fillColor=#FFE6CC;strokeColor=#D79B00;" vertex="1" parent="1">
+      <mxGeometry x="1020" y="820" width="250" height="150" as="geometry" />
+    </mxCell>
+    <mxCell id="cls_activezone_b" value="+ id: uuid «PK»&lt;br&gt;+ tenantId / cardTypeId: uuid «FK»&lt;br&gt;+ fieldDefinitionId: uuid «FK»&lt;br&gt;+ position: 0..8&lt;br&gt;+ rowSpan: 1 | 2 (solo foto)&lt;br&gt;&lt;i&gt;→ rejilla 3×3 de ActiveCardZone&lt;/i&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=top;spacingLeft=8;spacingTop=2;fontSize=11;" vertex="1" parent="cls_activezone">
+      <mxGeometry y="30" width="250" height="120" as="geometry" />
+    </mxCell>
+    <mxCell id="note_enums" value="&lt;b&gt;«enumeration» Tipos del dominio&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;lifecycle_status&lt;/b&gt;&lt;br&gt;active | inactive | archived | expired&lt;br&gt;&lt;i&gt;(compartido por Card y CardType)&lt;/i&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;field_type&lt;/b&gt;&lt;br&gt;text | number | boolean | date |&lt;br&gt;photo | select&lt;br&gt;&lt;br&gt;&lt;b&gt;action_type&lt;/b&gt;&lt;br&gt;increment | decrement | check | uncheck&lt;br&gt;&lt;br&gt;&lt;b&gt;tenant_role&lt;/b&gt;&lt;br&gt;operator (1) · admin (2) · master (3)&lt;br&gt;&lt;br&gt;&lt;b&gt;scan_mode&lt;/b&gt;&lt;br&gt;camera | external_reader | both&lt;br&gt;&lt;br&gt;&lt;b&gt;log_type&lt;/b&gt;&lt;br&gt;scan | action | lifecycle&lt;br&gt;&lt;br&gt;&lt;b&gt;severity&lt;/b&gt; · error | warning&lt;br&gt;&lt;b&gt;design kind&lt;/b&gt; · card | passbook" style="shape=note;size=16;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1660" y="140" width="250" height="420" as="geometry" />
+    </mxCell>
+    <mxCell id="note_invariants" value="&lt;b&gt;Invariantes de arquitectura&lt;/b&gt;&lt;br&gt;&lt;br&gt;• &lt;b&gt;tenant_id&lt;/b&gt; siempre desde la sesión&lt;br&gt;  (getCurrentTenant), nunca del cliente.&lt;br&gt;&lt;br&gt;• El UUID de Card nunca sale al cliente;&lt;br&gt;  el identificador público es &lt;b&gt;code&lt;/b&gt;.&lt;br&gt;&lt;br&gt;• Soft delete en todo (isActive / status).&lt;br&gt;  El único borrado físico es la purga.&lt;br&gt;&lt;br&gt;• field_type no cambia si ya hay valores.&lt;br&gt;&lt;br&gt;• Las ScanValidation informan pero&lt;br&gt;  nunca bloquean la ejecución.&lt;br&gt;&lt;br&gt;• Auto-acciones: secuenciales, paran&lt;br&gt;  al primer fallo.&lt;br&gt;&lt;br&gt;• Sin middleware: guards por página&lt;br&gt;  requireOperator/Admin/Master.&lt;br&gt;&lt;br&gt;• Neon HTTP: sin transacciones&lt;br&gt;  interactivas (CTE de una sentencia)." style="shape=note;size=16;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1660" y="590" width="250" height="400" as="geometry" />
+    </mxCell>
+    <mxCell id="e_user_member" value="1 → 0..*" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#82B366;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_user" target="cls_member">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e_tenant_member" value="1 → 0..*" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=diamondThin;startFill=1;startSize=12;strokeColor=#6C8EBF;fontSize=10;exitX=0;exitY=0.75;exitDx=0;exitDy=0;entryX=1;entryY=0.35;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_tenant" target="cls_member">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e_tenant_invitation" value="1 → 0..*" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=diamondThin;startFill=1;startSize=12;strokeColor=#6C8EBF;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_tenant" target="cls_invitation">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e_tenant_dash" value="1 → 1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=diamondThin;startFill=1;startSize=12;strokeColor=#6C8EBF;fontSize=10;exitX=0;exitY=0.9;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_tenant" target="cls_dashsettings">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="345" y="279" />
+          <mxPoint x="345" y="665" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e_tenant_design" value="1 → 0..*" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=diamondThin;startFill=1;startSize=12;strokeColor=#D79B00;fontSize=10;exitX=0;exitY=0.6;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_tenant" target="cls_carddesign">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="330" y="233" />
+          <mxPoint x="330" y="905" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e_tenant_cardtype" value="1 → 0..*" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=diamondThin;startFill=1;startSize=12;strokeColor=#6C8EBF;fontSize=10;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_tenant" target="cls_cardtype">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e_tenant_card" value="1 → 0..*" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=diamondThin;startFill=1;startSize=12;strokeColor=#6C8EBF;fontSize=10;exitX=1;exitY=0.85;exitDx=0;exitDy=0;entryX=0;entryY=0.2;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_tenant" target="cls_card">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="665" y="272" />
+          <mxPoint x="665" y="627" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e_cardtype_fielddef" value="1 → 0..* &lt;i&gt;define&lt;/i&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=diamondThin;startFill=1;startSize=12;strokeColor=#6C8EBF;fontSize=10;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.2;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_cardtype" target="cls_fielddef">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e_cardtype_actiondef" value="1 → 0..* &lt;i&gt;declara&lt;/i&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=diamondThin;startFill=1;startSize=12;strokeColor=#6C8EBF;fontSize=10;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_cardtype" target="cls_actiondef">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="825" y="110" />
+          <mxPoint x="1465" y="110" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e_cardtype_scanval" value="1 → 0..*" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=diamondThin;startFill=1;startSize=12;strokeColor=#6C8EBF;fontSize=10;exitX=1;exitY=0.8;exitDx=0;exitDy=0;entryX=0;entryY=0.2;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_cardtype" target="cls_scanval">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="985" y="272" />
+          <mxPoint x="985" y="350" />
+          <mxPoint x="1310" y="350" />
+          <mxPoint x="1310" y="400" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e_cardtype_summary" value="1 → 0..*" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=diamondThin;startFill=1;startSize=12;strokeColor=#D79B00;fontSize=10;exitX=1;exitY=0.95;exitDx=0;exitDy=0;entryX=0;entryY=0.35;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_cardtype" target="cls_summary">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e_fielddef_summary" value="1 → 0..*" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#D79B00;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_fielddef" target="cls_summary">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e_fielddef_activezone" value="1 → 0..*" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#D79B00;fontSize=10;exitX=0;exitY=0.9;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_fielddef" target="cls_activezone">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="990" y="320" />
+          <mxPoint x="990" y="895" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e_cardtype_card" value="1 → 0..* &lt;i&gt;instancia&lt;/i&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=diamondThin;startFill=0;startSize=12;strokeColor=#6C8EBF;strokeWidth=2;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_cardtype" target="cls_card">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e_card_fieldvalue" value="1 → 0..*" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=diamondThin;startFill=1;startSize=12;strokeColor=#6C8EBF;fontSize=10;exitX=1;exitY=0.4;exitDx=0;exitDy=0;entryX=0;entryY=0.4;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_card" target="cls_fieldvalue">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e_fielddef_fieldvalue" value="1 → 0..* &lt;i&gt;tipa&lt;/i&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#6C8EBF;fontSize=10;exitX=1;exitY=0.85;exitDx=0;exitDy=0;entryX=1;entryY=0.4;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_fielddef" target="cls_fieldvalue">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="1295" y="310" />
+          <mxPoint x="1295" y="658" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e_actiondef_fielddef" value="0..* → 1 &lt;i&gt;target&lt;/i&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=open;endFill=0;dashed=1;strokeColor=#6C8EBF;fontSize=10;exitX=0;exitY=0.6;exitDx=0;exitDy=0;entryX=1;entryY=0.6;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_actiondef" target="cls_fielddef">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e_scanval_fielddef" value="0..* → 1 &lt;i&gt;evalúa&lt;/i&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=open;endFill=0;dashed=1;strokeColor=#6C8EBF;fontSize=10;exitX=0;exitY=0.15;exitDx=0;exitDy=0;entryX=1;entryY=0.95;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_scanval" target="cls_fielddef">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e_card_log" value="1 → 0..*" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#9673A6;fontSize=10;exitX=1;exitY=0.85;exitDx=0;exitDy=0;entryX=0;entryY=0.85;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_card" target="cls_actionlog">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="985" y="747" />
+          <mxPoint x="985" y="800" />
+          <mxPoint x="1300" y="800" />
+          <mxPoint x="1300" y="747" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e_actiondef_log" value="1 → 0..*" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#9673A6;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.15;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_actiondef" target="cls_actionlog">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="1625" y="240" />
+          <mxPoint x="1625" y="618" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e_user_log" value="1 → 0..* &lt;i&gt;executedBy&lt;/i&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;dashed=1;strokeColor=#9673A6;fontSize=10;exitX=0;exitY=0.7;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_user" target="cls_actionlog">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="40" y="231" />
+          <mxPoint x="40" y="1040" />
+          <mxPoint x="1465" y="1040" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e_cardtype_ctdesign" value="1 → 0..2 &lt;i&gt;(1 por kind)&lt;/i&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#D79B00;fontSize=10;exitX=1;exitY=0.9;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_cardtype" target="cls_ctdesign">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="975" y="289" />
+          <mxPoint x="975" y="888" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e_carddesign_ctdesign" value="1 → 0..*" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;strokeColor=#D79B00;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="cls_carddesign" target="cls_ctdesign">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_box" value="" style="rounded=1;html=1;arcSize=2;fillColor=#FFFFFF;strokeColor=#6C8EBF;strokeWidth=2;opacity=70;" vertex="1" parent="1">
+      <mxGeometry x="60" y="1220" width="1060" height="1240" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_title" value="WF-A · ESCANEO OPERATIVO (dashboard) — registra, dispara auto-acciones y alimenta el feed" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=13;fontStyle=1;fontColor=#6C8EBF;" vertex="1" parent="1">
+      <mxGeometry x="80" y="1228" width="1000" height="24" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_note_entry" value="&lt;b&gt;Superficies de entrada&lt;/b&gt;&lt;br&gt;&lt;br&gt;• DashboardSearchBar&lt;br&gt;  (tecleo manual)&lt;br&gt;• useExternalScanner&lt;br&gt;  (HID, menos de 50 ms/char)&lt;br&gt;• QRScanner (cámara)&lt;br&gt;&lt;br&gt;&lt;i&gt;tenants.scanMode decide&lt;br&gt;cuáles están activas&lt;/i&gt;" style="shape=note;size=12;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;verticalAlign=top;spacingLeft=6;spacingTop=2;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="70" y="1260" width="190" height="150" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_start" value="Código capturado" style="ellipse;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="280" y="1270" width="200" height="45" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_a2" value="executeScanWithAutoActionsAction(code)&lt;br&gt;&lt;i&gt;Server Action · requireOperator()&lt;/i&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="280" y="1350" width="200" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_a3" value="getCardByCode(code, tenantId)&lt;br&gt;&lt;i&gt;sin filtro notArchived&lt;/i&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="280" y="1430" width="200" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_d1" value="¿Existe la Card&lt;br&gt;en el tenant?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="280" y="1510" width="200" height="80" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_e1" value="&lt;b&gt;Estado: NO ENCONTRADA&lt;/b&gt;&lt;br&gt;Aviso al operador · sin log" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="620" y="1525" width="220" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_a5" value="logScanEntry() → ActionLog&lt;br&gt;&lt;b&gt;logType = 'scan'&lt;/b&gt; &lt;i&gt;(siempre, incluso archivada)&lt;/i&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="280" y="1630" width="200" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_d2" value="resolveLifecycleGate&lt;br&gt;(card.status,&lt;br&gt;allowOverrideOnError)" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="280" y="1710" width="200" height="90" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_e2" value="&lt;b&gt;Estado: DENEGADO&lt;/b&gt;&lt;br&gt;Card archivada · rojo · sin acciones&lt;br&gt;&lt;i&gt;nunca abre el modal de override&lt;/i&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="620" y="1715" width="220" height="55" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_e3" value="&lt;b&gt;Estado: BLOQUEADO&lt;/b&gt;&lt;br&gt;inactive / expired&lt;br&gt;con override desactivado" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="900" y="1715" width="180" height="55" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_a7" value="validateScan() · motor de validaciones&lt;br&gt;&lt;i&gt;+ check sintético de lifecycle&lt;/i&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="280" y="1850" width="200" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_d3" value="¿Fallos de&lt;br&gt;severidad 'error'?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="280" y="1930" width="200" height="80" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ov1" value="&lt;b&gt;Estado: EN PAUSA&lt;/b&gt;&lt;br&gt;pausedForConfirmation = true&lt;br&gt;Modal de override + pendingAutoActionIds" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;strokeWidth=2;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="620" y="1925" width="220" height="55" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_e4" value="&lt;b&gt;Estado: BLOQUEADO&lt;/b&gt;&lt;br&gt;hasBlockingErrors = true&lt;br&gt;&lt;i&gt;auto-acciones no se ejecutan&lt;/i&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="900" y="1925" width="180" height="55" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_d4" value="¿El operador&lt;br&gt;confirma?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="620" y="2010" width="220" height="80" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_e5" value="&lt;b&gt;Estado: CANCELADO&lt;/b&gt;&lt;br&gt;sin efectos · escaneo ya registrado" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="900" y="2020" width="180" height="60" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ov3" value="resumeAutoActionsAction(pendingIds)&lt;br&gt;&lt;b&gt;operatorOverride = true&lt;/b&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="620" y="2120" width="220" height="55" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_a9" value="getAutoExecuteActions(cardTypeId)&lt;br&gt;&lt;i&gt;isAutoExecute = true, ordenadas por position&lt;/i&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="280" y="2050" width="200" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_a10" value="executeAction(i)&lt;br&gt;leer valor → calcular → escribir → log&lt;br&gt;&lt;i&gt;logType = 'action' (before/after)&lt;/i&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;strokeWidth=2;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="280" y="2130" width="200" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_d5" value="¿Acción OK?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="280" y="2210" width="200" height="80" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_e6" value="&lt;b&gt;Estado: SECUENCIA DETENIDA&lt;/b&gt;&lt;br&gt;las acciones restantes&lt;br&gt;no se ejecutan" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="900" y="2220" width="180" height="60" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_a12" value="Revalidar (validateScan) tras cada acción&lt;br&gt;&lt;i&gt;bucle: siguiente acción de la cola&lt;/i&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="280" y="2330" width="200" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_end" value="&lt;b&gt;Estado: COMPLETADO&lt;/b&gt; · ActiveCardZone + feed" style="ellipse;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;strokeWidth=2;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="280" y="2400" width="200" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed0" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=open;dashed=1;strokeColor=#D6B656;" edge="1" parent="1" source="wfa_note_entry" target="wfa_start">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8EBF;" edge="1" parent="1" source="wfa_start" target="wfa_a2">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8EBF;" edge="1" parent="1" source="wfa_a2" target="wfa_a3">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8EBF;" edge="1" parent="1" source="wfa_a3" target="wfa_d1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed4" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#B85450;fontSize=11;fontStyle=1;" edge="1" parent="1" source="wfa_d1" target="wfa_e1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed5" value="sí" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#82B366;fontSize=11;fontStyle=1;" edge="1" parent="1" source="wfa_d1" target="wfa_a5">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8EBF;" edge="1" parent="1" source="wfa_a5" target="wfa_d2">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed7" value="denied_archived" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#B85450;fontSize=10;" edge="1" parent="1" source="wfa_d2" target="wfa_e2">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed8" value="blocked" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#B85450;fontSize=10;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="wfa_d2" target="wfa_e3">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="380" y="1697" />
+          <mxPoint x="990" y="1697" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="wfa_ed9" value="allowed / requires_override" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#82B366;fontSize=10;" edge="1" parent="1" source="wfa_d2" target="wfa_a7">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8EBF;" edge="1" parent="1" source="wfa_a7" target="wfa_d3">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed11" value="sí · allowOverrideOnError = true" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#D79B00;fontSize=10;" edge="1" parent="1" source="wfa_d3" target="wfa_ov1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed12" value="sí · override = false" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#B85450;fontSize=10;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="wfa_d3" target="wfa_e4">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="380" y="1915" />
+          <mxPoint x="990" y="1915" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="wfa_ed13" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#82B366;fontSize=11;fontStyle=1;" edge="1" parent="1" source="wfa_d3" target="wfa_a9">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed14" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#D79B00;" edge="1" parent="1" source="wfa_ov1" target="wfa_d4">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed15" value="no" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#B85450;fontSize=11;fontStyle=1;" edge="1" parent="1" source="wfa_d4" target="wfa_e5">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed16" value="sí" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#82B366;fontSize=11;fontStyle=1;" edge="1" parent="1" source="wfa_d4" target="wfa_ov3">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed17" value="continúa la cola" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#D79B00;fontSize=10;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="wfa_ov3" target="wfa_a10">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="550" y="2148" />
+          <mxPoint x="550" y="2155" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="wfa_ed18" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8EBF;" edge="1" parent="1" source="wfa_a9" target="wfa_a10">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed19" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8EBF;" edge="1" parent="1" source="wfa_a10" target="wfa_d5">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed20" value="no · override off" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#B85450;fontSize=10;" edge="1" parent="1" source="wfa_d5" target="wfa_e6">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed21" value="no · override on&lt;br&gt;(re-pausa)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#D79B00;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="wfa_d5" target="wfa_ov1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="560" y="2250" />
+          <mxPoint x="560" y="1990" />
+          <mxPoint x="600" y="1990" />
+          <mxPoint x="600" y="1980" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="wfa_ed22" value="sí" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#82B366;fontSize=11;fontStyle=1;" edge="1" parent="1" source="wfa_d5" target="wfa_a12">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfa_ed23" value="quedan acciones" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#6C8EBF;fontSize=10;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="wfa_a12" target="wfa_a10">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="240" y="2355" />
+          <mxPoint x="240" y="2155" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="wfa_ed24" value="cola vacía" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#82B366;fontSize=10;" edge="1" parent="1" source="wfa_a12" target="wfa_end">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfb_box" value="" style="rounded=1;html=1;arcSize=2;fillColor=#FFFFFF;strokeColor=#9673A6;strokeWidth=2;opacity=70;" vertex="1" parent="1">
+      <mxGeometry x="1180" y="1220" width="340" height="560" as="geometry" />
+    </mxCell>
+    <mxCell id="wfb_title" value="WF-B · CONSULTA INFORMATIVA&lt;br&gt;&lt;i&gt;(camino paralelo, nunca se mezcla con WF-A)&lt;/i&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;fontSize=12;fontStyle=1;fontColor=#9673A6;" vertex="1" parent="1">
+      <mxGeometry x="1195" y="1228" width="320" height="36" as="geometry" />
+    </mxCell>
+    <mxCell id="wfb_b1" value="Entrada: /cards/scan · click en lista&lt;br&gt;· URL directa · resultado de búsqueda" style="ellipse;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1210" y="1275" width="280" height="55" as="geometry" />
+    </mxCell>
+    <mxCell id="wfb_b2" value="router.push('/cards/[code]')" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1210" y="1355" width="280" height="45" as="geometry" />
+    </mxCell>
+    <mxCell id="wfb_b3" value="Página de detalle &lt;b&gt;siempre informativa&lt;/b&gt;&lt;br&gt;&lt;i&gt;requireOperator() · force-dynamic&lt;/i&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1210" y="1425" width="280" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="wfb_b4" value="validateScan() en modo lectura&lt;br&gt;→ ScanAlerts (avisos, no bloquean)" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1210" y="1500" width="280" height="50" as="geometry" />
+    </mxCell>
+    <mxCell id="wfb_b5" value="Acciones manuales opcionales (CardActions)&lt;br&gt;&lt;i&gt;oculta las isAutoExecute · pasan por el&lt;br&gt;mismo lifecycle gate en servidor&lt;/i&gt;" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1210" y="1575" width="280" height="60" as="geometry" />
+    </mxCell>
+    <mxCell id="wfb_b6" value="&lt;b&gt;Estado: CONSULTADA&lt;/b&gt;&lt;br&gt;sin log de scan · sin auto-acciones · fuera del feed" style="ellipse;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;strokeWidth=2;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1210" y="1660" width="280" height="65" as="geometry" />
+    </mxCell>
+    <mxCell id="wfb_e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#9673A6;" edge="1" parent="1" source="wfb_b1" target="wfb_b2">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfb_e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#9673A6;" edge="1" parent="1" source="wfb_b2" target="wfb_b3">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfb_e3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#9673A6;" edge="1" parent="1" source="wfb_b3" target="wfb_b4">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfb_e4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#9673A6;" edge="1" parent="1" source="wfb_b4" target="wfb_b5">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfb_e5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#9673A6;" edge="1" parent="1" source="wfb_b5" target="wfb_b6">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfd_box" value="" style="rounded=1;html=1;arcSize=2;fillColor=#FFFFFF;strokeColor=#D79B00;strokeWidth=2;opacity=70;" vertex="1" parent="1">
+      <mxGeometry x="1560" y="1220" width="340" height="560" as="geometry" />
+    </mxCell>
+    <mxCell id="wfd_title" value="WF-C · CONFIGURACIÓN Y ALTA&lt;br&gt;&lt;i&gt;(el esquema es dato, no código)&lt;/i&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;fontSize=12;fontStyle=1;fontColor=#D79B00;" vertex="1" parent="1">
+      <mxGeometry x="1575" y="1228" width="320" height="36" as="geometry" />
+    </mxCell>
+    <mxCell id="wfd_d1" value="&lt;b&gt;MASTER&lt;/b&gt; → /card-types/new&lt;br&gt;&lt;i&gt;asistente de 5 pasos&lt;/i&gt;" style="ellipse;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1590" y="1275" width="280" height="48" as="geometry" />
+    </mxCell>
+    <mxCell id="wfd_s1" value="1 · Datos básicos → CardType" style="rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1590" y="1338" width="280" height="34" as="geometry" />
+    </mxCell>
+    <mxCell id="wfd_s2" value="2 · Campos → FieldDefinition[]" style="rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1590" y="1382" width="280" height="34" as="geometry" />
+    </mxCell>
+    <mxCell id="wfd_s3" value="3 · Acciones → ActionDefinition[]" style="rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1590" y="1426" width="280" height="34" as="geometry" />
+    </mxCell>
+    <mxCell id="wfd_s4" value="4 · Validaciones → ScanValidation[]" style="rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1590" y="1470" width="280" height="34" as="geometry" />
+    </mxCell>
+    <mxCell id="wfd_s5" value="5 · Revisión → submit secuencial" style="rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1590" y="1514" width="280" height="34" as="geometry" />
+    </mxCell>
+    <mxCell id="wfd_s6" value="&lt;b&gt;ADMIN&lt;/b&gt; → /cards/new?cardTypeId=…&lt;br&gt;formulario generado dinámicamente" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1590" y="1568" width="280" height="46" as="geometry" />
+    </mxCell>
+    <mxCell id="wfd_s7" value="&lt;b&gt;Estado: ACTIVE&lt;/b&gt; · Card + FieldValue[]&lt;br&gt;&lt;i&gt;code manual o autogenerado (reintento&lt;br&gt;sobre UNIQUE(tenant_id, code))&lt;/i&gt;" style="ellipse;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;strokeWidth=2;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1590" y="1635" width="280" height="70" as="geometry" />
+    </mxCell>
+    <mxCell id="wfd_e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#D79B00;" edge="1" parent="1" source="wfd_d1" target="wfd_s1">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfd_e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#D79B00;" edge="1" parent="1" source="wfd_s1" target="wfd_s2">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfd_e3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#D79B00;" edge="1" parent="1" source="wfd_s2" target="wfd_s3">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfd_e4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#D79B00;" edge="1" parent="1" source="wfd_s3" target="wfd_s4">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfd_e5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#D79B00;" edge="1" parent="1" source="wfd_s4" target="wfd_s5">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfd_e6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#D79B00;" edge="1" parent="1" source="wfd_s5" target="wfd_s6">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfd_e7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#6C8EBF;" edge="1" parent="1" source="wfd_s6" target="wfd_s7">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfc_box" value="" style="rounded=1;html=1;arcSize=2;fillColor=#FFFFFF;strokeColor=#82B366;strokeWidth=2;opacity=70;" vertex="1" parent="1">
+      <mxGeometry x="1180" y="1830" width="720" height="630" as="geometry" />
+    </mxCell>
+    <mxCell id="wfc_title" value="WF-D · MÁQUINA DE ESTADOS DEL CICLO DE VIDA (lifecycle_status, compartida por Card y CardType)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontStyle=1;fontColor=#82B366;" vertex="1" parent="1">
+      <mxGeometry x="1195" y="1840" width="700" height="24" as="geometry" />
+    </mxCell>
+    <mxCell id="wfc_start" value="alta" style="ellipse;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#000000;fontColor=#FFFFFF;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="1230" y="1890" width="60" height="40" as="geometry" />
+    </mxCell>
+    <mxCell id="wfc_active" value="&lt;b&gt;active&lt;/b&gt;&lt;br&gt;&lt;i&gt;operativa&lt;/i&gt;" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;strokeWidth=2;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="1230" y="1975" width="150" height="55" as="geometry" />
+    </mxCell>
+    <mxCell id="wfc_inactive" value="&lt;b&gt;inactive&lt;/b&gt;&lt;br&gt;&lt;i&gt;apagada, se conserva&lt;/i&gt;" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;strokeWidth=2;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="1480" y="1975" width="150" height="55" as="geometry" />
+    </mxCell>
+    <mxCell id="wfc_expired" value="&lt;b&gt;expired&lt;/b&gt;&lt;br&gt;&lt;i&gt;solo Card · reservado&lt;/i&gt;" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#999999;dashed=1;fontSize=12;fontColor=#666666;" vertex="1" parent="1">
+      <mxGeometry x="1720" y="1975" width="150" height="55" as="geometry" />
+    </mxCell>
+    <mxCell id="wfc_archived" value="&lt;b&gt;archived&lt;/b&gt; &lt;i&gt;(papelera)&lt;/i&gt;&lt;br&gt;archivedAt inicia la cuenta atrás" style="rounded=1;arcSize=40;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;strokeWidth=2;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="1355" y="2110" width="200" height="55" as="geometry" />
+    </mxCell>
+    <mxCell id="wfc_purged" value="&lt;b&gt;PURGADA&lt;/b&gt; · borrado físico&lt;br&gt;&lt;i&gt;único hard delete del sistema&lt;/i&gt;" style="ellipse;shape=doubleEllipse;whiteSpace=wrap;html=1;fillColor=#B85450;strokeColor=#B85450;fontColor=#FFFFFF;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1355" y="2245" width="200" height="60" as="geometry" />
+    </mxCell>
+    <mxCell id="wfc_note" value="&lt;b&gt;Reglas de transición&lt;/b&gt; — &lt;i&gt;src/lib/server/lifecycle/&lt;/i&gt;, nunca un UPDATE directo del DAL; cada transición es un único CTE que además escribe su fila de auditoría (&lt;i&gt;logType = 'lifecycle'&lt;/i&gt;).&lt;br&gt;• Roles: Card → &lt;b&gt;requireAdmin&lt;/b&gt; · CardType → &lt;b&gt;requireMaster&lt;/b&gt;.   • &lt;b&gt;Cascada&lt;/b&gt;: archivar un CardType archiva sus Cards vivas marcándolas con &lt;i&gt;archivedViaTypeId&lt;/i&gt;; al restaurar el tipo reviven exactamente esas, y una Card archivada por cascada no puede restaurarse por sí sola.&lt;br&gt;• &lt;b&gt;Restaurar&lt;/b&gt; devuelve a &lt;i&gt;statusBeforeArchive&lt;/i&gt;.   • &lt;b&gt;Purga&lt;/b&gt;: cron diario (Vercel Cron) cuando &lt;i&gt;archivedAt + tenants.archiveRetentionDays&lt;/i&gt; vence, o borrado manual del MASTER desde /archived con frase de confirmación.&lt;br&gt;• &lt;i&gt;archived&lt;/i&gt; queda fuera de todos los listados vía el scope &lt;i&gt;notArchived&lt;/i&gt; — salvo &lt;i&gt;getCardByCode&lt;/i&gt;, que es deliberadamente sin filtro para que WF-A pueda denegar explícitamente." style="shape=note;size=16;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1210" y="2330" width="660" height="115" as="geometry" />
+    </mxCell>
+    <mxCell id="wfc_e0" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#000000;" edge="1" parent="1" source="wfc_start" target="wfc_active">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfc_e1" value="deactivate()" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#D79B00;fontSize=10;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" edge="1" parent="1" source="wfc_active" target="wfc_inactive">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfc_e2" value="activate()" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#82B366;fontSize=10;exitX=0;exitY=0.75;exitDx=0;exitDy=0;entryX=1;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="1" source="wfc_inactive" target="wfc_active">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfc_e3" value="archive()" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#B85450;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.2;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="wfc_active" target="wfc_archived">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfc_e4" value="archive()" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#B85450;fontSize=10;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.8;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="wfc_inactive" target="wfc_archived">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfc_e5" value="restore() → statusBeforeArchive" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#82B366;fontSize=10;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" edge="1" parent="1" source="wfc_archived" target="wfc_active">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="1205" y="2138" />
+          <mxPoint x="1205" y="2016" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="wfc_e6" value="cron diario · archivedAt + retentionDays&lt;br&gt;o purga manual (MASTER)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;strokeColor=#B85450;strokeWidth=2;fontSize=10;" edge="1" parent="1" source="wfc_archived" target="wfc_purged">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="wfc_e7" value="&lt;i&gt;reservado: nada lo asigna&lt;br&gt;(se trata como inactive)&lt;/i&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;dashed=1;strokeColor=#999999;fontSize=10;fontColor=#666666;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="wfc_inactive" target="wfc_expired">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="legend" value="&lt;b&gt;Leyenda&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;Formas&lt;/b&gt; — óvalo: inicio / estado terminal  ·  rectángulo redondeado: paso del proceso&lt;br&gt;rombo: decisión  ·  nota amarilla: regla o invariante  ·  doble óvalo: destrucción de datos&lt;br&gt;&lt;br&gt;&lt;b&gt;Colores&lt;/b&gt;&lt;br&gt;  azul → camino nominal / entidad de dominio&lt;br&gt;  naranja → decisión, configuración o flujo de override&lt;br&gt;  rojo → denegación, bloqueo o borrado&lt;br&gt;  verde → autenticación / éxito&lt;br&gt;  morado → auditoría (ActionLog) y camino informativo&lt;br&gt;&lt;br&gt;&lt;b&gt;Relación entre zonas&lt;/b&gt; — cada paso de la Zona 2 lee y escribe las entidades de la&lt;br&gt;Zona 1; los nombres de clase citados en los pasos (Card, ActionLog, FieldValue…)&lt;br&gt;son las mismas clases dibujadas arriba." style="shape=note;size=16;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;align=left;verticalAlign=top;spacingLeft=8;spacingTop=4;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="600" y="1265" width="490" height="240" as="geometry" />
+    </mxCell>
+  </root>
+</mxGraphModel>

@@ -22,6 +22,9 @@
  *   number_eq/gt/…  : { target: number }
  *   number_between  : { min: number, max: number }
  *   date_*          : { target: string }  |  { relative: "today" }
+ *
+ * Empty values: a rule on an OPTIONAL field that has no value is skipped and
+ * reported as passed. See `validateScan` for the rationale.
  */
 
 import type { EnrichedFieldValue, ScanValidationWithField } from "@/lib/dal/types";
@@ -42,6 +45,13 @@ export interface ScanValidationCheck {
    * Empty string when passed === true.
    */
   message: string;
+  /**
+   * True when the rule was not evaluated because the target field is optional
+   * and has no value. Such a check always carries `passed: true`; the flag only
+   * distinguishes "nothing to check" from "checked and satisfied" for logging
+   * and debugging. No UI surface reads it — all of them filter on `!passed`.
+   */
+  skipped?: boolean;
 }
 
 /**
@@ -96,6 +106,26 @@ function toCalendarDay(value: unknown): Date | null {
   if (Number.isNaN(d.getTime())) return null;
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+// ─── Empty value detection ─────────────────────────────────────────────────────
+
+/**
+ * Whether a field value counts as "never filled in".
+ *
+ * Deliberately NOT a truthiness test: `false` and `0` are legitimate values a
+ * scan rule must still evaluate (`boolean_is_true` on `false` must fail, and
+ * `number_gt: 0` on `0` must fail). Only the absence of a value is empty.
+ *
+ * Two shapes reach here, both meaning the same thing:
+ *   undefined — no `field_values` row at all (the value was blank on create,
+ *               so `insertFieldValues` skipped it and the field is missing
+ *               from the card's enriched values entirely).
+ *   null / "" — a row exists with its typed column cleared (the value was
+ *               emptied on a later edit, which upserts nulls).
+ */
+function isEmptyValue(value: unknown): boolean {
+  return value === undefined || value === null || value === "";
 }
 
 // ─── Rule evaluators ───────────────────────────────────────────────────────────
@@ -167,6 +197,13 @@ const SCAN_RULE_EVALUATORS: Record<string, RuleEvaluator> = {
  * (Server Action, API route, test). It never throws — unknown rules produce
  * a failed check rather than an exception.
  *
+ * A rule whose target field is OPTIONAL and has no value is skipped and
+ * reported as passed. Every evaluator below is a positive type guard, so
+ * without that skip the mere absence of a value would surface as an
+ * error-level failure and block the scan (or trigger the override modal) —
+ * for a field the tenant explicitly declared non-mandatory. A REQUIRED field
+ * left empty still fails: that IS the anomaly the rule exists to catch.
+ *
  * @param fieldValues     - Enriched field values for the card.
  * @param scanValidations - Active scan validation rules for the card type,
  *                          ordered by position.
@@ -188,8 +225,14 @@ export function validateScan(
     const currentValue = valueByFieldId.get(sv.fieldDefinitionId);
     const evaluator    = SCAN_RULE_EVALUATORS[sv.rule];
 
+    // Nothing to evaluate on a blank optional field — skip before the
+    // evaluator, which would otherwise report it as a violation.
+    const skipped = isEmptyValue(currentValue) && !sv.fieldIsRequired;
+
     let passed: boolean;
-    if (!evaluator) {
+    if (skipped) {
+      passed = true;
+    } else if (!evaluator) {
       // Unknown rule — safe fallback: fail the check
       passed = false;
     } else {
@@ -208,6 +251,7 @@ export function validateScan(
       passed,
       severity: sv.severity as "error" | "warning",
       message: passed ? "" : sv.errorMessage,
+      ...(skipped && { skipped: true }),
     });
   }
 

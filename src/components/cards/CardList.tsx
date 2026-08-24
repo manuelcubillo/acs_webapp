@@ -62,6 +62,7 @@ const TEXT = {
   ITEM_SINGLE:    "carnet",
   ITEM_PLURAL:    "carnets",
   ALL_TYPES:      "Todos",
+  SECTION_TYPES:  "Tipo de carnet",
 } as const;
 
 interface CardListProps {
@@ -129,8 +130,14 @@ export default function CardList({
   );
   const [filterFields, setFilterFields] = useState<CommonFieldDefinition[]>([]);
   // Open the panel when arriving with filters, so a restored view shows what it
-  // is filtered by rather than just a count on a collapsed button.
-  const [showFilters, setShowFilters] = useState(initialState.fieldFilters.length > 0);
+  // is filtered by rather than just a count on a collapsed button. The card-type
+  // selection counts too — it lives in the panel — but only when there is more
+  // than one type: a single-type tenant following the legacy `?cardTypeId=` deep
+  // link would otherwise get the panel opened for a section it never renders.
+  const [showFilters, setShowFilters] = useState(
+    initialState.fieldFilters.length > 0 ||
+      (cardTypes.length > 1 && initialState.cardTypeIds.length > 0),
+  );
 
   const pageSize = CARD_LIST_PAGE_SIZE[view];
   const viewQuery = useMemo(() => buildCardListQuery(state), [state]);
@@ -242,51 +249,22 @@ export default function CardList({
   const handleViewChange = (next: ViewMode) =>
     commit({ ...state, view: next, page: 1 });
 
-  const activeFilterCount = fieldFilters.length;
-  const pendingFilterCount = pendingFieldFilters.length;
   const isMultiType = cardTypes.length > 1;
+  // The two sections of the filter panel. Either one on its own is enough to
+  // offer the panel: with the card types inside it, gating on the field filters
+  // alone would strand a tenant whose types share no filterable field.
+  const hasTypeSection = isMultiType;
+  const hasFieldSection = filterFields.length > 0;
+  const hasFilterPanel = hasTypeSection || hasFieldSection;
+  // A narrowed type selection is one active filter, whichever types it holds —
+  // otherwise a collapsed panel hides that the list is filtered at all.
+  const activeFilterCount =
+    fieldFilters.length + (hasTypeSection && selectedTypeIds.length > 0 ? 1 : 0);
+  const pendingFilterCount = pendingFieldFilters.length;
   const filterButtonActive = showFilters || activeFilterCount > 0;
 
   return (
     <div className="flex flex-col gap-3.5">
-      {/* Card type multi-select toggle */}
-      {isMultiType && (
-        <div className="flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            onClick={handleSelectAll}
-            aria-pressed={selectedTypeIds.length === 0}
-            className={cn(
-              "inline-flex items-center whitespace-nowrap rounded-full border-[1.5px] px-3.5 py-1 text-sm transition-colors",
-              selectedTypeIds.length === 0
-                ? "border-primary bg-accent font-bold text-accent-foreground"
-                : "border-border bg-card font-medium text-foreground hover:bg-muted",
-            )}
-          >
-            {TEXT.ALL_TYPES}
-          </button>
-          {cardTypes.map((ct) => {
-            const selected = selectedTypeIds.includes(ct.id);
-            return (
-              <button
-                key={ct.id}
-                type="button"
-                onClick={() => handleTypeToggle(ct.id)}
-                aria-pressed={selected}
-                className={cn(
-                  "inline-flex items-center whitespace-nowrap rounded-full border-[1.5px] px-3.5 py-1 text-sm transition-colors",
-                  selected
-                    ? "border-primary bg-accent font-bold text-accent-foreground"
-                    : "border-border bg-card font-medium text-foreground hover:bg-muted",
-                )}
-              >
-                {ct.name}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2.5">
         <div className="min-w-[240px] flex-1">
@@ -300,7 +278,7 @@ export default function CardList({
 
         <CardStatusFilter value={statusFilter} onChange={handleStatusChange} />
 
-        {filterFields.length > 0 && (
+        {hasFilterPanel && (
           <Button
             type="button"
             variant={filterButtonActive ? "default" : "outline"}
@@ -329,34 +307,82 @@ export default function CardList({
         )}
       </div>
 
-      {/* Field filter panel */}
-      {showFilters && filterFields.length > 0 && (
+      {/* Filter panel — card types first, then the field-level filters */}
+      {showFilters && hasFilterPanel && (
         <div className="rounded-xl border border-border bg-card p-4">
+          {/* Card type multi-select toggle. Applies on click, unlike the field
+              filters below, which are a draft until "Aplicar filtros". */}
+          {hasTypeSection && (
+            <div>
+              <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                {TEXT.SECTION_TYPES}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleSelectAll}
+                  aria-pressed={selectedTypeIds.length === 0}
+                  className={cn(
+                    "inline-flex items-center whitespace-nowrap rounded-full border-[1.5px] px-3.5 py-1 text-sm transition-colors",
+                    selectedTypeIds.length === 0
+                      ? "border-primary bg-accent font-bold text-accent-foreground"
+                      : "border-border bg-card font-medium text-foreground hover:bg-muted",
+                  )}
+                >
+                  {TEXT.ALL_TYPES}
+                </button>
+                {cardTypes.map((ct) => {
+                  const selected = selectedTypeIds.includes(ct.id);
+                  return (
+                    <button
+                      key={ct.id}
+                      type="button"
+                      onClick={() => handleTypeToggle(ct.id)}
+                      aria-pressed={selected}
+                      className={cn(
+                        "inline-flex items-center whitespace-nowrap rounded-full border-[1.5px] px-3.5 py-1 text-sm transition-colors",
+                        selected
+                          ? "border-primary bg-accent font-bold text-accent-foreground"
+                          : "border-border bg-card font-medium text-foreground hover:bg-muted",
+                      )}
+                    >
+                      {ct.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Renders null when the selected types share no filterable field. */}
           <FieldFilterBuilder
             fields={filterFields}
             filters={pendingFieldFilters}
             onFiltersChange={setPendingFieldFilters}
           />
-          <div className="mt-3 flex gap-2">
-            <Button
-              type="button"
-              onClick={handleApplyFilters}
-              disabled={isPending}
-            >
-              {TEXT.BTN_APPLY}
-            </Button>
-            {pendingFilterCount > 0 && (
+
+          {hasFieldSection && (
+            <div className="mt-3 flex gap-2">
               <Button
                 type="button"
-                variant="outline"
-                onClick={handleClearFilters}
+                onClick={handleApplyFilters}
                 disabled={isPending}
               >
-                <X />
-                {TEXT.BTN_CLEAR}
+                {TEXT.BTN_APPLY}
               </Button>
-            )}
-          </div>
+              {pendingFilterCount > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleClearFilters}
+                  disabled={isPending}
+                >
+                  <X />
+                  {TEXT.BTN_CLEAR}
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       )}
 

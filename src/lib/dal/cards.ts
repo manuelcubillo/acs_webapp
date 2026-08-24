@@ -310,7 +310,7 @@ export async function getCardByCode(
     .limit(1);
 
   if (!card) {
-    throw new NotFoundError("Card", `code="${code}" tenant=${tenantId}`);
+    throw new NotFoundError("Carnet", `código:"${code}"`);
   }
 
   const defs = await getFieldDefinitionsByCardType(card.cardTypeId);

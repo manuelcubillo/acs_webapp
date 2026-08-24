@@ -20,7 +20,7 @@ export class DalError extends Error {
 /** Entity not found in the database. */
 export class NotFoundError extends DalError {
   constructor(entity: string, identifier: string) {
-    super(`${entity} not found: ${identifier}`, "NOT_FOUND");
+    super(`${entity} no encontrado: ${identifier}`, "NOT_FOUND");
     this.name = "NotFoundError";
   }
 }

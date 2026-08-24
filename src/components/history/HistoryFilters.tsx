@@ -8,7 +8,7 @@
  * "Apply" button commits the filters; "Clear" resets everything.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ChevronDown, ChevronUp, SlidersHorizontal } from "lucide-react";
 import type { ActionHistoryFilters, HistoryFilterOptions, FieldFilter } from "@/lib/dal";
 import HistoryFieldFilters from "./HistoryFieldFilters";
@@ -116,6 +116,17 @@ export default function HistoryFilters({
   const visibleActions = form.cardTypeIds.length > 0
     ? options.actionDefinitions.filter((a) => form.cardTypeIds.includes(a.cardTypeId))
     : options.actionDefinitions;
+
+  // The types the field filters run against. No selection means "all types",
+  // exactly as the card list treats it (`CardList`'s `effectiveTypeIds`) — the
+  // builder then offers the fields common to every active type instead of
+  // nothing at all.
+  const allTypeIds = useMemo(
+    () => options.cardTypes.map((ct) => ct.id),
+    [options.cardTypes],
+  );
+  const effectiveTypeIds =
+    form.cardTypeIds.length > 0 ? form.cardTypeIds : allTypeIds;
 
   // Toggle a card type in/out of the multi-select; clear stale action + field filters
   const handleCardTypeToggle = (cardTypeId: string) => {
@@ -300,11 +311,14 @@ export default function HistoryFilters({
             </div>
           )}
 
-          {/* Field-level filters (only when at least one card type selected) */}
-          {form.cardTypeIds.length > 0 && (
+          {/* Field-level filters. Rendered whatever the type selection is; the
+              builder itself renders nothing when the effective types share no
+              filterable field. Guarded on a non-empty list because
+              getCommonFieldDefinitionsAction rejects an empty one. */}
+          {allTypeIds.length > 0 && (
             <div className="mt-3.5">
               <HistoryFieldFilters
-                cardTypeIds={form.cardTypeIds}
+                cardTypeIds={effectiveTypeIds}
                 value={form.fieldFilters}
                 onChange={(ff) => setForm((f) => ({ ...f, fieldFilters: ff }))}
               />

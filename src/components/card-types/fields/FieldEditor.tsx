@@ -42,7 +42,7 @@ const TEXT = {
   DEFAULT_LABEL: "Valor por defecto",
   DEFAULT_HINT:  "Opcional",
   DEFAULT_PLACEHOLDER: "Dejar en blanco si no aplica",
-  RULES_LABEL:   "Reglas de validación",
+  RULES_LABEL:   "Reglas de validación, aplicadas cuando rellen el campo",
   RULES_HINT:    "Activa las reglas que necesites para este campo",
   CANCEL:        "Cancelar",
   SAVE_EDIT:     "Guardar cambios",

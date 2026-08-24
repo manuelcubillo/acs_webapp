@@ -169,7 +169,11 @@ function buildWhere(tenantId: string, filters: ActionHistoryFilters) {
     conds.push(ilike(cards.code, `%${escapeLike(filters.cardCode)}%`));
   }
 
-  if (filters.fieldFilters?.length && filters.cardTypeIds?.length) {
+  // A field filter carries its own fieldDefinitionIds (one per card type), so
+  // it is self-contained and applies whether or not a card type is selected —
+  // same as the card list. Gating it on cardTypeIds only made the filter
+  // silently do nothing.
+  if (filters.fieldFilters?.length) {
     for (const ff of filters.fieldFilters) {
       const c = buildFieldFilterSQL(ff);
       if (c) conds.push(c);

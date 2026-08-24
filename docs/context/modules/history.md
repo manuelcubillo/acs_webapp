@@ -1,6 +1,6 @@
 # Module: history
 
-**Last updated**: 2026-08-02 · **Last feature**: URL-state and scroll-restore primitives shared with `/cards`; page-scroll offsets now read from the dashboard container and defended against the router reset
+**Last updated**: 2026-08-15 · **Last feature**: field-level filters no longer require selecting a card type — with none selected they run against every active type, as on `/cards`
 
 ## Responsibility
 
@@ -16,7 +16,7 @@ Does not write to `action_logs` (consumer only). Does not own scan execution or 
 - `src/lib/cards/return-origin.ts` — Owns the `from` / `hq` / `cq` params in both directions. `HistoryTableRow` builds its link with `cardDetailHref`; the card detail resolves it with `resolveCardOrigin`.
 - `src/components/history/ActionHistoryView.tsx` — Root client component. Manages filter state, pagination, export.
 - `src/components/history/HistoryFilters.tsx` — Top-level filter panel (date range, log type, card type, action, user, card code).
-- `src/components/history/HistoryFieldFilters.tsx` — Loads the common field definitions for the selected card types, then delegates to the shared `src/components/shared/FieldFilterBuilder.tsx` (same component the card list uses — a fix there lands on both surfaces).
+- `src/components/history/HistoryFieldFilters.tsx` — Loads the common field definitions for the *effective* card types (the selection, or every active type when nothing is selected — the caller decides), then delegates to the shared `src/components/shared/FieldFilterBuilder.tsx` (same component the card list uses — a fix there lands on both surfaces).
 - `src/components/history/HistoryTable.tsx` — Paginated results table.
 - `src/components/history/HistoryTableRow.tsx` — Single row renderer (scan vs action, summary fields, override badge).
 - `src/components/history/HistoryPagination.tsx` — Page controls.
@@ -48,7 +48,9 @@ Read-only access to:
 
 ### Field-level filter operators
 
-`contains`, `starts_with`, `equals_text` (text fields) · `eq`, `gt`, `lt`, `gte`, `lte`, `between` (number fields) · `is_true`, `is_false` (boolean fields) · `date_eq`, `date_before`, `date_after`, `date_between` (date fields). Photo fields are excluded (not searchable). Field filters only apply when at least one card type is selected.
+`contains`, `starts_with`, `equals_text` (text fields) · `eq`, `gt`, `lt`, `gte`, `lte`, `between` (number fields) · `is_true`, `is_false` (boolean fields) · `date_eq`, `date_before`, `date_after`, `date_between` (date fields). Photo fields are excluded (not searchable).
+
+A field filter is self-contained — it carries one `fieldDefinitionId` per card type — so it applies whether or not a card type is selected. ⚠️ The filter reads the card's **current** value, not the value at the time of the log: "puntos > 5" means "logs of cards that hold puntos > 5 *today*".
 
 `select` fields reuse `equals_text` — correct, because `mapValueToColumn` stores a select value in `value_text`, not `value_json` (see `modules/fields.md`). Their value input is a dropdown of the field's configured options rather than a free-text box.
 
@@ -107,7 +109,7 @@ ADR `2026-08-02-history-url-state-and-return.md`.
 
 ### Field filter builder
 
-When operator selects one or more card types, `getCommonFieldDefinitionsAction(cardTypeIds)` returns common filterable fields (photo excluded). Operator picks a field, operator, and value → appended as a `FieldFilter` to the query.
+`HistoryFilters` resolves the *effective* card types — the selection, or all of `options.cardTypes` when nothing is selected (`getHistoryFilterOptions` returns active types only) — and `getCommonFieldDefinitionsAction(effectiveTypeIds)` returns the fields common to all of them (photo excluded). Operator picks a field, operator, and value → appended as a `FieldFilter` to the query. The builder renders nothing when those types share no filterable field. Changing the type selection clears the field filters, since a filter on a field the new selection does not share would match nothing — same rule as `CardList`.
 
 ## Extension points
 
@@ -130,8 +132,8 @@ When operator selects one or more card types, `getCommonFieldDefinitionsAction(c
 
 ## Recent changes
 
+- 2026-08-15 — Field-level filters stopped requiring a card type. `buildWhere` gated them on `cardTypeIds`, so a filter set without one was accepted, serialized to `?ff=`, counted in the badge — and silently ignored by the query; the panel hid the builder entirely until a type was picked. Both gates are gone: `HistoryFilters` passes the effective types (selection, or every active type) and the DAL applies each filter on its own `fieldDefinitionIds`. Covered by `src/lib/dal/__tests__/history-field-filters.integration.test.ts`. Bug fix + parity with `/cards`, no ADR.
 - 2026-08-02 — `/cards` adopted this module's URL-state pattern, and the shared parts moved out: the defensive readers to `src/lib/navigation/query-codec.ts`, the scroll memory to `src/lib/navigation/return-scroll.ts`, and the `from`/`hq`/`cq` params to `src/lib/cards/return-origin.ts` (`HistoryTableRow` now builds its link with `cardDetailHref`). Two scroll bugs surfaced and were fixed for both surfaces: the page offset was read from `window.scrollY`, which is always 0 because `DashboardShell` scrolls an inner `<main>`, and a single assignment did not survive the router's post-navigation reset. The card detail also stops dropping `hq` at its edit page — a follow-up from the previous ADR. ADR `2026-08-02-card-list-url-state-and-return.md`.
 - 2026-08-02 — Select fields became filterable in the history view, via the same shared `FieldFilterBuilder` fix as the card list: options were read from `validationRules.options`, a shape nothing writes, so the value dropdown was always empty. Now uses `getSelectOptions` from `@/lib/validation/rules`. `buildFieldFilterSQL` was already correct and is unchanged. Bug fix, no ADR.
 - 2026-08-02 — View state (filters, scan toggle, page) moved into the query string, parsed server-side; new `src/lib/history/` module. Rows are clickable and open `/cards/[code]?from=history&hq=…`; the detail page's back link rebuilds the view from `hq`. Scroll offsets (window + table container) round-trip through a one-shot `sessionStorage` entry keyed by the query. Fixed along the way: the filter panel rendered its date range as the UTC instant, so a restored range came back shifted by the operator's offset. ADR `2026-08-02-history-url-state-and-return.md`.
 - 2026-08-02 — Resumen column renders `photo` summary fields as thumbnails via `cardPhotoRoute` (stable session-authed route), matching the dashboard feed. Previously the cell printed the raw object key as text. `ActionHistoryEntry.summaryFields` gained `fieldDefinitionId` (needed to address the exact object) and now ships a presence flag instead of the key for photo fields. ADR `2026-08-02-card-list-photos-stable-route.md`.
-- 2026-07-17 — `log_type` enum gained `lifecycle` (card lifecycle audit). `/history` is unchanged and still shows only `scan | action`; `getHistoryFilterOptions` now filters card types by `status = 'active'` instead of the removed `is_active`. ADR `2026-07-17-card-lifecycle-archiving.md`.

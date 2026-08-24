@@ -7,7 +7,7 @@
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Plus, QrCode } from "lucide-react";
+import { Plus } from "lucide-react";
 import { requireOperator, getCurrentUserProfile, AuthenticationError, AuthorizationError } from "@/lib/api";
 import {
   listCardTypes,
@@ -38,7 +38,6 @@ const TEXT = {
   TITLE:          "Carnets",
   ITEM_SINGLE:    "carnet",
   ITEM_PLURAL:    "carnets",
-  BTN_SCAN:       "Escanear",
   BTN_NEW:        "Nuevo carnet",
   NO_CARD_TYPES:  "No hay tipos de tarjeta configurados.",
   BTN_CREATE_TYPE: "Crear tipo de tarjeta",
@@ -176,15 +175,8 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
           )}
         </div>
 
+        {/* The scan shortcut lives in the list toolbar (see CardSearch). */}
         <div className="flex gap-2">
-          {/* Scan shortcut */}
-          <Button asChild variant="outline" size="sm">
-            <Link href="/cards/scan">
-              <QrCode className="size-3.5" strokeWidth={1.8} />
-              {TEXT.BTN_SCAN}
-            </Link>
-          </Button>
-
           {isAdmin && activeCardType && (
             <Button asChild size="sm">
               <Link

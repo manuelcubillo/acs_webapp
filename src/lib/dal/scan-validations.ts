@@ -116,6 +116,7 @@ export async function createScanValidation(
     fieldName: field.name,
     fieldLabel: field.label,
     fieldType: field.fieldType,
+    fieldIsRequired: field.isRequired,
   };
 }
 
@@ -174,6 +175,7 @@ export async function updateScanValidation(
     fieldName: field?.name ?? "",
     fieldLabel: field?.label ?? "",
     fieldType: (field?.fieldType ?? "text") as FieldType,
+    fieldIsRequired: field?.isRequired ?? false,
   };
 }
 
@@ -249,6 +251,7 @@ export async function getScanValidationsByCardType(
       fieldName: fieldDefinitions.name,
       fieldLabel: fieldDefinitions.label,
       fieldType: fieldDefinitions.fieldType,
+      fieldIsRequired: fieldDefinitions.isRequired,
     })
     .from(scanValidations)
     .innerJoin(

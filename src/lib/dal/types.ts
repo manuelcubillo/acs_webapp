@@ -481,6 +481,15 @@ export interface ScanValidationWithField extends ScanValidation {
   fieldName: string;
   fieldLabel: string;
   fieldType: FieldType;
+  /**
+   * Mandatory flag of the target field definition.
+   *
+   * Travels with the rule rather than with the value on purpose: a field left
+   * blank on card creation has no `field_values` row at all, so it is absent
+   * from `EnrichedFieldValue[]` and its `isRequired` would be unreachable at
+   * scan time. Drives the empty-value skip in `validateScan`.
+   */
+  fieldIsRequired: boolean;
 }
 
 // ─── TenantMember inputs ─────────────────────────────────────────────────────
@@ -712,7 +721,10 @@ export interface ActionHistoryFilters {
   actionDefinitionIds?: string[];
   executedBy?: string;
   cardCode?: string;
-  /** Requires cardTypeIds to be set (non-empty). Ignored otherwise. */
+  /**
+   * Applied independently of `cardTypeIds`: each filter carries its own
+   * `fieldDefinitionIds` (one per card type), so it is self-contained.
+   */
   fieldFilters?: FieldFilter[];
 }
 
