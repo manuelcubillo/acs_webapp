@@ -12,7 +12,7 @@
  */
 
 import { useState } from "react";
-import { Plus, Trash2, TrendingUp, TrendingDown, CheckSquare, Square, Repeat2, Zap } from "lucide-react";
+import { Plus, Pencil, Trash2, TrendingUp, TrendingDown, CheckSquare, Square, Repeat2, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -117,9 +117,12 @@ const TEXT = {
     "Las acciones modifican campos específicos de la tarjeta cuando el operador las ejecuta. Por ejemplo: incrementar un contador de asistencia o marcar un campo como completado.",
   AUTO:        "Auto",
   AUTO_TITLE:  "Auto-ejecutar al escanear",
+  EDIT:        "Editar acción",
   DELETE:      "Eliminar acción",
   NEW_TITLE:   "Nueva acción",
+  EDIT_TITLE:  "Editar acción",
   TYPE_LABEL:  "Tipo de acción",
+  TYPE_LOCKED_HINT: "(no se puede cambiar tras crear la acción)",
   TARGET_LABEL: "Campo destino",
   TARGET_PLACEHOLDER: "— Selecciona un campo —",
   NO_FIELDS_PRE: "No hay campos de tipo",
@@ -132,6 +135,7 @@ const TEXT = {
     "Esta acción se ejecutará automáticamente cada vez que un operador realice un escaneo operacional. Útil para registrar entradas/salidas o contadores de visitas.",
   CANCEL:      "Cancelar",
   ADD:         "Añadir acción",
+  SAVE:        "Guardar cambios",
   EMPTY_TITLE: "Sin acciones definidas",
   EMPTY_BODY:  "Puedes continuar sin acciones y añadirlas después.",
   FIELD_NUMBER: "número",
@@ -144,19 +148,22 @@ interface ActionsStepProps {
   fields: FieldDefinitionDraft[];
   actions: ActionDefinitionDraft[];
   onAdd: (draft: Omit<ActionDefinitionDraft, "tempId" | "position">) => void;
+  onUpdate: (tempId: string, patch: Partial<Omit<ActionDefinitionDraft, "tempId">>) => void;
   onRemove: (tempId: string) => void;
 }
 
 const EMPTY_AMOUNT = "";
 
-export default function ActionsStep({ fields, actions, onAdd, onRemove }: ActionsStepProps) {
+export default function ActionsStep({ fields, actions, onAdd, onUpdate, onRemove }: ActionsStepProps) {
   const [showForm, setShowForm] = useState(false);
+  const [editingTempId, setEditingTempId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState<ActionType>("increment");
   const [newTargetTempId, setNewTargetTempId] = useState("");
   const [newAmount, setNewAmount] = useState<string>(EMPTY_AMOUNT);
   const [newIsAutoExecute, setNewIsAutoExecute] = useState(false);
 
+  const isEditing = editingTempId !== null;
   const meta = ACTION_TYPE_META[newType];
   const fieldTypeLabel = meta.fieldFilter === "number" ? TEXT.FIELD_NUMBER : TEXT.FIELD_BOOLEAN;
 
@@ -164,28 +171,53 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
   const compatibleFields = fields.filter((f) => f.fieldType === meta.fieldFilter);
 
   function handleTypeChange(type: ActionType) {
+    if (isEditing) return; // action_type is immutable once created (server won't persist a change)
     setNewType(type);
     setNewTargetTempId("");
     setNewAmount(EMPTY_AMOUNT);
   }
 
-  function handleAdd() {
+  function openNew() {
+    resetForm();
+    setShowForm(true);
+  }
+
+  function openEdit(action: ActionDefinitionDraft) {
+    setEditingTempId(action.tempId);
+    setNewName(action.name);
+    setNewType(action.actionType);
+    setNewTargetTempId(action.targetFieldTempId);
+    setNewAmount(action.config?.amount != null ? String(action.config.amount) : EMPTY_AMOUNT);
+    setNewIsAutoExecute(action.isAutoExecute);
+    setShowForm(true);
+  }
+
+  function handleSave() {
     if (!newName.trim() || !newTargetTempId) return;
     const amount = meta.hasAmount ? (parseFloat(newAmount) || 1) : undefined;
-    onAdd({
-      name: newName.trim(),
-      actionType: newType,
-      targetFieldTempId: newTargetTempId,
-      config: meta.hasAmount ? { amount } : null,
-      icon: null,
-      color: null,
-      isAutoExecute: newIsAutoExecute,
-    });
+    if (isEditing) {
+      onUpdate(editingTempId!, {
+        name: newName.trim(),
+        config: meta.hasAmount ? { amount } : null,
+        isAutoExecute: newIsAutoExecute,
+      });
+    } else {
+      onAdd({
+        name: newName.trim(),
+        actionType: newType,
+        targetFieldTempId: newTargetTempId,
+        config: meta.hasAmount ? { amount } : null,
+        icon: null,
+        color: null,
+        isAutoExecute: newIsAutoExecute,
+      });
+    }
     resetForm();
   }
 
   function resetForm() {
     setShowForm(false);
+    setEditingTempId(null);
     setNewName("");
     setNewType("increment");
     setNewTargetTempId("");
@@ -193,7 +225,7 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
     setNewIsAutoExecute(false);
   }
 
-  const canAdd = newName.trim().length > 0 && newTargetTempId.length > 0;
+  const canSave = newName.trim().length > 0 && newTargetTempId.length > 0;
 
   return (
     <div className="flex flex-col gap-5">
@@ -244,16 +276,27 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
                   </div>
                 </div>
                 <Badge className={cn("shrink-0", m.chip)}>{m.label}</Badge>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon-sm"
-                  onClick={() => onRemove(action.tempId)}
-                  title={TEXT.DELETE}
-                  className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                >
-                  <Trash2 strokeWidth={1.8} />
-                </Button>
+                <div className="flex shrink-0 gap-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={() => openEdit(action)}
+                    title={TEXT.EDIT}
+                  >
+                    <Pencil strokeWidth={1.8} />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={() => onRemove(action.tempId)}
+                    title={TEXT.DELETE}
+                    className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2 strokeWidth={1.8} />
+                  </Button>
+                </div>
               </div>
             );
           })}
@@ -264,12 +307,19 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
       {showForm ? (
         <div className="rounded-xl border bg-muted/40 p-5">
           <div className="mb-4 text-sm font-semibold text-foreground">
-            {TEXT.NEW_TITLE}
+            {isEditing ? TEXT.EDIT_TITLE : TEXT.NEW_TITLE}
           </div>
 
           {/* Action type */}
           <div className="mb-4">
-            <Label>{TEXT.TYPE_LABEL}</Label>
+            <Label>
+              {TEXT.TYPE_LABEL}
+              {isEditing && (
+                <span className="ml-1.5 font-normal text-muted-foreground">
+                  {TEXT.TYPE_LOCKED_HINT}
+                </span>
+              )}
+            </Label>
             <div className="mt-2 grid grid-cols-2 gap-2">
               {ACTION_TYPE_ORDER.map((type) => {
                 const m = ACTION_TYPE_META[type];
@@ -279,7 +329,8 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
                   <label
                     key={type}
                     className={cn(
-                      "flex cursor-pointer items-center gap-2.5 rounded-[10px] border-2 px-3 py-2.5 transition-all",
+                      "flex items-center gap-2.5 rounded-[10px] border-2 px-3 py-2.5 transition-all",
+                      isEditing ? "cursor-not-allowed opacity-60" : "cursor-pointer",
                       selected ? m.cardSelected : "border-border bg-card",
                     )}
                   >
@@ -288,6 +339,7 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
                       name="actionType"
                       value={type}
                       checked={selected}
+                      disabled={isEditing}
                       onChange={() => handleTypeChange(type)}
                       className="size-4 shrink-0 accent-primary"
                     />
@@ -317,7 +369,7 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
                 {TEXT.NO_FIELDS_PRE} {fieldTypeLabel} {TEXT.NO_FIELDS_POST}
               </div>
             ) : (
-              <Select value={newTargetTempId} onValueChange={setNewTargetTempId}>
+              <Select value={newTargetTempId} onValueChange={setNewTargetTempId} disabled={isEditing}>
                 <SelectTrigger className="mt-1.5 w-full">
                   <SelectValue placeholder={TEXT.TARGET_PLACEHOLDER} />
                 </SelectTrigger>
@@ -400,15 +452,15 @@ export default function ActionsStep({ fields, actions, onAdd, onRemove }: Action
             <Button variant="ghost" onClick={resetForm}>
               {TEXT.CANCEL}
             </Button>
-            <Button onClick={handleAdd} disabled={!canAdd}>
-              {TEXT.ADD}
+            <Button onClick={handleSave} disabled={!canSave}>
+              {isEditing ? TEXT.SAVE : TEXT.ADD}
             </Button>
           </div>
         </div>
       ) : (
         <Button
           variant="ghost"
-          onClick={() => setShowForm(true)}
+          onClick={openNew}
           className="self-start"
         >
           <Plus strokeWidth={2} />

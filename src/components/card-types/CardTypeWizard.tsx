@@ -64,6 +64,7 @@ export default function CardTypeWizard({ initialData }: CardTypeWizardProps) {
     removeField,
     reorderFields,
     addAction,
+    updateAction,
     removeAction,
     addScanValidation,
     removeScanValidation,
@@ -119,6 +120,7 @@ export default function CardTypeWizard({ initialData }: CardTypeWizardProps) {
             fields={fields}
             actions={actions}
             onAdd={addAction}
+            onUpdate={updateAction}
             onRemove={removeAction}
           />
         )}
