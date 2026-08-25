@@ -28,6 +28,7 @@ import DashboardView from "@/components/dashboard/DashboardView";
 import type { DashboardKpiData } from "@/components/dashboard/DashboardKpis";
 import type { ActiveZoneFieldConfig } from "@/lib/dal";
 import type { FeedBuilderConfig } from "@/lib/dashboard/feed-entries";
+import { feedRawBudget, DEFAULT_FEED_LIMIT } from "@/lib/dashboard/feed-grouping";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +60,7 @@ export default async function DashboardPage() {
     getCurrentUserProfile(),
   ]);
 
-  const feedLimit = settings?.feedLimit ?? 20;
+  const feedLimit = settings?.feedLimit ?? DEFAULT_FEED_LIMIT;
   const showScan = settings?.showScanEntries ?? true;
   const showAction = settings?.showActionEntries ?? true;
 
@@ -76,7 +77,9 @@ export default async function DashboardPage() {
     presenceActionIds,
   ] = await Promise.all([
     getActivityFeed(tenantId, {
-      limit: feedLimit,
+      // A raw-row budget, not the display limit: these rows are ungrouped and
+      // `ActivityFeed` cuts to `feedLimit` GROUPS once it has grouped them.
+      limit: feedRawBudget(feedLimit),
       includeScanEntries: showScan,
       includeActionEntries: showAction,
     }).catch(() => []),

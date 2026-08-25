@@ -23,13 +23,18 @@
  * guarantee two algorithms that drift. See
  * ADR 2026-08-25-feed-grouping-and-scan-correlation.md.
  *
+ * The tenant's feed limit is applied here too, for the same reason: it counts
+ * GROUPS ("Número de entradas a mostrar"), so it cannot be applied by a
+ * producer that has not grouped yet. Producers fetch a raw budget instead. See
+ * ADR 2026-08-25-feed-limit-counts-groups.md.
+ *
  * See ADR 2026-07-17-dashboard-feed-no-polling.md.
  */
 
 import { Inbox, RefreshCw } from "lucide-react";
 
 import ActivityFeedEntryRow from "./ActivityFeedEntryRow";
-import { groupFeedRows } from "@/lib/dashboard/feed-grouping";
+import { groupFeedRows, DEFAULT_FEED_LIMIT } from "@/lib/dashboard/feed-grouping";
 import { presenceDirectionLabel } from "@/lib/presence/labels";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -77,10 +82,14 @@ export default function ActivityFeed({
     minute: "2-digit",
   });
 
-  // Grouped at render, from whichever producer supplied the rows. The tenant's
-  // feed limit counts RAW rows, so a grouped feed can show fewer entries than
-  // the limit — the limit bounds work, not visual density.
-  const grouped = groupFeedRows(entries);
+  // Grouped at render, from whichever producer supplied the rows, then cut to
+  // the tenant's limit — which counts GROUPS, so a "×3" run is one entry, not
+  // three. Producers hand us a raw budget larger than this on purpose; the
+  // surplus is what lets a group that straddles the cut resolve before it.
+  const grouped = groupFeedRows(entries).slice(
+    0,
+    settings?.feedLimit ?? DEFAULT_FEED_LIMIT,
+  );
 
   return (
     <section

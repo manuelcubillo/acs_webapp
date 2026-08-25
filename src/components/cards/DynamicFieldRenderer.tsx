@@ -5,7 +5,7 @@ import TextRenderer from "./renderers/TextRenderer";
 import NumberRenderer from "./renderers/NumberRenderer";
 import BooleanRenderer from "./renderers/BooleanRenderer";
 import DateRenderer from "./renderers/DateRenderer";
-import PhotoRenderer from "./renderers/PhotoRenderer";
+import PhotoRenderer from "@/components/shared/PhotoRenderer";
 import SelectRenderer from "./renderers/SelectRenderer";
 
 const TEXT = { DASH: "—" } as const;

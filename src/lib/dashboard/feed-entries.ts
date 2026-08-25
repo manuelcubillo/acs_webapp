@@ -275,17 +275,23 @@ export function buildActionEntries({
 }
 
 /**
- * Prepend newly built rows and trim to the tenant's feed limit.
+ * Prepend newly built rows and trim to the raw-row budget.
  *
  * Prepends rather than sorts: `executedAt` is the client clock on new rows and
  * the server's on the rest, so sorting could file a fresh scan below older
  * entries. New rows are the newest by construction.
+ *
+ * `rawBudget` is `feedRawBudget(feedLimit)`, NOT the tenant's display limit —
+ * these rows are ungrouped, and trimming them to the display limit is what made
+ * a "×3" run cost three entries. `ActivityFeed` cuts to groups after grouping.
+ *
+ * @param rawBudget - Max ungrouped rows to keep. See `feedRawBudget`.
  */
 export function prependEntries(
   current: ActivityFeedEntry[],
   incoming: ActivityFeedEntry[],
-  feedLimit: number,
+  rawBudget: number,
 ): ActivityFeedEntry[] {
   if (incoming.length === 0) return current;
-  return [...incoming, ...current].slice(0, feedLimit);
+  return [...incoming, ...current].slice(0, rawBudget);
 }

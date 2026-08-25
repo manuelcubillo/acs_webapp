@@ -1,20 +1,22 @@
 /**
- * /members — Member Management
+ * /settings/members — Member Management
  *
  * Lists all non-removed members of the tenant and pending invitations.
- * Accessible to: admin | master
+ * Minimum role: admin (enforced by the parent settings/layout.tsx).
+ *
+ * The DashboardShell wrapper (and topbar user profile) is provided by
+ * settings/layout.tsx — not here.
  */
 
 import { redirect } from "next/navigation";
 import { requireAdmin, AuthenticationError, AuthorizationError } from "@/lib/api";
 import { listMembers, listPendingInvitations } from "@/lib/dal";
 import { signPhotosForRead } from "@/lib/storage/read";
-import DashboardShell from "@/components/layout/DashboardShell";
 import MembersClient from "./MembersClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function MembersPage() {
+export default async function MembersSettingsPage() {
   // ── Auth guard ────────────────────────────────────────────────────────────
   let context;
   try {
@@ -43,20 +45,13 @@ export default async function MembersPage() {
     }
   }
 
-  // Resolve the current user's display name + avatar from the members list.
-  const currentMember = members.find((m) => m.userId === userId);
-  const userName = currentMember?.userName;
-  const userAvatarUrl = currentMember ? memberAvatarReadUrls[currentMember.id] : undefined;
-
   return (
-    <DashboardShell title="Miembros" role={role} userName={userName} userAvatarUrl={userAvatarUrl}>
-      <MembersClient
-        initialMembers={members}
-        initialInvitations={invitations}
-        memberAvatarReadUrls={memberAvatarReadUrls}
-        currentUserId={userId}
-        currentUserRole={role}
-      />
-    </DashboardShell>
+    <MembersClient
+      initialMembers={members}
+      initialInvitations={invitations}
+      memberAvatarReadUrls={memberAvatarReadUrls}
+      currentUserId={userId}
+      currentUserRole={role}
+    />
   );
 }

@@ -14,18 +14,66 @@
  * was handed. One implementation, at the presentation boundary, fed by both
  * producers.
  *
- * ## Accepted consequence
+ * ## The limit lives here too
  *
- * The tenant's configured feed limit counts RAW rows, so a grouped feed can
- * show fewer entries than the limit — a scan with three auto-actions consumes
- * four of the budget and renders as one. That is the better behaviour (the
- * limit bounds work, not visual density) and is documented in
- * `modules/dashboard.md`.
+ * The tenant's setting reads "Número de entradas a mostrar", so it counts
+ * GROUPS — what the operator sees — not raw rows. Once grouping exists the
+ * limit's meaning depends on it, so it is applied at the same boundary, by the
+ * same component, for the same reason: neither builder knows what a group is.
+ *
+ * Producers therefore fetch a raw BUDGET (`feedRawBudget`) and `ActivityFeed`
+ * cuts to `displayLimit` groups. See
+ * ADR 2026-08-25-feed-limit-counts-groups.md.
  *
  * Pure: no imports beyond types, no side effects, no clock of its own.
  */
 
 import type { ActivityFeedEntry } from "@/lib/dal";
+
+// ─── Feed sizing ─────────────────────────────────────────────────────────────
+
+/** Mirrors the DAL default, applied when a tenant has no settings row yet. */
+export const DEFAULT_FEED_LIMIT = 20;
+
+/**
+ * Raw rows fetched per group we want to be able to render.
+ *
+ * Three is the realistic worst case for a single passage: a scan plus presence
+ * plus a visit counter is three rows that render as one line.
+ */
+const RAW_BUDGET_FACTOR = 3;
+
+/**
+ * Hard ceiling on raw rows per feed query.
+ *
+ * The feed is a glanceable surface, not a report — `getActivityFeed` runs four
+ * queries off this row set, so the budget stays bounded regardless of what a
+ * tenant configures. Matches the max of `ActivityFeedOptionsSchema.limit`.
+ */
+const MAX_RAW_ROWS = 100;
+
+/**
+ * How many RAW rows a producer must fetch to render `displayLimit` groups.
+ *
+ * Grouping compresses rows, so fetching exactly `displayLimit` rows under-fills
+ * the feed — that was the bug this replaced. Over-fetching also hides the
+ * boundary artefact: auto-actions execute AFTER their scan and so sort above
+ * it, which means the row that anchors a group sits at the BOTTOM of it. A cut
+ * through a group orphans its auto-actions (they render standalone, never
+ * dropped — see `groupFeedRows`), and the spare rows push that artefact below
+ * the display cut where it is never seen.
+ *
+ * At the maximum configurable display limit the budget is the cap, so a tenant
+ * asking for 100 entries gets no headroom and may still see fewer. That is the
+ * pre-existing degradation, never worse — and it is bounded, unlike re-querying
+ * until the groups fill.
+ *
+ * @param displayLimit - Groups the tenant asked to see (`feedLimit`).
+ * @returns Raw row count to fetch, never above `MAX_RAW_ROWS`.
+ */
+export function feedRawBudget(displayLimit: number): number {
+  return Math.min(displayLimit * RAW_BUDGET_FACTOR, MAX_RAW_ROWS);
+}
 
 /**
  * Maximum gap between two manual-action rows for them to merge.

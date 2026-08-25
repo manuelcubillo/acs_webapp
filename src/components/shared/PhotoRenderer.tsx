@@ -42,7 +42,7 @@ import { Button } from "@/components/ui/button";
 import { cardPhotoRoute } from "@/lib/storage/photo-routes";
 import { cn } from "@/lib/utils";
 
-/** Shared thumbnail footprint; the interactive variant adds its own affordances. */
+/** Default thumbnail footprint; the interactive variant adds its own affordances. */
 const THUMBNAIL_CLASS =
   "block h-auto max-h-[var(--photo-thumbnail-size)] w-auto max-w-[var(--photo-thumbnail-size)] shrink-0 self-start rounded-md border border-border";
 
@@ -68,6 +68,8 @@ interface PhotoRendererProps {
    * ancestor already owns the click (see file header).
    */
   enlargeable?: boolean;
+  /** Overrides `THUMBNAIL_CLASS` for a caller with different sizing needs (e.g. a two-row grid cell). */
+  className?: string;
 }
 
 export default function PhotoRenderer({
@@ -76,8 +78,10 @@ export default function PhotoRenderer({
   cardCode,
   fieldDefinitionId,
   enlargeable = true,
+  className,
 }: PhotoRendererProps) {
   const [open, setOpen] = useState(false);
+  const thumbnailClass = className ?? THUMBNAIL_CLASS;
 
   // Stable route when the card is identified, signed URL otherwise.
   const routeSrc =
@@ -103,7 +107,7 @@ export default function PhotoRenderer({
   if (!enlargeable) {
     // Static thumbnail — the row around it navigates to the card detail.
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt={alt} {...loadingProps} className={THUMBNAIL_CLASS} />;
+    return <img src={src} alt={alt} {...loadingProps} className={thumbnailClass} />;
   }
 
   const downloadHref =
@@ -121,7 +125,7 @@ export default function PhotoRenderer({
         onClick={() => setOpen(true)}
         aria-label={TEXT.ARIA_PREVIEW}
         className={cn(
-          THUMBNAIL_CLASS,
+          thumbnailClass,
           "cursor-pointer transition-shadow hover:shadow-md",
         )}
       />

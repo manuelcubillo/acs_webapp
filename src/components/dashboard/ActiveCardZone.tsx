@@ -31,6 +31,7 @@ import { AlertCircle, AlertTriangle, CheckCircle2, Loader2, ShieldAlert, Zap } f
 import AutoActionFeedback from "./AutoActionFeedback";
 import ScanAlerts from "@/components/cards/ScanAlerts";
 import CardStatusBadge from "@/components/shared/CardStatusBadge";
+import PhotoRenderer from "@/components/shared/PhotoRenderer";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -480,6 +481,8 @@ function SummaryGrid({ activeCard, layout }: SummaryGridProps) {
             fieldType={f.fieldType}
             value={f.value}
             tall={false}
+            cardCode={activeCard.code}
+            fieldDefinitionId={f.fieldDefinitionId}
           />
         ))}
       </dl>
@@ -507,6 +510,8 @@ function SummaryGrid({ activeCard, layout }: SummaryGridProps) {
             fieldType={cell.fieldType}
             value={valueByFieldId.get(cell.fieldDefinitionId)}
             tall={tall}
+            cardCode={activeCard.code}
+            fieldDefinitionId={cell.fieldDefinitionId}
             className={cn(
               COL_START_CLASS[colOf(cell.position)],
               ROW_START_CLASS[rowOf(cell.position)],
@@ -526,11 +531,20 @@ interface SummaryCellProps {
   /** Two-row photo cell — renders a larger thumbnail. */
   tall: boolean;
   className?: string;
+  /** Photo fields only — addresses the stable photo route (see `PhotoRenderer`). */
+  cardCode: string;
+  fieldDefinitionId: string;
 }
 
-function SummaryCell({ label, fieldType, value, tall, className }: SummaryCellProps) {
-  const hasPhoto = typeof value === "string" && value.length > 0;
-
+function SummaryCell({
+  label,
+  fieldType,
+  value,
+  tall,
+  className,
+  cardCode,
+  fieldDefinitionId,
+}: SummaryCellProps) {
   return (
     <div className={cn("min-w-0", className)}>
       <dt className="truncate text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -538,23 +552,24 @@ function SummaryCell({ label, fieldType, value, tall, className }: SummaryCellPr
       </dt>
       <dd className="mt-0.5 text-sm font-semibold text-foreground">
         {fieldType === "photo" ? (
-          hasPhoto ? (
-            // Signed read URL, re-minted by every scan; click falls through the
-            // wrapping Link to the card detail, where the full lightbox lives.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={value as string}
-              alt={label}
-              className={cn(
-                "block h-auto w-auto rounded-md border border-border object-contain",
-                tall
-                  ? "max-h-[var(--photo-thumbnail-size-tall)] max-w-full"
-                  : "max-h-[var(--photo-thumbnail-size)] max-w-[var(--photo-thumbnail-size)]",
-              )}
-            />
-          ) : (
-            <span className="text-muted-foreground">{TEXT.DASH}</span>
-          )
+          // Stable route (cardCode + fieldDefinitionId): resolves fresh on every
+          // render regardless of whether `activeCard` came from a scan (signed
+          // in-band) or a plain refetch after a manual action (never signed) —
+          // see ADR 2026-08-25-active-card-zone-stable-photo-route.md.
+          // `enlargeable={false}`: the wrapping Link already owns the click.
+          <PhotoRenderer
+            value={value}
+            label={label}
+            cardCode={cardCode}
+            fieldDefinitionId={fieldDefinitionId}
+            enlargeable={false}
+            className={cn(
+              "block h-auto w-auto rounded-md border border-border object-contain",
+              tall
+                ? "max-h-[var(--photo-thumbnail-size-tall)] max-w-full"
+                : "max-h-[var(--photo-thumbnail-size)] max-w-[var(--photo-thumbnail-size)]",
+            )}
+          />
         ) : (
           <span className="block truncate">{formatFieldValue(value, fieldType)}</span>
         )}

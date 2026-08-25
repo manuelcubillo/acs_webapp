@@ -1,6 +1,6 @@
 # Module: auth-tenants
 
-**Last updated**: 2026-07-18 · **Last feature**: master-gated retention settings UI at `/settings/retention` (edit `archive_retention_days`, 1–365) — card lifecycle phase 5
+**Last updated**: 2026-08-25 · **Last feature**: member management moved from top-level `/members` to `/settings/members` (Settings-nested, admin-gated via `settings/layout.tsx` + a new `SettingsNav` entry)
 
 ## Responsibility
 
@@ -21,6 +21,8 @@ Authentication (Better Auth), tenant management, multi-tenancy boundary, members
 - `src/components/settings/retention/RetentionSettings.tsx` — Numeric field (1–365) editing `archive_retention_days`, with client + server validation and a live "elements are deleted after N days" effect line.
 - `src/lib/actions/members.ts` — Member management actions (createAndAddMember, addExistingUser, updateRole, setActive, remove, updateProfile, triggerPasswordReset, checkOwnMembershipStatus). All @role admin except checkOwnMembershipStatus (public).
 - `src/lib/actions/invitations.ts` — `inviteMemberByEmailAction`, `revokeInvitationAction`, `listPendingInvitationsAction`, `acceptInvitationAction` (public).
+- `src/app/(dashboard)/settings/members/page.tsx` — Member + pending-invitation list, `requireAdmin()`. Was top-level `/members`; moved under Settings 2026-08-25.
+- `src/app/(dashboard)/settings/members/MembersClient.tsx` — Client UI: invite/edit/deactivate/remove modals, unchanged by the move.
 - `src/app/(auth)/login/page.tsx` — Login server component.
 - `src/app/(auth)/login/LoginClient.tsx` — Login form; calls `checkOwnMembershipStatusAction` after sign-in to bounce deactivated members.
 - `src/app/(auth)/invitations/[token]/page.tsx` — Public invitation accept page (no auth guard).
@@ -149,7 +151,7 @@ See ADR `2026-04-26-account-deletion-feedback-token.md`.
 
 - **New role** → extend `tenant_role` enum, update `ROLE_ORDER`, add `requireX()` guard, update `canSee` nav filter in `DashboardShell`.
 - **New tenant-level setting** → add column to `tenants`, extend `UpdateTenantSettingsInput` + `UpdateTenantSettingsSchema` (Zod), surface in `/settings/*` (typically `master`-gated). `archive_retention_days` is the worked example, end to end: schema column + constants, `UpdateTenantSettingsInput`/Schema, `updateTenantSettingsAction` (`requireMaster`), and the `/settings/retention` page + `RetentionSettings` client. Schema-only constants (bounds/defaults) are read in the server `page.tsx` and passed as props so the client never imports the Drizzle schema module.
-- **Route-level auth** → call the relevant `requireX()` at the top of the `page.tsx` server component (e.g. `/archived` and `/members` use `requireAdmin()`), and add a matching `minRole` to the `DashboardShell` nav item so the link is hidden below that role. There is no middleware. Actions still re-guard independently (e.g. the trash view's permanent-delete actions call `requireMaster()`).
+- **Route-level auth** → call the relevant `requireX()` at the top of the `page.tsx` server component. A top-level nav route (e.g. `/archived`, `requireAdmin()`) also needs a matching `minRole` on its `DashboardShell` nav item so the link is hidden below that role. A route nested under `/settings/*` (e.g. `/settings/members`) instead relies on `settings/layout.tsx`'s `requireAdmin()` gate and needs a `SettingsNav` entry (`requiredRole` only if stricter than admin, as `/settings/reader` and `/settings/retention` do for master). There is no middleware. Actions still re-guard independently (e.g. the trash view's permanent-delete actions call `requireMaster()`).
 
 ## Module interactions
 
@@ -167,9 +169,9 @@ See ADR `2026-04-26-account-deletion-feedback-token.md`.
 
 ## Recent changes
 
+- 2026-08-25 — Moved member management from top-level `/members` to `/settings/members`. Removed the `DashboardShell` sidebar entry (`Miembros`, `minRole: admin`, plus the now-unused `Users` icon import); added a `SettingsNav` entry instead (no `requiredRole` — same admin floor as the `settings/layout.tsx` gate). Page and client behavior unchanged; only the route and shell wrapper moved.
 - 2026-07-18 — Card lifecycle phase 5: master-gated retention settings UI at `/settings/retention` (new `SettingsNav` entry, `requiredRole: "master"`; `requireMaster()` on the page). Edits `tenants.archive_retention_days` (1–365) via the existing `updateTenantSettingsAction`. Pure UI — the phase-1 write path was already complete. Feeds the trash countdown (`/archived`) and the daily purge job (see `modules/infrastructure.md`). ADR `2026-07-18-card-lifecycle-purge-job.md`.
 - 2026-07-17 — Card lifecycle phase 4 added the `/archived` trash view, gated `requireAdmin()` at the page and via a new `DashboardShell` nav item with `minRole: "admin"` (operators never see it); permanent-delete / empty-trash actions re-guard with `requireMaster()`. Restoring a card type stays master-only. ADR `2026-07-17-card-lifecycle-trash-view.md`.
 - 2026-04-28 — Member avatar (`user.image`) and tenant logo (`tenants.logo_object_key`, migration 0015) wired through `PhotoUploader`. New actions: `setMyAvatarAction` (operator+ self-edit), `setCurrentTenantLogoAction` (master). New DAL helper `setUserAvatar`. `MemberWithUser.userImage` exposed by `listMembers`; the members page batch-signs avatars. `DashboardShell` shows tenant logo (sidebar) and user avatar (topbar) when present, falling back to initials. ADR `2026-04-27-photo-storage-r2-minio.md`.
 - 2026-04-26 — Replaced "Usuario existente" tab in `InviteMemberModal` with "Usuario nuevo" tab. Added `createAndAddMemberAction`: validates email uniqueness across all tenants, creates user via `auth.api.signUpEmail`, adds membership, links `user.tenantId`. `addExistingUserAction` retained for programmatic use only.
-- 2026-04-26 — Added full member management: email invitations (`member_invitations` table, token flow, Resend email), deactivate/reactivate with session invalidation, soft-remove (`removedAt`), profile edit, password-reset trigger, role changes via `canManage`/`canAssignRole`. `/members` page now requireAdmin. `/invitations/[token]` public accept page. `/account-deactivated` page. Dashboard layout blocks deactivated/removed members. ADR `2026-04-26-member-invitations.md`.
 - 2026-04-26 — Added account deletion flow. New `deleteAccountAction` (pre-creates `departure_feedback` row to capture PII), `DeleteAccountModal` / `DeleteTenantAccountModal` (last-master requires typed phrase), `/goodbye` page with optional feedback form via `?fid` token. ADR `2026-04-26-account-deletion-feedback-token.md`.

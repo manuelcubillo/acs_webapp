@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * MembersClient — client UI for the /members page.
+ * MembersClient — client UI for the /settings/members page.
  * Manages modal state for invite, edit, deactivate/activate, and remove.
  */
 

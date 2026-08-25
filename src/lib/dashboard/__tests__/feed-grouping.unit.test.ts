@@ -6,7 +6,12 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { groupFeedRows, MANUAL_GROUP_WINDOW_MS } from "../feed-grouping";
+import {
+  groupFeedRows,
+  feedRawBudget,
+  MANUAL_GROUP_WINDOW_MS,
+  DEFAULT_FEED_LIMIT,
+} from "../feed-grouping";
 import type { ActivityFeedEntry } from "@/lib/dal";
 
 const T0 = new Date("2026-08-25T10:00:00.000Z").getTime();
@@ -201,5 +206,65 @@ describe("groupFeedRows — rule 3: pass-through", () => {
       }
     }
     expect(seen.sort()).toEqual(input.map((r) => r.id).sort());
+  });
+});
+
+describe("feedRawBudget", () => {
+  it("over-fetches, so a grouped feed can still fill the display limit", () => {
+    // The bug this replaced: fetching exactly `limit` raw rows meant a feed of
+    // grouped entries always under-filled.
+    expect(feedRawBudget(DEFAULT_FEED_LIMIT)).toBeGreaterThan(DEFAULT_FEED_LIMIT);
+  });
+
+  it("never exceeds 100 raw rows, whatever the tenant configures", () => {
+    // 100 is the ceiling `getActivityFeed` runs its four queries against, and
+    // the max of ActivityFeedOptionsSchema.limit.
+    expect(feedRawBudget(100)).toBe(100);
+    expect(feedRawBudget(40)).toBe(100);
+    expect(feedRawBudget(1000)).toBe(100);
+  });
+
+  it("covers a scan + presence + counter passage, the realistic worst case", () => {
+    // Three raw rows render as one line, so one group needs three rows.
+    expect(feedRawBudget(5)).toBe(15);
+  });
+});
+
+describe("the feed limit counts groups, not raw rows", () => {
+  it("a ×3 run occupies one entry of the limit, not three", () => {
+    const rows = [
+      row({ id: "r3", executedAt: at(0) }),
+      row({ id: "r2", executedAt: at(1) }),
+      row({ id: "r1", executedAt: at(2) }),
+      row({ id: "other", cardId: "card-2", executedAt: at(30) }),
+    ];
+
+    // What ActivityFeed does: group first, then cut to the display limit.
+    const shown = groupFeedRows(rows).slice(0, 2);
+
+    expect(shown).toHaveLength(2);
+    expect(shown[0]).toMatchObject({ kind: "repeat", count: 3 });
+    // The second slot is a distinct event, not a row swallowed by the run.
+    expect(shown[1]).toMatchObject({ kind: "single" });
+    expect(shown[1].entry.id).toBe("other");
+  });
+
+  it("cutting after grouping keeps the limit honest across a full budget", () => {
+    // 15 raw rows that group into 5 entries: five separate ×3 runs, one per
+    // card. A limit of 5 must show all five, which raw-row trimming could not.
+    const rows = Array.from({ length: 5 }, (_, card) =>
+      [0, 1, 2].map((n) =>
+        row({
+          id: `c${card}-r${n}`,
+          cardId: `card-${card}`,
+          executedAt: at(card * 60 + n),
+        }),
+      ),
+    ).flat();
+
+    const shown = groupFeedRows(rows).slice(0, 5);
+
+    expect(shown).toHaveLength(5);
+    expect(shown.every((g) => g.kind === "repeat" && g.count === 3)).toBe(true);
   });
 });

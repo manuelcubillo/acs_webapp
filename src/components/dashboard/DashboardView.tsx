@@ -47,6 +47,7 @@ import {
   type FeedBuilderConfig,
   type FeedVisibility,
 } from "@/lib/dashboard/feed-entries";
+import { feedRawBudget, DEFAULT_FEED_LIMIT } from "@/lib/dashboard/feed-grouping";
 import {
   hasErrorLevelFailures,
   getErrorLevelChecks,
@@ -74,9 +75,6 @@ const TEXT = {
   ERR_EXEC:      "Error al ejecutar la acción.",
   ERR_ACTION:    "Acción",
 } as const;
-
-/** Mirrors the DAL default, applied when a tenant has no settings row yet. */
-const DEFAULT_FEED_LIMIT = 20;
 
 interface DashboardViewProps {
   initialFeedEntries: ActivityFeedEntry[];
@@ -157,10 +155,12 @@ export default function DashboardView({
     [settings],
   );
 
+  // Trimmed to the RAW budget, not the display limit: these rows are ungrouped,
+  // and `ActivityFeed` cuts to `feedLimit` groups after grouping them.
   const appendFeedEntries = useCallback(
     (entries: ActivityFeedEntry[]) => {
       setFeedEntries((current) =>
-        prependEntries(current, entries, visibility.feedLimit),
+        prependEntries(current, entries, feedRawBudget(visibility.feedLimit)),
       );
     },
     [visibility.feedLimit],
@@ -175,7 +175,7 @@ export default function DashboardView({
     setIsRefreshingFeed(true);
     try {
       const result = await getActivityFeedAction({
-        limit: visibility.feedLimit,
+        limit: feedRawBudget(visibility.feedLimit),
         includeScanEntries: visibility.showScanEntries,
         includeActionEntries: visibility.showActionEntries,
       });

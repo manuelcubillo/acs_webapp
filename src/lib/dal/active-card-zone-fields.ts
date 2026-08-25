@@ -99,9 +99,11 @@ export async function getActiveZoneFieldsForCardTypes(
  * ahead of time.
  *
  * Unlike the feed's config, `photo` fields are INCLUDED. Rendering a photo is
- * the whole point of the two-row cell; the panel resolves photo values to
- * signed URLs via `signCardPhotos` on the scan path, so it never sees an object
- * key the way a feed row would.
+ * the whole point of the two-row cell; the panel renders photo cells through
+ * the stable `cardPhotoRoute` (via `PhotoRenderer`, `cardCode` + this cell's
+ * `fieldDefinitionId`), so it does not depend on `activeCard`'s field value
+ * being a freshly-signed URL — that value is only ever a presence signal here.
+ * See ADR `2026-08-25-active-card-zone-stable-photo-route.md`.
  *
  * Inactive field definitions are excluded — deactivating a field removes it from
  * the panel without needing a config migration. The stored row is left alone so

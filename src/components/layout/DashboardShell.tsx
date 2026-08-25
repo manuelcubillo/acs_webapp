@@ -18,7 +18,6 @@ import {
   LayoutGrid,
   CreditCard,
   IdCard,
-  Users,
   Settings,
   Shield,
   LogOut,
@@ -47,7 +46,6 @@ const TEXT = {
   NAV_CARDS:       "Carnets",
   NAV_HISTORY:     "Historial",
   NAV_PRESENCE:    "Recinto",
-  NAV_MEMBERS:     "Miembros",
   NAV_ARCHIVED:    "Archivados",
   NAV_DESIGNS:     "Diseños de Tarjeta",
   NAV_SETTINGS:    "Configuración",
@@ -69,11 +67,10 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard",    label: TEXT.NAV_DASHBOARD,  icon: LayoutGrid },
   { href: "/presence",     label: TEXT.NAV_PRESENCE,   icon: DoorOpen,    minRole: "operator", requiresPresence: true },
-  { href: "/card-types",   label: TEXT.NAV_CARD_TYPES, icon: CreditCard, minRole: "operator" },
   { href: "/cards",        label: TEXT.NAV_CARDS,      icon: IdCard,      minRole: "operator" },
   { href: "/history",      label: TEXT.NAV_HISTORY,    icon: History,     minRole: "operator" },
-  { href: "/members",      label: TEXT.NAV_MEMBERS,    icon: Users,       minRole: "admin" },
   { href: "/archived",     label: TEXT.NAV_ARCHIVED,   icon: Trash2,      minRole: "admin" },
+  { href: "/card-types",   label: TEXT.NAV_CARD_TYPES, icon: CreditCard, minRole: "operator" },
   { href: "/card-designs", label: TEXT.NAV_DESIGNS,    icon: Palette,     minRole: "master" },
 ];
 

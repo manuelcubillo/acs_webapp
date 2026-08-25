@@ -759,6 +759,11 @@ export interface ActivityFeedSummaryField {
 
 /** Options for the getActivityFeed DAL function. */
 export interface ActivityFeedOptions {
+  /**
+   * Max RAW rows to return. Callers rendering the feed pass
+   * `feedRawBudget(feedLimit)`, not the tenant's display limit — the display
+   * limit counts grouped entries and is applied by `ActivityFeed`.
+   */
   limit?: number;
   /** Include scan-only entries. Default: true. */
   includeScanEntries?: boolean;
