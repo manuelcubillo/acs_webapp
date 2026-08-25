@@ -30,8 +30,12 @@ function roundTrip(state: HistoryViewState): HistoryViewState {
 }
 
 describe("buildHistoryQuery / parseHistoryParams", () => {
-  it("returns an empty query for the default view", () => {
-    expect(buildHistoryQuery({ filters: {}, showScans: true, page: 1 })).toBe("");
+  it("always serializes the scan toggle, even at its default", () => {
+    // The ONLY key not omitted at its default. With a tenant-dependent default
+    // (scans start hidden when presence control is on), absence stopped having
+    // a single meaning — so the value is always explicit.
+    expect(buildHistoryQuery({ filters: {}, showScans: true, page: 1 })).toBe("?scans=1");
+    expect(buildHistoryQuery({ filters: {}, showScans: false, page: 1 })).toBe("?scans=0");
   });
 
   it("parses an empty query as the default view", () => {
@@ -84,13 +88,14 @@ describe("buildHistoryQuery / parseHistoryParams", () => {
     expect(roundTrip(state)).toEqual(state);
   });
 
-  it("omits defaults so an untouched view stays at a bare path", () => {
+  it("omits every other default, so an untouched view stays minimal", () => {
     const query = buildHistoryQuery({
       filters: { cardCode: "A1" },
       showScans: true,
       page: 1,
     });
-    expect(query).toBe("?code=A1");
+    // page=1 and the empty filters drop out; only `scans` is always present.
+    expect(query).toBe("?code=A1&scans=1");
   });
 
   it("keeps the scan toggle only when it is off", () => {
@@ -158,19 +163,57 @@ describe("sanitizeHistoryQuery", () => {
 
   it("keeps known keys and drops everything else", () => {
     expect(sanitizeHistoryQuery("?code=A1&evil=1&redirect=http://x.test")).toBe(
-      "?code=A1",
+      "?code=A1&scans=1",
     );
   });
 
   it("accepts input with or without the leading question mark", () => {
-    expect(sanitizeHistoryQuery("code=A1")).toBe("?code=A1");
+    expect(sanitizeHistoryQuery("code=A1")).toBe("?code=A1&scans=1");
   });
 
   it("cannot produce anything but a query string", () => {
     // Whatever arrives, the result is rebuilt from validated values only — so a
     // back link can never be turned into an off-site or path-changing href.
-    expect(sanitizeHistoryQuery("//evil.test")).toBe("");
-    expect(sanitizeHistoryQuery("?ct=../../admin")).toBe("");
+    // Everything unrecognised is dropped; `scans` is re-emitted because build
+    // always emits it, which is still a pure history query.
+    expect(sanitizeHistoryQuery("//evil.test")).toBe("?scans=1");
+    expect(sanitizeHistoryQuery("?ct=../../admin")).toBe("?scans=1");
+    // The safety property itself: no path, no host, no foreign key survives.
+    for (const hostile of ["//evil.test", "?ct=../../admin", "?foo=bar"]) {
+      const out = sanitizeHistoryQuery(hostile);
+      expect(out.startsWith("?")).toBe(true);
+      expect(out).not.toContain("evil");
+      expect(out).not.toContain("..");
+      expect(out).not.toContain("foo");
+    }
+  });
+});
+
+describe("parseHistoryParams — injected scan default", () => {
+  it("falls back to the caller's default when `scans` is absent", () => {
+    // Presence disabled → scans shown, the historical behaviour.
+    expect(parseHistoryParams({}, true).showScans).toBe(true);
+    // Presence enabled → the history page passes false, so scans start hidden
+    // (every operational scan writes a scan row AND a presence action row).
+    expect(parseHistoryParams({}, false).showScans).toBe(false);
+  });
+
+  it("defaults to true when no default is supplied, as before", () => {
+    expect(parseHistoryParams({}).showScans).toBe(true);
+  });
+
+  it("an explicit value always beats the default, in both directions", () => {
+    expect(parseHistoryParams({ scans: "1" }, false).showScans).toBe(true);
+    expect(parseHistoryParams({ scans: "0" }, true).showScans).toBe(false);
+  });
+
+  it("round trips a flipped toggle through the hq blob", () => {
+    // The operator turns scans ON in a presence tenant, opens a card, comes
+    // back: the blob carries scans=1 explicitly, so the default never reasserts.
+    const flipped = buildHistoryQuery({ filters: {}, showScans: true, page: 1 });
+    expect(flipped).toContain("scans=1");
+    expect(parseHistoryParams(new URLSearchParams(flipped.slice(1)), false).showScans).toBe(true);
+    expect(sanitizeHistoryQuery(flipped, false)).toBe(flipped);
   });
 });
 

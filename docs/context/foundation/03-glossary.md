@@ -1,6 +1,6 @@
 # 03 · Glossary
 
-**Last updated**: 2026-04-19
+**Last updated**: 2026-08-24
 
 Domain-specific terminology used consistently across code, docs, and UI.
 
@@ -18,7 +18,7 @@ Domain-specific terminology used consistently across code, docs, and UI.
 
 **FieldValue** — A single field on a single Card. Stored with a type-specific column (`value_text`, `value_number`, etc.).
 
-**ActionDefinition** — A named action attached to a CardType. Has `action_type` (`increment | decrement | check | uncheck`) and a `target_field_definition_id` pointing to the field it mutates. `config` jsonb holds per-type params (e.g. `{ amount }` for increment).
+**ActionDefinition** — A named action attached to a CardType. Has `action_type` (`increment | decrement | check | uncheck | toggle`) and a `target_field_definition_id` pointing to the field it mutates. `config` jsonb holds per-type params (e.g. `{ amount }` for increment).
 
 **ActionLog** — A single row in the unified `action_logs` table. `log_type` is `scan` or `action`. Scans log the raw scan event; action rows log an execution with `before_value` / `after_value` in metadata.
 
@@ -41,6 +41,14 @@ Domain-specific terminology used consistently across code, docs, and UI.
 **Activity feed** — The unified, time-ordered view of operational scans and action executions for a tenant. Backed by `getActivityFeed` with `tenant_id` denormalized on `action_logs` for single-table reads.
 
 **Scan mode** — Tenant-level setting controlling input methods: `camera`, `external_reader`, or `both`. Affects the `/cards/scan` page and operator dashboards.
+
+**Presence control** — Per-CardType feature answering "who is inside the facility right now?". A designated boolean field (`card_types.presence_field_definition_id`) is flipped by an auto-executed toggle action on every operational scan. Enabled by a single checkbox in the wizard; everything it needs is provisioned server-side. Read at `/presence` ("Recinto"). Presence is **state**, not events — `action_logs` cannot answer it, because a scan row has no direction. See ADR `2026-08-24-presence-control.md`.
+
+**Toggle action** — An `action_type` that flips a boolean field: `!(current ?? false)`. A missing value counts as `false`, so the first execution yields `true`. General-purpose — available to any boolean field on any card type, not presence-only. Renders as a switch, not a button.
+
+**System field / System action** — A `field_definition` or `action_definition` with `is_system = true`: provisioned and retired by server-side feature code, invisible in every configuration surface, never hard-deleted. Constraint #27.
+
+**Operator-visible action** — An action with `is_operator_visible = true`, meaning it renders as a control on the card detail and the dashboard's active-card panel. Independent of `is_auto_execute` ("runs on operational scan") since 2026-08-24; all four combinations are meaningful.
 
 **Common field definitions** — Fields shared across multiple card types by name+type. Computed by `getCommonFieldDefinitions(tenantId, cardTypeIds[])`. Used for cross-card-type filtering and column selection.
 

@@ -33,6 +33,8 @@ import { cardPhotoRoute } from "@/lib/storage/photo-routes";
 import { cardDetailHref } from "@/lib/cards/return-origin";
 import { rememberHistoryScroll } from "@/lib/history/scroll-restore";
 import { readPageScroll } from "@/lib/navigation/return-scroll";
+import { readBooleanAfterValue } from "@/lib/dal/metadata-keys";
+import { presenceDirectionLabel } from "@/lib/presence/labels";
 import type { ActionHistoryEntry } from "@/lib/dal";
 
 const TEXT = {
@@ -132,7 +134,18 @@ export default function HistoryTableRow({
   viewQuery,
 }: HistoryTableRowProps) {
   const router = useRouter();
+  const presenceAfter = entry.isPresence
+    ? readBooleanAfterValue(entry.metadata)
+    : null;
   const isScan = entry.logType === "scan";
+  // A presence row reads by DIRECTION, not by the action's name — "Presencia"
+  // tells the operator nothing about which way the person went. Falls back to
+  // the name when the after-value is unreadable, or when the tenant later
+  // disabled presence on this card type and the flag no longer derives.
+  const actionLabel =
+    entry.isPresence && presenceAfter !== null
+      ? presenceDirectionLabel(presenceAfter)
+      : (entry.actionName ?? TEXT.ACTION);
   const accentColor = isScan ? NEUTRAL_ACCENT : resolveColor(entry.actionColor);
   const { relative, absolute } = formatDateTime(entry.executedAt);
   const details = formatDetails(entry);
@@ -201,7 +214,7 @@ export default function HistoryTableRow({
             className="size-2 shrink-0 rounded-full"
           />
           <span className="font-semibold">
-            {isScan ? TEXT.SCAN : (entry.actionName ?? TEXT.ACTION)}
+            {isScan ? TEXT.SCAN : actionLabel}
           </span>
           {entry.operatorOverride && (
             <Badge

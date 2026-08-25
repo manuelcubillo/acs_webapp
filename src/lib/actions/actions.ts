@@ -45,7 +45,7 @@ import type {
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
 
-const ActionTypeSchema = z.enum(["increment", "decrement", "check", "uncheck"]);
+const ActionTypeSchema = z.enum(["increment", "decrement", "check", "uncheck", "toggle"]);
 
 const CreateActionDefinitionSchema = z.object({
   name: z.string().min(1).max(200),

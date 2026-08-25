@@ -80,6 +80,7 @@ async function enrichFieldValues(
         label: def.label,
         fieldType: def.fieldType,
         isRequired: def.isRequired,
+        isSystem: def.isSystem,
         value: extractValue(row, def.fieldType),
         raw: row,
       } satisfies EnrichedFieldValue;

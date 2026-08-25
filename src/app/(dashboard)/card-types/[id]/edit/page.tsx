@@ -19,6 +19,7 @@ import {
   AuthorizationError,
 } from "@/lib/api";
 import { getCardTypeWithFullSchema } from "@/lib/dal";
+import { excludeSystemFields, excludeSystemActions } from "@/lib/fields/system";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardTypeWizard from "@/components/card-types/CardTypeWizard";
 import type {
@@ -65,7 +66,11 @@ export default async function EditCardTypePage({ params }: PageProps) {
   // Map DB fields to FieldDefinitionDraft.
   // Convention: tempId === field.id (DB UUID) so actions and scan validations
   // can reference them by targetFieldTempId / fieldTempId directly.
-  const fieldDrafts: FieldDefinitionDraft[] = cardType.fieldDefinitions
+  // System rows are dropped BEFORE the tempId mapping, so they never enter the
+  // draft state at all. If one did, the wizard's diffing would treat it as a
+  // user-owned row: reordering could move it, and removing it would deactivate
+  // the presence field out from under the feature.
+  const fieldDrafts: FieldDefinitionDraft[] = excludeSystemFields(cardType.fieldDefinitions)
     .filter((f) => f.isActive)
     .sort((a, b) => a.position - b.position)
     .map((f, i) => ({
@@ -82,7 +87,7 @@ export default async function EditCardTypePage({ params }: PageProps) {
 
   // Map action definitions. targetFieldTempId === targetFieldDefinitionId
   // (which matches the field draft's tempId === field.id convention).
-  const actionDrafts: ActionDefinitionDraft[] = cardType.actionDefinitions
+  const actionDrafts: ActionDefinitionDraft[] = excludeSystemActions(cardType.actionDefinitions)
     .filter((a) => a.isActive)
     .map((a) => ({
       tempId: crypto.randomUUID(),
@@ -117,6 +122,8 @@ export default async function EditCardTypePage({ params }: PageProps) {
     basicInfo: {
       name: cardType.name,
       description: cardType.description ?? "",
+      // The designation IS the state — there is nothing else to read.
+      presenceEnabled: cardType.presenceFieldDefinitionId !== null,
     },
     fields: fieldDrafts,
     actions: actionDrafts,

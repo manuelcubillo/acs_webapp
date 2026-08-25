@@ -3,9 +3,17 @@
 /**
  * BasicInfoStep (Step 0)
  *
- * Collects the card type name and description.
+ * Collects the card type name, description, and whether presence control is on.
+ *
+ * Presence control lives here rather than in the Actions step because it is a
+ * property of the card type, not an action a master configures: the boolean
+ * field and the toggle action it needs are provisioned by the server and never
+ * appear in the field or action steps. One checkbox is the entire feature
+ * surface. See ADR 2026-08-24-presence-control.md.
  */
 
+import { DoorOpen } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,6 +29,9 @@ const TEXT = {
   DESC_LABEL:   "Descripción",
   DESC_HINT:    "Opcional. Explica para qué sirve este tipo de tarjeta.",
   DESC_PLACEHOLDER: "Describe brevemente el propósito de este tipo de tarjeta…",
+  PRESENCE_LABEL: "Control de presencia",
+  PRESENCE_HINT:
+    "Registra automáticamente quién está dentro del recinto. Cada escaneo alterna entre entrada y salida.",
 } as const;
 
 interface BasicInfoStepProps {
@@ -76,6 +87,32 @@ export default function BasicInfoStep({ basicInfo, onChange }: BasicInfoStepProp
         />
         <div className="mt-1.5 text-right text-[11px] text-muted-foreground">
           {basicInfo.description.length}/1000
+        </div>
+      </div>
+
+      {/* Presence control */}
+      <div className="rounded-xl border bg-muted/40 p-5">
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id="ct-presence"
+            checked={basicInfo.presenceEnabled}
+            onCheckedChange={(checked) =>
+              onChange({ presenceEnabled: checked === true })
+            }
+            className="mt-0.5"
+          />
+          <div className="min-w-0">
+            <Label
+              htmlFor="ct-presence"
+              className="flex items-center gap-2 cursor-pointer"
+            >
+              <DoorOpen className="size-4 shrink-0 text-muted-foreground" strokeWidth={1.8} />
+              {TEXT.PRESENCE_LABEL}
+            </Label>
+            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+              {TEXT.PRESENCE_HINT}
+            </p>
+          </div>
         </div>
       </div>
 

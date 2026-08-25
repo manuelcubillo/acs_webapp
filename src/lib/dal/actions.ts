@@ -48,25 +48,32 @@ import type {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/**
+ * The field type each action type may target.
+ *
+ * Single source of truth for compatibility: `assertCompatible` enforces it and
+ * `getCompatibleFieldsForAction` filters by it, so the writer and the picker
+ * cannot disagree. Adding an action type means adding one entry here.
+ */
+const REQUIRED_FIELD_TYPE: Record<ActionType, FieldType> = {
+  increment: "number",
+  decrement: "number",
+  check: "boolean",
+  uncheck: "boolean",
+  toggle: "boolean",
+};
+
+/** Action types whose `config` carries `{ amount }`. */
+function hasAmountConfig(actionType: ActionType): boolean {
+  return actionType === "increment" || actionType === "decrement";
+}
+
 /** Validate that an action type is compatible with a field type. */
-function assertCompatible(
-  actionType: "increment" | "decrement" | "check" | "uncheck",
-  fieldType: FieldType,
-): void {
-  if (
-    (actionType === "increment" || actionType === "decrement") &&
-    fieldType !== "number"
-  ) {
+function assertCompatible(actionType: ActionType, fieldType: FieldType): void {
+  const required = REQUIRED_FIELD_TYPE[actionType];
+  if (fieldType !== required) {
     throw new ValidationError(
-      `Action type "${actionType}" requires a number field, but target field type is "${fieldType}".`,
-    );
-  }
-  if (
-    (actionType === "check" || actionType === "uncheck") &&
-    fieldType !== "boolean"
-  ) {
-    throw new ValidationError(
-      `Action type "${actionType}" requires a boolean field, but target field type is "${fieldType}".`,
+      `Action type "${actionType}" requires a ${required} field, but target field type is "${fieldType}".`,
     );
   }
 }
@@ -117,7 +124,7 @@ export async function createActionDefinition(
   assertCompatible(input.actionType, targetField.fieldType);
 
   // Validate amount for increment/decrement
-  if (input.actionType === "increment" || input.actionType === "decrement") {
+  if (hasAmountConfig(input.actionType)) {
     const amount = (input.config as { amount?: number } | null)?.amount ?? 1;
     if (typeof amount !== "number" || amount <= 0) {
       throw new ValidationError(
@@ -187,10 +194,7 @@ export async function updateActionDefinition(
   if (!targetField) throw new NotFoundError("FieldDefinition", existing.targetFieldDefinitionId);
 
   // Validate amount if config is updated
-  if (
-    input.config !== undefined &&
-    (existing.actionType === "increment" || existing.actionType === "decrement")
-  ) {
+  if (input.config !== undefined && hasAmountConfig(existing.actionType)) {
     const amount = (input.config as { amount?: number } | null)?.amount ?? 1;
     if (typeof amount !== "number" || amount <= 0) {
       throw new ValidationError(
@@ -263,6 +267,8 @@ export async function getActionsForCardType(
       color: actionDefinitions.color,
       position: actionDefinitions.position,
       isAutoExecute: actionDefinitions.isAutoExecute,
+      isOperatorVisible: actionDefinitions.isOperatorVisible,
+      isSystem: actionDefinitions.isSystem,
       isActive: actionDefinitions.isActive,
       createdAt: actionDefinitions.createdAt,
       updatedAt: actionDefinitions.updatedAt,
@@ -306,6 +312,8 @@ export async function getAutoExecuteActions(
       color: actionDefinitions.color,
       position: actionDefinitions.position,
       isAutoExecute: actionDefinitions.isAutoExecute,
+      isOperatorVisible: actionDefinitions.isOperatorVisible,
+      isSystem: actionDefinitions.isSystem,
       isActive: actionDefinitions.isActive,
       createdAt: actionDefinitions.createdAt,
       updatedAt: actionDefinitions.updatedAt,
@@ -331,8 +339,8 @@ export async function getAutoExecuteActions(
 /**
  * Get the field definitions from a card type that are compatible with a given action type.
  *
- * - increment / decrement → fields of type 'number'
- * - check / uncheck       → fields of type 'boolean'
+ * - increment / decrement   → fields of type 'number'
+ * - check / uncheck / toggle → fields of type 'boolean'
  *
  * @param cardTypeId - Card type UUID.
  * @param actionType - The action type to check compatibility for.
@@ -340,10 +348,9 @@ export async function getAutoExecuteActions(
  */
 export async function getCompatibleFieldsForAction(
   cardTypeId: string,
-  actionType: "increment" | "decrement" | "check" | "uncheck",
+  actionType: ActionType,
 ) {
-  const compatibleType: FieldType =
-    actionType === "increment" || actionType === "decrement" ? "number" : "boolean";
+  const compatibleType: FieldType = REQUIRED_FIELD_TYPE[actionType];
 
   return db
     .select()
@@ -505,6 +512,13 @@ export async function executeAction(
   // Standard-tenant executions never set this, so their metadata is unchanged.
   if (strategyMetadata) {
     Object.assign(baseMetadata, strategyMetadata);
+  }
+  // Caller-supplied correlation (e.g. the scan pipeline's scanLogId). Merged
+  // here, BEFORE the override flags, so a caller cannot overwrite
+  // `operator_override` — that one is derived from the execution, not supplied.
+  // executeAction deliberately does not know what these keys mean.
+  if (input.metadataExtra) {
+    Object.assign(baseMetadata, input.metadataExtra);
   }
   if (input.operatorOverride) {
     baseMetadata.operator_override = true;

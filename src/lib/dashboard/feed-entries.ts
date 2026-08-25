@@ -42,6 +42,17 @@ export interface FeedBuilderConfig {
   cardTypeNames: Record<string, string>;
   /** cardTypeId → ordered summary field config. */
   summaryFields: Record<string, FeedSummaryFieldConfig[]>;
+  /**
+   * cardTypeId → the card type's system presence action id, for card types
+   * that have presence enabled.
+   *
+   * The server derives `isPresence` by comparing the action's TARGET FIELD to
+   * the card type's designation; the client cannot see target fields, so it
+   * compares action ids instead. Both identify the same row — see
+   * `getPresenceActionIdsByCardType`, which is the single producer of this map
+   * and derives it from the same designation.
+   */
+  presenceActionIds: Record<string, string>;
 }
 
 /** What the tenant's dashboard settings allow the feed to show. */
@@ -77,6 +88,14 @@ interface MakeEntryArgs {
   executedAt: Date;
   action?: { id: string; name: string } | null;
   operatorOverride?: boolean;
+  /**
+   * The scan row this action belongs to. Mirrors `metadata.scanLogId`, which
+   * the server writes and `groupFeedRows` groups on — without it a
+   * just-scanned card would show ungrouped rows until the next Refrescar.
+   */
+  scanLogId?: string | null;
+  /** The value a presence toggle settled on, from the execution result. */
+  presenceAfterValue?: boolean | null;
 }
 
 function makeEntry({
@@ -86,6 +105,8 @@ function makeEntry({
   executedAt,
   action = null,
   operatorOverride = false,
+  scanLogId = null,
+  presenceAfterValue = null,
 }: MakeEntryArgs): ActivityFeedEntry {
   // A photo field's value is a signed URL by the time it reaches the client
   // (the scan action signs them), so its mere presence means the card has a
@@ -114,6 +135,11 @@ function makeEntry({
     executedBy: null,
     metadata: null,
     operatorOverride,
+    // A scan row anchors its own group, so it never carries a correlation.
+    scanLogId: logType === "scan" ? null : scanLogId,
+    isPresence:
+      action !== null && config.presenceActionIds[card.cardTypeId] === action.id,
+    presenceAfterValue,
     summaryFields: buildSummaryFields(
       card,
       config.summaryFields[card.cardTypeId] ?? [],
@@ -128,7 +154,10 @@ function actionEntries(
   config: FeedBuilderConfig,
   executedAt: Date,
   operatorOverride: boolean,
+  scanLogId: string | null,
 ): ActivityFeedEntry[] {
+  const presenceActionId = config.presenceActionIds[card.cardTypeId];
+
   return autoActions
     .filter((a) => a.success)
     .map((a) =>
@@ -139,6 +168,14 @@ function actionEntries(
         executedAt,
         action: { id: a.actionDefinitionId, name: a.actionName },
         operatorOverride,
+        scanLogId,
+        // The server reads this from metadata.after_value; the client already
+        // holds the same number in the execution result it was handed.
+        presenceAfterValue:
+          a.actionDefinitionId === presenceActionId &&
+          typeof a.result?.newValue === "boolean"
+            ? a.result.newValue
+            : null,
       }),
     )
     .reverse();
@@ -160,6 +197,16 @@ export interface ScanEntriesArgs {
   autoActions: AutoActionResult[];
   config: FeedBuilderConfig;
   visibility: FeedVisibility;
+  /**
+   * `action_logs.id` of the scan row the server just wrote, from
+   * `ScanWithAutoActionsResult.scanLogId`.
+   *
+   * Used BOTH as the scan row's own `id` and as each action row's `scanLogId`,
+   * so the locally-built rows group exactly as the server-built ones will after
+   * a Refrescar. Passing the real id also removes the old "client rows carry a
+   * throwaway UUID" divergence for scan rows specifically.
+   */
+  scanLogId?: string | null;
   /** Injectable for tests; defaults to now. */
   executedAt?: Date;
 }
@@ -173,12 +220,19 @@ export function buildScanEntries({
   autoActions,
   config,
   visibility,
+  scanLogId = null,
   executedAt = new Date(),
 }: ScanEntriesArgs): ActivityFeedEntry[] {
+  const scanRow = makeEntry({ logType: "scan", card, config, executedAt });
+  // The scan row anchors the group, so its id must be what the action rows
+  // point at. Fall back to the generated one when no id was supplied — the rows
+  // then simply render ungrouped rather than grouping under the wrong anchor.
+  if (scanLogId) scanRow.id = scanLogId;
+
   return applyVisibility(
     [
-      ...actionEntries(card, autoActions, config, executedAt, false),
-      makeEntry({ logType: "scan", card, config, executedAt }),
+      ...actionEntries(card, autoActions, config, executedAt, false, scanRow.id),
+      scanRow,
     ],
     visibility,
   );
@@ -191,6 +245,13 @@ export interface ActionEntriesArgs {
   visibility: FeedVisibility;
   /** True when the operator confirmed past error-level validation failures. */
   operatorOverride?: boolean;
+  /**
+   * The ORIGINAL scan's log id, for a resumed override run — so the resumed
+   * rows join the group the scan already anchored instead of appearing as
+   * strays beside it. Null for manual actions, whose lack of correlation is
+   * exactly what marks them as manual.
+   */
+  scanLogId?: string | null;
   executedAt?: Date;
 }
 
@@ -204,10 +265,11 @@ export function buildActionEntries({
   config,
   visibility,
   operatorOverride = false,
+  scanLogId = null,
   executedAt = new Date(),
 }: ActionEntriesArgs): ActivityFeedEntry[] {
   return applyVisibility(
-    actionEntries(card, autoActions, config, executedAt, operatorOverride),
+    actionEntries(card, autoActions, config, executedAt, operatorOverride, scanLogId),
     visibility,
   );
 }

@@ -26,6 +26,8 @@ import CardActions from "./CardActions";
 import ScanAlerts from "./ScanAlerts";
 import ConfirmActionModal from "@/components/shared/ConfirmActionModal";
 import { cn } from "@/lib/utils";
+import { excludeSystemFields } from "@/lib/fields/system";
+import { buildToggleStates } from "@/lib/fields/toggle-state";
 import { getCardByCodeAction } from "@/lib/actions/cards";
 import { executeActionAction } from "@/lib/actions/actions";
 import { hasErrorLevelFailures, getErrorLevelChecks } from "@/lib/validation/scan-validator";
@@ -51,11 +53,14 @@ interface CardDetailClientProps {
   allowOverrideOnError: boolean;
   /** Lifecycle gate verdict for this card (phase 2). Gates the action buttons. */
   lifecycleGate: LifecycleGateResult;
+  /** The card type's system presence action, rendered as "Entrada / Salida". */
+  presenceActionDefinitionId: string | null;
 }
 
 export default function CardDetailClient({
   initialCard,
   actions,
+  presenceActionDefinitionId,
   initialScanResult,
   initialHasBlockingErrors,
   allowOverrideOnError,
@@ -146,6 +151,16 @@ export default function CardDetailClient({
   const lcOverride = lcOutcome === "requires_override";
   const lcOff = lcOverride || lcBlocked;
 
+  // The value grid is a read of the card's user-owned data. A system field's
+  // value is machine state (presence is flipped by scanning, or by the switch
+  // on /presence) — it does not belong in a list of the card's attributes.
+  const visibleFields = excludeSystemFields(card.fields);
+
+  // Toggle switches show the value they would flip. Built from the FULL field
+  // list, not `visibleFields` — the presence field is hidden from the value
+  // grid but is exactly what its switch reads.
+  const toggleStates = buildToggleStates(actions, card.fields);
+
   const isHardDisabled = lcArchived || lcBlocked || (hasBlockingErrors && !allowOverrideOnError);
   const isWarningMode = !isHardDisabled && (lcOverride || (hasBlockingErrors && allowOverrideOnError));
 
@@ -170,11 +185,11 @@ export default function CardDetailClient({
             </span>
           </div>
 
-          {card.fields.length === 0 ? (
+          {visibleFields.length === 0 ? (
             <p className="text-sm text-muted-foreground">{TEXT.EMPTY}</p>
           ) : (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-              {card.fields.map((fv) => (
+              {visibleFields.map((fv) => (
                 <div key={fv.fieldDefinitionId} className="flex flex-col gap-1">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                     {fv.label}
@@ -205,7 +220,9 @@ export default function CardDetailClient({
               disabled={isHardDisabled}
               warningMode={isWarningMode}
               onActionClick={handleActionClick}
-              filterAutoExecute
+              onlyOperatorVisible
+              toggleStates={toggleStates}
+              presenceActionDefinitionId={presenceActionDefinitionId}
               overrideTone={lcOff}
               hideBanner={lcArchived || lcOff}
             />

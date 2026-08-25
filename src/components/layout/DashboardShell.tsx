@@ -25,6 +25,7 @@ import {
   History,
   Palette,
   Trash2,
+  DoorOpen,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -32,6 +33,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { UserProfileProvider, useUserProfile } from "@/components/layout/UserProfileContext";
+import { usePresenceEnabled } from "@/components/layout/PresenceNavContext";
 import { PAGE_SCROLL_SLOT } from "@/lib/navigation/return-scroll";
 import type { TenantRole } from "@/lib/api";
 
@@ -44,6 +46,7 @@ const TEXT = {
   NAV_CARD_TYPES:  "Tipos de Tarjeta",
   NAV_CARDS:       "Carnets",
   NAV_HISTORY:     "Historial",
+  NAV_PRESENCE:    "Recinto",
   NAV_MEMBERS:     "Miembros",
   NAV_ARCHIVED:    "Archivados",
   NAV_DESIGNS:     "Diseños de Tarjeta",
@@ -56,10 +59,16 @@ interface NavItem {
   label: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   minRole?: TenantRole;
+  /**
+   * When set, the entry renders only if this tenant has presence control on
+   * anywhere. A tenant that does not use it never sees a dead link.
+   */
+  requiresPresence?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard",    label: TEXT.NAV_DASHBOARD,  icon: LayoutGrid },
+  { href: "/presence",     label: TEXT.NAV_PRESENCE,   icon: DoorOpen,    minRole: "operator", requiresPresence: true },
   { href: "/card-types",   label: TEXT.NAV_CARD_TYPES, icon: CreditCard, minRole: "operator" },
   { href: "/cards",        label: TEXT.NAV_CARDS,      icon: IdCard,      minRole: "operator" },
   { href: "/history",      label: TEXT.NAV_HISTORY,    icon: History,     minRole: "operator" },
@@ -123,6 +132,7 @@ interface DashboardShellBodyProps {
 function DashboardShellBody({ children, title, role, tenantName, tenantLogoUrl }: DashboardShellBodyProps) {
   const pathname = usePathname();
   const { userName, userAvatarUrl } = useUserProfile();
+  const presenceEnabled = usePresenceEnabled();
 
   function isActive(href: string) {
     if (href === "/dashboard") return pathname === "/dashboard";
@@ -133,7 +143,10 @@ function DashboardShellBody({ children, title, role, tenantName, tenantLogoUrl }
     ? userName.split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase()
     : "?";
 
-  const visibleNav = NAV_ITEMS.filter((item) => canSee(role, item.minRole));
+  const visibleNav = NAV_ITEMS.filter(
+    (item) =>
+      canSee(role, item.minRole) && (!item.requiresPresence || presenceEnabled),
+  );
   const displayTenantName = tenantName ?? TEXT.BRAND_FALLBACK;
 
   return (

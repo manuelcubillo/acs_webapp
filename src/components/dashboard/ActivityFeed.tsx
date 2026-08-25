@@ -16,12 +16,21 @@
  * The trade: rows from OTHER dashboards only appear on refresh. "Actualizado
  * HH:MM" is what makes that honest — it is the last time we asked the server.
  *
+ * Rows arrive RAW and are grouped here, at render time — a scan absorbs the
+ * auto-actions it caused, and repeated identical manual actions collapse to
+ * "×N". Grouping lives here rather than in either builder because the feed is
+ * built twice (server DAL + client mirror); implementing it in both would
+ * guarantee two algorithms that drift. See
+ * ADR 2026-08-25-feed-grouping-and-scan-correlation.md.
+ *
  * See ADR 2026-07-17-dashboard-feed-no-polling.md.
  */
 
 import { Inbox, RefreshCw } from "lucide-react";
 
 import ActivityFeedEntryRow from "./ActivityFeedEntryRow";
+import { groupFeedRows } from "@/lib/dashboard/feed-grouping";
+import { presenceDirectionLabel } from "@/lib/presence/labels";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ActivityFeedEntry, DashboardSettings } from "@/lib/dal";
@@ -68,6 +77,11 @@ export default function ActivityFeed({
     minute: "2-digit",
   });
 
+  // Grouped at render, from whichever producer supplied the rows. The tenant's
+  // feed limit counts RAW rows, so a grouped feed can show fewer entries than
+  // the limit — the limit bounds work, not visual density.
+  const grouped = groupFeedRows(entries);
+
   return (
     <section
       aria-label={TEXT.HEADING}
@@ -97,19 +111,39 @@ export default function ActivityFeed({
         </Button>
       </header>
 
-      {entries.length === 0 ? (
+      {grouped.length === 0 ? (
         <FeedEmptyState />
       ) : (
         <ul className="flex flex-col gap-2">
-          {entries.map((entry) => (
-            <li key={entry.id}>
-              <ActivityFeedEntryRow entry={entry} />
+          {grouped.map((group) => (
+            <li key={group.key}>
+              <ActivityFeedEntryRow
+                entry={group.entry}
+                actionBadges={
+                  group.kind === "scan" ? group.actions.map(badgeLabel) : undefined
+                }
+                repeatCount={group.kind === "repeat" ? group.count : undefined}
+              />
             </li>
           ))}
         </ul>
       )}
     </section>
   );
+}
+
+/**
+ * The badge text for one auto-action absorbed by a scan.
+ *
+ * A presence row reads "Entrada" / "Salida" via the shared derivation; every
+ * other action shows its own name. The row renderer stays dumb — it is handed
+ * finished strings and never reasons about presence.
+ */
+function badgeLabel(entry: ActivityFeedEntry): string {
+  if (entry.isPresence && entry.presenceAfterValue !== null) {
+    return presenceDirectionLabel(entry.presenceAfterValue);
+  }
+  return entry.actionName ?? "";
 }
 
 function FeedEmptyState() {

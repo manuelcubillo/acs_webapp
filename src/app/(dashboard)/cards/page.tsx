@@ -22,6 +22,7 @@ import {
   toPagination,
   type CardListRawParams,
 } from "@/lib/cards/list-params";
+import { excludeSystemFields } from "@/lib/fields/system";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardList from "@/components/cards/CardList";
 import FlashMessage from "@/components/shared/FlashMessage";
@@ -133,7 +134,10 @@ export default async function CardsPage({ searchParams }: CardsPageProps) {
           toPagination(viewState),
         ),
       ]);
-      fieldDefs = fieldDefsByType.flat();
+      // Drives the table/profile columns and the column picker — a
+      // configuration surface, so system fields are dropped here rather than
+      // in the DAL read the scan pipeline also uses.
+      fieldDefs = excludeSystemFields(fieldDefsByType.flat());
       summaryFieldIds = [...summaryFieldsByType.values()]
         .flat()
         .map((sf) => sf.fieldDefinitionId);

@@ -8,7 +8,7 @@
  * Steps:
  *   0 — BasicInfo           (name, description)
  *   1 — FieldDefinitions    (add / reorder / edit fields)
- *   2 — Actions             (configurable increment/decrement/check/uncheck)
+ *   2 — Actions             (configurable increment/decrement/check/uncheck/toggle)
  *   3 — ScanValidations     (rules evaluated on scan to alert operators)
  *   4 — Review              (summary + submit)
  *
@@ -23,6 +23,7 @@ import {
   updateFieldDefinitionAction,
   deactivateFieldDefinitionAction,
   reorderFieldDefinitionsAction,
+  setPresenceControlAction,
 } from "@/lib/actions/card-types";
 import {
   createActionDefinitionAction,
@@ -38,7 +39,7 @@ import {
 // ─── Exported types ───────────────────────────────────────────────────────────
 
 export type FieldType = "text" | "number" | "boolean" | "date" | "photo" | "select";
-export type ActionType = "increment" | "decrement" | "check" | "uncheck";
+export type ActionType = "increment" | "decrement" | "check" | "uncheck" | "toggle";
 export type ScanValidationSeverity = "error" | "warning";
 export type WizardStep = 0 | 1 | 2 | 3 | 4;
 
@@ -118,6 +119,15 @@ export interface ScanValidationDraft {
 export interface BasicInfo {
   name: string;
   description: string;
+  /**
+   * Presence control ("Recinto"). The entire feature is this boolean: the
+   * supporting boolean field and auto-executed toggle action are provisioned by
+   * the server and never appear in the wizard's field or action steps.
+   *
+   * Lives on BasicInfo because it is a property of the card type, not a row in
+   * any of the three collections the wizard diffs.
+   */
+  presenceEnabled: boolean;
 }
 
 export interface WizardInitialData {
@@ -180,7 +190,7 @@ export function useCardTypeWizard(
 
   const [step, setStep] = useState<WizardStep>(0);
   const [basicInfo, setBasicInfoState] = useState<BasicInfo>(
-    initialData?.basicInfo ?? { name: "", description: "" },
+    initialData?.basicInfo ?? { name: "", description: "", presenceEnabled: false },
   );
   const [fields, setFields] = useState<FieldDefinitionDraft[]>(
     initialData?.fields ?? [],
@@ -405,6 +415,13 @@ export function useCardTypeWizard(
             position: sv.position,
           });
         }
+
+        // 5. Presence control. LAST on purpose: the system field it provisions
+        // is positioned after the user's fields, and provisioning is idempotent
+        // in both directions, so it is safe to call unconditionally.
+        if (basicInfo.presenceEnabled) {
+          await setPresenceControlAction(resolvedCardTypeId, true);
+        }
       } else {
         // ── EDIT MODE ────────────────────────────────────────────────────────
         resolvedCardTypeId = cardTypeId!;
@@ -525,6 +542,14 @@ export function useCardTypeWizard(
             });
           }
         }
+
+        // 9. Presence control. Called unconditionally with the desired state —
+        // provisioning is idempotent in BOTH directions, so this handles
+        // off→on, on→off and no-change without the wizard tracking which
+        // transition it is. Turning it off soft-deletes the system rows and
+        // keeps their field_values, so turning it back on restores the card's
+        // stored presence rather than starting over.
+        await setPresenceControlAction(resolvedCardTypeId, basicInfo.presenceEnabled);
       }
 
       return { success: true, cardTypeId: resolvedCardTypeId };

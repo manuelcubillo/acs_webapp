@@ -18,6 +18,8 @@ import type { ActionType } from "@/lib/dal/types";
  * - decrement: numeric subtract of `amount` (missing/non-numeric current value → 0)
  * - check:     always true
  * - uncheck:   always false
+ * - toggle:    flips the current value; NULL counts as false, so the first
+ *              execution yields true
  *
  * @param actionType   - The built-in action type.
  * @param currentValue - The target field's current value (may be null/unset).
@@ -42,5 +44,13 @@ export function computeNewValue(
       return true;
     case "uncheck":
       return false;
+    case "toggle": {
+      // NULL/undefined counts as false, so the FIRST toggle yields true. This
+      // is load-bearing: a card created before its card type gained a boolean
+      // field — or one whose field is excluded from the create form, as the
+      // presence field is — has no field_values row at all, and must read as
+      // "off" rather than as an error.
+      return !(currentValue ?? false);
+    }
   }
 }

@@ -30,6 +30,10 @@ import {
   deactivateFieldDefinition,
   reorderFieldDefinitions,
 } from "@/lib/dal";
+import {
+  enablePresenceControl,
+  disablePresenceControl,
+} from "@/lib/server/presence/provisioning";
 import type {
   CardType,
   CardTypeWithFields,
@@ -155,6 +159,40 @@ export async function updateCardTypeAction(
 // Card type lifecycle (activate / deactivate / archive / restore) lives in
 // `src/lib/actions/lifecycle.ts`. The former `deactivateCardTypeAction` here
 // wrote `is_active` directly, bypassing validation and audit.
+
+// ─── MASTER actions — Presence control ────────────────────────────────────────
+
+/**
+ * Turn presence control on or off for a card type.
+ *
+ * The whole feature is this one boolean: the supporting field and toggle action
+ * are provisioned and retired by the server, and are invisible everywhere a
+ * master configures a card type. Both directions are idempotent, so the wizard
+ * can call this unconditionally on every submit without checking current state.
+ *
+ * Master-only, like every other card-type mutation — enabling changes what a
+ * scan DOES, which is the same blast radius as adding an auto-action.
+ *
+ * @param cardTypeId - Card type UUID.
+ * @param enabled    - Desired state.
+ * @role master
+ */
+export async function setPresenceControlAction(
+  cardTypeId: string,
+  enabled: boolean,
+): Promise<ActionResult<{ changed: boolean }>> {
+  return actionHandler(async () => {
+    const { tenantId } = await requireMaster();
+    const id = z.string().uuid().parse(cardTypeId);
+    const want = z.boolean().parse(enabled);
+
+    if (want) {
+      const result = await enablePresenceControl(tenantId, id);
+      return { changed: result.changed };
+    }
+    return disablePresenceControl(tenantId, id);
+  });
+}
 
 // ─── MASTER actions — Field Definition management ─────────────────────────────
 

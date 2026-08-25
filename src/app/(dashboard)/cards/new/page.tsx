@@ -14,6 +14,7 @@ import {
   listCardTypes,
   getCardTypeWithFullSchema,
 } from "@/lib/dal";
+import { excludeSystemFields } from "@/lib/fields/system";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardNewClient from "./CardNewClient";
 import { Button } from "@/components/ui/button";
@@ -111,7 +112,10 @@ export default async function NewCardPage({ searchParams }: NewCardPageProps) {
     redirect("/cards/new");
   }
 
-  const fields: FieldDefinitionShape[] = schema.fieldDefinitions
+  // System fields are server-owned — the operator must never set one by hand,
+  // and the presence field in particular is flipped only by scanning or by the
+  // switch on /presence.
+  const fields: FieldDefinitionShape[] = excludeSystemFields(schema.fieldDefinitions)
     .filter((f) => f.isActive)
     .map((f) => ({
       id: f.id,

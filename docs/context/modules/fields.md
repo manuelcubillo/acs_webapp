@@ -1,6 +1,6 @@
 # Module: fields
 
-**Last updated**: 2026-08-15 · **Last feature**: `is_required` gained a second consumer — it now drives the scan-validation empty-value skip
+**Last updated**: 2026-08-24 · **Last feature**: `is_system` on field definitions, with consumer-side exclusion helpers
 
 ## Responsibility
 
@@ -11,6 +11,7 @@ Validation rules per field type are stored here (in `validation_rules` jsonb) bu
 ## Key files
 
 - `src/lib/dal/field-definitions.ts` — CRUD + `getCommonFieldDefinitions(tenantId, cardTypeIds[])`.
+- `src/lib/fields/system.ts` — `excludeSystemFields` / `excludeSystemActions`. Applied **at each consumer**, never inside a DAL read (constraint #27). Grep either name to enumerate every surface that has declared its intent.
 - `src/lib/dal/field-values.ts` — Read/write with `mapValueToColumn` / `extractValue`.
 - `src/lib/db/schema/access-control.ts` — `field_definitions`, `field_values` tables.
 - `src/components/card-types/fields/FieldEditor.tsx` — Slide-in panel, create/edit `FieldDefinitionDraft`.
@@ -39,11 +40,14 @@ Validation rules per field type are stored here (in `validation_rules` jsonb) bu
 | `position`          | Order in card layout                                                               |
 | `default_value`     | jsonb                                                                              |
 | `validation_rules`  | jsonb — interpreted by form validation engine; `select` options live here too      |
+| `is_system`         | bool. Server-provisioned row: created and retired by feature code, never by a user, and excluded from every configuration surface. General mechanism — see constraint #27 and `src/lib/fields/system.ts`. Presence control is its first consumer. |
 | `is_active`         | Soft delete                                                                        |
 
 ### `field_values`
 
 Typed columns: `value_text`, `value_number`, `value_boolean`, `value_date`, `value_json`. Dispatched via `mapValueToColumn(fieldType, value)` on write, `extractValue(fieldType, row)` on read.
+
+⚠️ `updated_at` is maintained by the **`field_values_touch` BEFORE UPDATE trigger** (migration 0021), not by application code. Every write path also sets it by hand — harmless, the trigger wins — but a new one does not have to. `/presence` reads it as "Dentro desde". Accepted imprecision: an UPDATE writing an unchanged value still bumps it, which is why the card edit form scopes its `initialValues` to the fields it actually renders (`useCardForm` submits its seed map wholesale).
 
 | Field type | Stored in       | Notes                                          |
 | ---------- | --------------- | ---------------------------------------------- |
@@ -140,8 +144,8 @@ Read them **only** via `getSelectOptions(validationRules)` from `@/lib/validatio
 
 ## Recent changes
 
+- 2026-08-24 — `field_definitions` gained `is_system`, and `field_values.updated_at` became trigger-maintained. System fields are filtered out at the consumer by `excludeSystemFields` (`src/lib/fields/system.ts`) — applied to the card create/edit forms, the wizard's edit loader (before the tempId mapping), the card-type detail + list tiles, the dashboard-settings pickers, the card-list columns, the field-filter builders (via `getCommonFieldDefinitionsAction`), the design-editor bindings, and the card-detail value grid. Deliberately NOT applied to the DAL reads themselves, nor to `getAutoExecuteActions`. `EnrichedFieldValue`, `CommonFieldDefinition` and `FilterableFieldDefinition` now carry `isSystem`. ADR `2026-08-24-presence-control.md`.
 - 2026-08-15 — `is_required` now has a second consumer: at scan time a non-mandatory field with no value makes its scan validations skip rather than fail. No code changed in this module — the flag is joined onto the rule in `src/lib/dal/scan-validations.ts`, because a field blank since creation has no `field_values` row and never reaches `EnrichedFieldValue[]`. ADR `2026-08-15-scan-validation-empty-optional-fields.md`.
 - 2026-08-02 — Select options are now read through one shared helper, `getSelectOptions` in `@/lib/validation/rules`. `SelectInput` was looking up a rule named `allowedValues` (nothing writes that name), so the card form's select dropdown was always empty and a select field could not be assigned on create or edit. Corrected the storage table above: `select` lives in **`value_text`**, not `value_json` — the doc described a multi-select design that was never implemented. Bug fix, no ADR.
 - 2026-08-02 — `PhotoRenderer` lightbox became opt-out via a new `enlargeable` prop (default `true`), threaded through `DynamicFieldRenderer`. Both list views pass `false`: their row navigates to the card detail, and the photo's `onClick` was swallowing that click, so the thumbnail advertised "Ampliar foto" and then never enlarged. Static variant drops the handler, `cursor-pointer` and `aria-label`; the shared footprint moved to a `THUMBNAIL_CLASS` constant. Thumbnails also gained `loading="lazy"` + `decoding="async"` — a 50-row list was firing 50 photo-route round trips to paint ~4 visible rows. Side effect: **Descargar** is now card-detail-only. Bug fix, no ADR.
 - 2026-08-02 — `PhotoRenderer` gained a second addressing mode: with `cardCode` + `fieldDefinitionId` it builds its own `<img src>` from `cardPhotoRoute` (stable, per-request signature) instead of consuming a URL from `value`, which becomes a pure presence signal. Adopted by both card list views and, since it already passed both props, card detail. Fixes list thumbnails breaking on every client-side refetch and the 15-minute expiry. The download href now comes from the same helper. ADR `2026-08-02-card-list-photos-stable-route.md`.
-- 2026-07-19 — Webcam capture + interactive crop for photo fields, in both edit + create views via the shared `PhotoUploader` (opt-in `enableWebcam` / `enableCrop`; `PhotoInput` turns both on — other photo kinds unchanged). New `useWebcamCapture` hook, `WebcamCaptureDialog`, `ImageCropDialog` (`react-easy-crop`; "Free" = source aspect, plus 1:1 / 3:4 presets + zoom), and a shadcn `Slider`. `optimizeImage` gained an optional source-pixel `cropRect` that overrides the profile centre-crop. Photo lightbox added a **Descargar** button; downloads are named `<code>_<fieldName>_<random>.<ext>` via a signed `Content-Disposition` (stored key unchanged). ADR `2026-07-19-webcam-capture-and-crop.md`.

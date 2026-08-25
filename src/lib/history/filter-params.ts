@@ -60,7 +60,10 @@ export interface HistoryViewState {
    * dimension and is merged in by `toEffectiveFilters`.
    */
   filters: ActionHistoryFilters;
-  /** Scan entries visible. Default true (no filter = show everything). */
+  /**
+   * Scan entries visible. The default when the URL is silent is injected —
+   * see `parseHistoryParams`.
+   */
   showScans: boolean;
   /** 1-based page number. */
   page: number;
@@ -77,10 +80,32 @@ const MAX_USER_ID_LENGTH = 128;
 export type HistoryRawParams = RawParams;
 
 /**
+ * The scan toggle's default when the URL says nothing.
+ *
+ * Historically `true` unconditionally ("absent = show everything"). It is now
+ * INJECTED, because with presence control enabled every operational scan writes
+ * both a scan row and a presence action row, so the default view doubles up and
+ * is more useful with scans hidden.
+ *
+ * This module stays dependency-free by design — it is imported by the server
+ * page AND by client components — so it must not become tenant-aware itself.
+ * The caller resolves the default (`tenantHasPresenceEnabled`) and passes it in.
+ */
+export const DEFAULT_SHOW_SCANS = true;
+
+/**
  * Read the history view state out of a query string.
  * Never throws — an unreadable value simply does not filter.
+ *
+ * @param raw              - The query string or params object.
+ * @param defaultShowScans - What `scans` means when absent. Defaults to the
+ *                           historical `true`; the history page passes the
+ *                           tenant-derived value.
  */
-export function parseHistoryParams(raw: HistoryRawParams): HistoryViewState {
+export function parseHistoryParams(
+  raw: HistoryRawParams,
+  defaultShowScans: boolean = DEFAULT_SHOW_SCANS,
+): HistoryViewState {
   const filters: ActionHistoryFilters = {};
 
   const dateFrom = parseDate(readParam(raw, HISTORY_PARAM.DATE_FROM));
@@ -108,9 +133,19 @@ export function parseHistoryParams(raw: HistoryRawParams): HistoryViewState {
 
   return {
     filters,
-    showScans: readParam(raw, HISTORY_PARAM.SCANS) !== "0",
+    showScans: readScansParam(readParam(raw, HISTORY_PARAM.SCANS), defaultShowScans),
     page: parsePage(readParam(raw, HISTORY_PARAM.PAGE)),
   };
+}
+
+/**
+ * `scans` is explicit in every query this module writes, so absence only ever
+ * means "hand-typed URL" — in which case the caller's default applies.
+ */
+function readScansParam(value: string | null | undefined, fallback: boolean): boolean {
+  if (value === "0") return false;
+  if (value === "1") return true;
+  return fallback;
 }
 
 // ─── Writing ──────────────────────────────────────────────────────────────────
@@ -146,7 +181,11 @@ export function buildHistoryQuery(state: HistoryViewState): string {
   if (filters.fieldFilters?.length) {
     params.set(HISTORY_PARAM.FIELD_FILTERS, JSON.stringify(filters.fieldFilters));
   }
-  if (!showScans) params.set(HISTORY_PARAM.SCANS, "0");
+  // ALWAYS serialized, unlike every other key, which is omitted at its default.
+  // With a tenant-dependent default, absence no longer has a single meaning —
+  // an explicit 0/1 is what makes a shared link, a reload and the `hq` return
+  // blob all reproduce the view the operator actually had.
+  params.set(HISTORY_PARAM.SCANS, showScans ? "1" : "0");
   if (page > 1) params.set(HISTORY_PARAM.PAGE, String(page));
 
   const query = params.toString();
@@ -158,14 +197,25 @@ export function buildHistoryQuery(state: HistoryViewState): string {
  * blob a card detail page carries so its back link can return to the view the
  * operator came from.
  *
+ * `defaultShowScans` is rarely worth passing: `buildHistoryQuery` always emits
+ * `scans`, so every blob this app produces carries an explicit value and round
+ * trips exactly. It matters only for a hand-edited URL. This is why the card
+ * detail page — which is deliberately tenant-unaware — can keep calling it with
+ * one argument.
+ *
  * Sanitizing is the round trip itself: parse validates and drops, build emits
  * only known keys. The result is therefore always a history query and can
  * never be an absolute URL, a path, or a foreign parameter, whatever arrives.
  */
-export function sanitizeHistoryQuery(raw: string | null | undefined): string {
+export function sanitizeHistoryQuery(
+  raw: string | null | undefined,
+  defaultShowScans: boolean = DEFAULT_SHOW_SCANS,
+): string {
   if (!raw) return "";
   const stripped = raw.startsWith("?") ? raw.slice(1) : raw;
-  return buildHistoryQuery(parseHistoryParams(new URLSearchParams(stripped)));
+  return buildHistoryQuery(
+    parseHistoryParams(new URLSearchParams(stripped), defaultShowScans),
+  );
 }
 
 // ─── Effective filters ────────────────────────────────────────────────────────

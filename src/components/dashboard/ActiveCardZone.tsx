@@ -32,6 +32,9 @@ import AutoActionFeedback from "./AutoActionFeedback";
 import ScanAlerts from "@/components/cards/ScanAlerts";
 import CardStatusBadge from "@/components/shared/CardStatusBadge";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import PresenceControl from "@/components/presence/PresenceControl";
 import { colOf, rowOf } from "@/lib/dashboard/active-zone-layout";
 import { cn } from "@/lib/utils";
 import type {
@@ -81,6 +84,19 @@ interface ActiveCardZoneProps {
   stoppedByValidation: boolean;
   stoppedAtAction: string | null;
   manualActions: ActionDefinitionWithField[];
+  /**
+   * The scanned card type's system presence action id, or null.
+   *
+   * Used for two things: to represent presence with `PresenceControl` instead
+   * of a generic toggle, and to drop the presence entry from the auto-action
+   * summary when it SUCCEEDED (it is already represented by its own control).
+   */
+  presenceActionDefinitionId: string | null;
+  /**
+   * Current on/off state per toggle action id, from `buildToggleStates`.
+   * A toggle renders as a switch, and a switch has to show the value it flips.
+   */
+  toggleStates: Record<string, boolean>;
   hasBlockingErrors: boolean;
   allowOverrideOnError: boolean;
   finalValidationResult: ScanValidationResult | null;
@@ -100,6 +116,8 @@ export default function ActiveCardZone({
   stoppedByValidation,
   stoppedAtAction,
   manualActions,
+  presenceActionDefinitionId,
+  toggleStates,
   hasBlockingErrors,
   allowOverrideOnError,
   finalValidationResult,
@@ -117,8 +135,23 @@ export default function ActiveCardZone({
     setPrevAutoActions(autoActions);
     setAutoFeedbackDismissed(false);
   }
+  // Presence has its own control on this panel, so listing a SUCCESSFUL presence
+  // toggle in the auto-action summary is redundant. A FAILED one stays: per
+  // constraint #11 a failure stops the remaining sequence and may open the
+  // override modal, so hiding the cause would leave the operator looking at an
+  // unexplained interruption.
+  //
+  // Matches on the action targeting the card type's presence field — NOT on
+  // `is_system` (other system actions may exist) and NOT on
+  // `action_type === 'toggle'` (a tenant's own boolean toggle is not presence).
+  const visibleAutoActions = autoActions.filter(
+    (a) => !(a.success && a.actionDefinitionId === presenceActionDefinitionId),
+  );
+
   const autoFeedback =
-    !autoFeedbackDismissed && autoActions.length > 0 ? autoActions : null;
+    !autoFeedbackDismissed && visibleAutoActions.length > 0
+      ? visibleAutoActions
+      : null;
 
   const handleAutoFeedbackDismiss = () => setAutoFeedbackDismissed(true);
 
@@ -166,6 +199,15 @@ export default function ActiveCardZone({
 
   const anyActionRunning = !!isExecutingActionId;
 
+  // Presence is represented by its own control on the panel above, so it is
+  // removed from the generic manual-action row — otherwise the operator would
+  // see two controls for the same thing.
+  const presenceAction =
+    manualActions.find((a) => a.id === presenceActionDefinitionId) ?? null;
+  const otherManualActions = presenceAction
+    ? manualActions.filter((a) => a.id !== presenceAction.id)
+    : manualActions;
+
   return (
     <div className="flex flex-col gap-3">
       {/* Card summary panel — surfaces the outcome via state token */}
@@ -174,6 +216,19 @@ export default function ActiveCardZone({
         label={panelLabel}
         activeCard={activeCard}
         summaryLayout={summaryLayout}
+        presenceControl={
+          // Never offered for an archived card — its actions are denied
+          // outright, so a control that cannot fire would be a lie.
+          presenceAction && !isArchivedDenied ? (
+            <PresenceControl
+              isInside={toggleStates[presenceAction.id] ?? false}
+              onChange={() => onManualAction(presenceAction.id)}
+              isPending={isExecutingActionId === presenceAction.id}
+              disabled={anyActionRunning || (hasBlockingErrors && !allowOverrideOnError)}
+              ariaLabel={presenceAction.name}
+            />
+          ) : null
+        }
       />
 
       {/* Lifecycle banner — the dominant reason when the card is off/archived */}
@@ -197,9 +252,10 @@ export default function ActiveCardZone({
       )}
 
       {/* Manual action controls — never shown for an archived (denied) card */}
-      {!isArchivedDenied && manualActions.length > 0 && (
+      {!isArchivedDenied && otherManualActions.length > 0 && (
         <ManualActions
-          actions={manualActions}
+          actions={otherManualActions}
+          toggleStates={toggleStates}
           hasBlockingErrors={hasBlockingErrors}
           allowOverrideOnError={allowOverrideOnError}
           overrideTone={isLifecycleOff}
@@ -289,24 +345,39 @@ function LifecycleBanner({ outcome, reason }: LifecycleBannerProps) {
 // ─── Result panel (granted / warning / denied / override) ────────────────────
 
 interface ResultPanelProps {
+  /** Rendered below the state label, outside the navigating Link. */
+  presenceControl?: React.ReactNode;
   state: SurfaceState;
   label: string;
   activeCard: CardWithFields;
   summaryLayout: ActiveZoneFieldConfig[];
 }
 
-function ResultPanel({ state, label, activeCard, summaryLayout }: ResultPanelProps) {
+function ResultPanel({
+  state,
+  label,
+  activeCard,
+  summaryLayout,
+  presenceControl,
+}: ResultPanelProps) {
   const { Icon, classes, iconColorClass, chipClass, borderClass } = stateMeta(state);
 
   return (
-    <Link
-      href={`/cards/${encodeURIComponent(activeCard.code)}`}
+    // The state surface is a DIV, with the Link covering only the navigable
+    // region. It used to be one Link wrapping everything — which cannot hold
+    // the presence control: a button inside an anchor is invalid HTML, and
+    // every click would navigate to the card detail instead of toggling.
+    <div
       className={cn(
-        "block rounded-2xl border-2 p-5 transition-shadow",
-        "hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        "rounded-2xl border-2 p-5 transition-shadow",
+        "focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background",
         classes,
       )}
     >
+      <Link
+        href={`/cards/${encodeURIComponent(activeCard.code)}`}
+        className="block rounded-xl transition-shadow hover:shadow-md focus-visible:outline-none"
+      >
       <div className="flex items-start gap-4">
         <div
           className={cn(
@@ -336,7 +407,16 @@ function ResultPanel({ state, label, activeCard, summaryLayout }: ResultPanelPro
       </div>
 
       <SummaryGrid activeCard={activeCard} layout={summaryLayout} />
-    </Link>
+      </Link>
+
+      {/* Presence, directly under the state label. Outside the Link above so
+          its buttons are real buttons and its clicks do not navigate. */}
+      {presenceControl && (
+        <div className="mt-4 flex justify-end border-t border-current/10 pt-3">
+          {presenceControl}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -530,6 +610,8 @@ function formatFieldValue(value: unknown, fieldType: string): string {
 
 interface ManualActionsProps {
   actions: ActionDefinitionWithField[];
+  /** Current on/off state per toggle action id. */
+  toggleStates: Record<string, boolean>;
   hasBlockingErrors: boolean;
   allowOverrideOnError: boolean;
   /** Use override (orange) styling instead of warning (amber) for the confirm mode. */
@@ -543,6 +625,7 @@ interface ManualActionsProps {
 
 function ManualActions({
   actions,
+  toggleStates,
   hasBlockingErrors,
   allowOverrideOnError,
   overrideTone,
@@ -595,6 +678,47 @@ function ManualActions({
         {actions.map((action) => {
           const isRunning = isExecutingActionId === action.id;
           const disabled = isHardBlocked || anyActionRunning;
+
+          // A toggle carries state, so it renders as a switch showing the value
+          // it would flip. Execution still goes through `onManualAction`, i.e.
+          // the same validate → gate → executeActionAction path as a button.
+          if (action.actionType === "toggle") {
+            const switchId = `active-card-action-${action.id}`;
+            return (
+              <div
+                key={action.id}
+                className={cn(
+                  "flex h-9 items-center gap-2.5 rounded-md border px-3",
+                  isWarningMode
+                    ? cn(confirmBorder, confirmBg, confirmText)
+                    : "border-border bg-card text-foreground",
+                  disabled && "opacity-60",
+                )}
+              >
+                <Label
+                  htmlFor={switchId}
+                  className={cn(
+                    "text-sm font-semibold",
+                    !disabled && "cursor-pointer",
+                  )}
+                >
+                  {action.name}
+                </Label>
+                {isRunning ? (
+                  <Loader2 className="size-4 shrink-0 animate-spin" strokeWidth={2} />
+                ) : (
+                  <Switch
+                    id={switchId}
+                    checked={toggleStates[action.id] ?? false}
+                    disabled={disabled}
+                    onCheckedChange={() => !isHardBlocked && onManualAction(action.id)}
+                    aria-label={action.name}
+                  />
+                )}
+              </div>
+            );
+          }
+
           return (
             <Button
               key={action.id}

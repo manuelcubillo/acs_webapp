@@ -22,8 +22,11 @@ Router for tasks. Read `foundation/` once per session. Then read only the module
 | Scan/action behaviour by card status, lifecycle gate, deny archived, override inactive | `cards`, `actions`, `scanning`, `decisions/2026-07-17-card-lifecycle-scan-behaviour.md` |
 | Status controls in edit, activate/deactivate/archive card or type, filter cards by status | `cards`, `card-types`, `decisions/2026-07-17-card-lifecycle-edit-controls.md` |
 | Trash view, archived list, restore from trash, permanent/hard delete, empty trash | `cards`, `card-types`, `auth-tenants`, `decisions/2026-07-17-card-lifecycle-trash-view.md` |
+| Presence, Recinto, occupancy, toggle, who is inside  | `presence`, `actions`, `card-types`, `fields`   |
+| System field / system action, `is_system`, `is_operator_visible` | `presence`, `actions`, `fields`, `decisions/2026-08-24-presence-control.md` |
 | CardType wizard, card type definition                | `card-types`, `fields`, `actions`, `validations`|
 | Activity feed, summary fields, dashboard settings    | `dashboard`, `cards`                            |
+| Feed grouping, scan correlation, `scanLogId`, `action_logs.metadata` | `dashboard`, `actions`, `cards`, `decisions/2026-08-25-feed-grouping-and-scan-correlation.md` |
 | Last-scanned-card panel, ActiveCardZone grid, two-row photo cell | `dashboard`, `decisions/2026-08-04-active-card-summary-grid.md` |
 | History, audit log, export, filter logs              | `history`, `dashboard` (shared table), `actions` (log producers) |
 | Role, permission, member, tenant, guard              | `auth-tenants`, `<affected module>`             |

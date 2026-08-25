@@ -68,6 +68,7 @@ function value(
     label: "Campo",
     fieldType,
     isRequired,
+    isSystem: false,
     value: v,
     raw: {} as EnrichedFieldValue["raw"],
   };

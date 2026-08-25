@@ -20,6 +20,7 @@ import {
   getActionHistory,
   getFeedSummaryFieldConfig,
   getActiveZoneFieldConfig,
+  getPresenceActionIdsByCardType,
   listCardTypes,
 } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
@@ -72,6 +73,7 @@ export default async function DashboardPage() {
     cardTypes,
     summaryFieldConfig,
     activeZoneConfig,
+    presenceActionIds,
   ] = await Promise.all([
     getActivityFeed(tenantId, {
       limit: feedLimit,
@@ -85,6 +87,7 @@ export default async function DashboardPage() {
     listCardTypes(tenantId).catch(() => []),
     getFeedSummaryFieldConfig(tenantId).catch(() => new Map()),
     getActiveZoneFieldConfig(tenantId).catch(() => new Map()),
+    getPresenceActionIdsByCardType(tenantId).catch(() => ({})),
   ]);
 
   // Static per-tenant data the client needs to build feed rows for its own
@@ -93,6 +96,9 @@ export default async function DashboardPage() {
   const feedConfig: FeedBuilderConfig = {
     cardTypeNames: Object.fromEntries(cardTypes.map((t) => [t.id, t.name])),
     summaryFields: Object.fromEntries(summaryFieldConfig),
+    // Lets a locally-built row know it is a presence row, so a fresh scan shows
+    // "Entrada"/"Salida" immediately rather than "Presencia" until Refrescar.
+    presenceActionIds,
   };
 
   // Per-card-type layout of the "last scanned card" panel. Static per tenant,

@@ -19,7 +19,7 @@ import {
   AuthenticationError,
   AuthorizationError,
 } from "@/lib/api";
-import { getActionHistory, getHistoryFilterOptions } from "@/lib/dal";
+import { getActionHistory, getHistoryFilterOptions, tenantHasPresenceEnabled } from "@/lib/dal";
 import {
   parseHistoryParams,
   toEffectiveFilters,
@@ -50,7 +50,18 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
   const { tenantId, role } = context;
 
   // ── View state from the URL ───────────────────────────────────────────────
-  const { filters, showScans, page } = parseHistoryParams(await searchParams);
+  //
+  // With presence control on, every operational scan writes BOTH a scan row and
+  // a presence action row, so an unfiltered history shows each passage twice.
+  // The toggle therefore starts off for those tenants. It is only a default —
+  // an explicit `scans` in the URL always wins, and the operator can flip it.
+  const presenceEnabled = await tenantHasPresenceEnabled(tenantId).catch(() => false);
+  const defaultShowScans = !presenceEnabled;
+
+  const { filters, showScans, page } = parseHistoryParams(
+    await searchParams,
+    defaultShowScans,
+  );
 
   // ── Fetch initial data in parallel ────────────────────────────────────────
   const [initialData, filterOptions, userProfile] = await Promise.all([

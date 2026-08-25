@@ -29,6 +29,9 @@ import {
   user,
 } from "@/lib/db/schema";
 import { extractValue } from "./field-values";
+import { isPresenceRowSql } from "./presence";
+import { presenceDirectionLabel, PRESENCE_FILTER_LABEL } from "@/lib/presence/labels";
+import { readBooleanAfterValue } from "./metadata-keys";
 import type {
   ActionHistoryFilters,
   ActionHistoryEntry,
@@ -200,6 +203,8 @@ type RawRow = {
   executedBy: string | null;
   executedByName: string | null;
   metadata: unknown;
+  /** Derived in SQL by `isPresenceRowSql`, not stored. */
+  isPresence: boolean;
 };
 
 async function enrichWithSummaryFields(
@@ -321,6 +326,7 @@ async function enrichWithSummaryFields(
       metadata: row.metadata as Record<string, unknown> | null,
       operatorOverride:
         (row.metadata as Record<string, unknown> | null)?.operator_override === true,
+      isPresence: row.isPresence === true,
       summaryFields,
     };
   });
@@ -346,6 +352,8 @@ function baseQuery(tenantId: string, filters: ActionHistoryFilters) {
       executedBy: actionLogs.executedBy,
       executedByName: user.name,
       metadata: actionLogs.metadata,
+      // Derived from the join, not stored — see `isPresenceRowSql`.
+      isPresence: isPresenceRowSql,
     })
     .from(actionLogs)
     .innerJoin(cards, eq(actionLogs.cardId, cards.id))
@@ -447,7 +455,14 @@ export async function getHistoryFilterOptions(
     db
       .select({
         id: actionDefinitions.id,
-        name: actionDefinitions.name,
+        // The presence action is named "Presencia" internally, which tells an
+        // operator nothing. It stays ONE option filtering by
+        // action_definition_id — splitting it into two direction filters would
+        // mean filtering on jsonb plus a new dimension across the URL keys, the
+        // Zod schema, buildWhere and sanitizeHistoryQuery.
+        name: sql<string>`CASE WHEN ${isPresenceRowSql}
+          THEN ${PRESENCE_FILTER_LABEL}
+          ELSE ${actionDefinitions.name} END`,
         cardTypeId: cardTypes.id,
         cardTypeName: cardTypes.name,
       })
@@ -498,6 +513,7 @@ export async function getFilterableFieldDefinitions(
       label: fieldDefinitions.label,
       fieldType: fieldDefinitions.fieldType,
       validationRules: fieldDefinitions.validationRules,
+      isSystem: fieldDefinitions.isSystem,
     })
     .from(fieldDefinitions)
     .where(
@@ -508,7 +524,9 @@ export async function getFilterableFieldDefinitions(
     )
     .orderBy(fieldDefinitions.position);
 
-  // Exclude photo fields (not searchable)
+  // Exclude photo fields (not searchable). System fields are NOT filtered here
+  // — this is a DAL read; the caller declares that intent with
+  // `excludeSystemFields` (see src/lib/fields/system.ts).
   return rows
     .filter((r) => r.fieldType !== "photo")
     .map((r) => ({
@@ -517,6 +535,7 @@ export async function getFilterableFieldDefinitions(
       label: r.label,
       fieldType: r.fieldType,
       validationRules: r.validationRules,
+      isSystem: r.isSystem,
     }));
 }
 
@@ -578,7 +597,11 @@ export function buildCsvFromEntries(
       e.executedAt.toISOString().replace("T", " ").slice(0, 19),
       e.cardCode,
       e.cardTypeName,
-      e.actionName ?? "Scan",
+      // Same derivation as HistoryTableRow — the export must not disagree with
+      // the table it was exported from.
+      e.isPresence && readBooleanAfterValue(e.metadata) !== null
+        ? presenceDirectionLabel(readBooleanAfterValue(e.metadata)!)
+        : (e.actionName ?? "Scan"),
       e.executedByName ?? "—",
       e.operatorOverride ? "Yes" : "No",
       ...summaryValues,

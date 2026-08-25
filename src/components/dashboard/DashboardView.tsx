@@ -31,6 +31,7 @@ import DashboardKpis, { type DashboardKpiData } from "./DashboardKpis";
 import ConfirmActionModal from "@/components/shared/ConfirmActionModal";
 import AutoActionConfirmModal from "@/components/shared/AutoActionConfirmModal";
 import { cn } from "@/lib/utils";
+import { buildToggleStates } from "@/lib/fields/toggle-state";
 import {
   executeScanWithAutoActionsAction,
   validateBeforeActionAction,
@@ -127,6 +128,15 @@ export default function DashboardView({
   const [pendingAutoActionIds, setPendingAutoActionIds] = useState<string[]>([]);
   const [pendingAutoActionNames, setPendingAutoActionNames] = useState<string[]>([]);
   const [pauseValidationErrors, setPauseValidationErrors] = useState<ScanValidationCheck[]>([]);
+  /**
+   * The paused scan's `action_logs.id`, held across the confirmation modal.
+   *
+   * Handed back to `resumeAutoActionsAction` so the actions it runs correlate
+   * to the ORIGINAL scan. Without this the feed would show the scan and its
+   * resumed actions as separate entries — and since a pause waits on a human,
+   * no time-window heuristic could reunite them.
+   */
+  const [pendingScanLogId, setPendingScanLogId] = useState<string | null>(null);
   const [completedAutoActions, setCompletedAutoActions] = useState<AutoActionResult[]>([]);
   const [pausedAtAction, setPausedAtAction] = useState<string>("");
   const [isResumingAutoActions, setIsResumingAutoActions] = useState(false);
@@ -192,6 +202,7 @@ export default function DashboardView({
       setPendingAutoActionIds(data.pendingAutoActionIds);
       setPendingAutoActionNames(data.pendingAutoActionNames ?? []);
       setPauseValidationErrors(data.pauseValidationErrors ?? []);
+      setPendingScanLogId(data.scanLogId);
       setPausedAtAction(data.stoppedAtAction ?? "");
       setShowAutoActionModal(true);
     }
@@ -202,6 +213,9 @@ export default function DashboardView({
         autoActions: data.autoActions,
         config: feedConfig,
         visibility,
+        // The real log id, so these rows group locally exactly as the
+        // server-built ones will after a Refrescar.
+        scanLogId: data.scanLogId,
       }),
     );
   }, [appendFeedEntries, feedConfig, visibility]);
@@ -224,7 +238,12 @@ export default function DashboardView({
 
       const actionsResult = await getActionsForCardTypeAction(result.data.card.cardTypeId);
       if (actionsResult.success) {
-        setManualActions(actionsResult.data.filter((a) => !a.isAutoExecute));
+        // `is_operator_visible`, not `!is_auto_execute`. The two were the same
+        // column's job until migration 0021 split them: a presence toggle both
+        // fires on scan AND must be correctable by hand. The migration
+        // backfilled `is_operator_visible = NOT is_auto_execute`, so every
+        // existing action keeps rendering exactly as it did.
+        setManualActions(actionsResult.data.filter((a) => a.isOperatorVisible));
       }
     } finally {
       setIsScanning(false);
@@ -241,6 +260,7 @@ export default function DashboardView({
         cardCode: activeCard.code,
         pendingActionIds: pendingAutoActionIds,
         overrideValidationErrors: pauseValidationErrors.map((e) => e.message),
+        scanLogId: pendingScanLogId,
       });
 
       if (resumeResult.success) {
@@ -259,6 +279,9 @@ export default function DashboardView({
             config: feedConfig,
             visibility,
             operatorOverride: true,
+            // The ORIGINAL scan's id, so the resumed rows join the group that
+            // scan already anchored instead of appearing beside it.
+            scanLogId: resumeResult.data.scanLogId,
           }),
         );
       } else {
@@ -271,6 +294,7 @@ export default function DashboardView({
     activeCard,
     pendingAutoActionIds,
     pauseValidationErrors,
+    pendingScanLogId,
     appendFeedEntries,
     feedConfig,
     visibility,
@@ -405,6 +429,17 @@ export default function DashboardView({
     setManualActionModalErrors([]);
   }, []);
 
+  // Toggle switches show the value they would flip. `activeCard` is replaced
+  // after every execution (`executeAndRefresh` re-fetches it), so this is
+  // recomputed from server state on each mutation — no optimistic update.
+  const toggleStates = buildToggleStates(manualActions, activeCard?.fields ?? []);
+
+  // The scanned card type's presence action, from the same static config the
+  // feed builder uses — so the panel and the feed agree on what presence is.
+  const presenceActionDefinitionId = activeCard
+    ? (feedConfig.presenceActionIds[activeCard.cardTypeId] ?? null)
+    : null;
+
   // ── Render (REBUILT on tokens + shadcn primitives) ────────────────────────
 
   return (
@@ -465,6 +500,8 @@ export default function DashboardView({
               stoppedByValidation={scanResult?.stoppedByValidation ?? false}
               stoppedAtAction={scanResult?.stoppedAtAction ?? null}
               manualActions={manualActions}
+              presenceActionDefinitionId={presenceActionDefinitionId}
+              toggleStates={toggleStates}
               hasBlockingErrors={hasBlockingErrors}
               allowOverrideOnError={allowOverrideOnError}
               finalValidationResult={finalValidationResult}

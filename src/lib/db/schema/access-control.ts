@@ -26,6 +26,7 @@
 import {
   pgTable,
   pgEnum,
+  type AnyPgColumn,
   text,
   timestamp,
   boolean,
@@ -71,12 +72,20 @@ export const fieldTypeEnum = pgEnum("field_type", [
  * Each type operates on a specific target field:
  *   - increment / decrement → numeric fields
  *   - check / uncheck       → boolean fields
+ *   - toggle                → boolean fields (flips the current value)
+ *
+ * `toggle` is a general-purpose action type available to any boolean field on
+ * any card type. It computes `!(current ?? false)`, so a card with no
+ * field_values row yet yields `true` on its first execution. Presence control
+ * is its first consumer (see ADR 2026-08-24-presence-control.md) but it is not
+ * presence-specific.
  */
 export const actionTypeEnum = pgEnum("action_type", [
   "increment",
   "decrement",
   "check",
   "uncheck",
+  "toggle",
 ]);
 
 /**
@@ -219,6 +228,26 @@ export const cardTypes = pgTable(
     }),
     /** Status to return to on restore. Null unless status = 'archived'. */
     statusBeforeArchive: lifecycleStatusEnum("status_before_archive"),
+    /**
+     * The boolean field designated to hold "is inside the facility" for this
+     * card type. NULL means this card type does not participate in presence
+     * control — that is the default and the majority case.
+     *
+     * The referenced field (and the toggle action that flips it) are
+     * server-provisioned system rows, created and retired exclusively by
+     * `src/lib/server/presence/provisioning.ts`. Never set this by hand.
+     *
+     * ON DELETE SET NULL rather than CASCADE or RESTRICT: the purge job deletes
+     * a card type's whole subtree in one statement, and this FK must not be
+     * able to block it. Note the deliberate circularity with
+     * `field_definitions.card_type_id` — the rows are created in order (field
+     * first, then this pointer via a follow-up UPDATE), so neither FK is ever
+     * unsatisfied. See ADR 2026-08-24-presence-control.md.
+     */
+    presenceFieldDefinitionId: uuid("presence_field_definition_id").references(
+      (): AnyPgColumn => fieldDefinitions.id,
+      { onDelete: "set null" },
+    ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -275,6 +304,17 @@ export const fieldDefinitions = pgTable(
      *   select: { options: ["A", "B", "C"] }
      */
     validationRules: jsonb("validation_rules"),
+    /**
+     * Server-provisioned row: created and retired by feature code, never by a
+     * user. System rows are excluded from every user-facing configuration
+     * surface (wizard, card form, summary/grid pickers, filter builders, design
+     * bindings) and cannot be edited or deleted from the UI. Retiring one sets
+     * `is_active = false` like any other soft delete — it is never hard-deleted.
+     *
+     * A general mechanism, not presence-specific. See constraint #27 in
+     * `docs/context/foundation/04-constraints.md`.
+     */
+    isSystem: boolean("is_system").notNull().default(false),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -400,6 +440,16 @@ export const fieldValues = pgTable(
     valueDate: timestamp("value_date"),
     valueJson: jsonb("value_json"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
+    /**
+     * Maintained by the `field_values_touch` BEFORE UPDATE trigger (migration
+     * 0021), NOT by application code. Every write path already set it by hand;
+     * the trigger makes that an invariant no future write path can forget, and
+     * moves the clock from the app to the database.
+     *
+     * This is what supplies "inside since" on the presence page — the toggle
+     * always changes the value, so the bump is meaningful there. Accepted
+     * imprecision: an UPDATE writing an unchanged value still bumps it.
+     */
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => [
@@ -409,6 +459,15 @@ export const fieldValues = pgTable(
     ),
     index("field_values_card_id_idx").on(table.cardId),
     index("field_values_field_definition_id_idx").on(table.fieldDefinitionId),
+    /**
+     * Partial index carrying only the rows of people currently inside — which
+     * is exactly the working set of `getPresenceOccupants`. It stays small
+     * regardless of how many cards exist, because it drops every row the
+     * moment its boolean goes false.
+     */
+    index("field_values_presence_idx")
+      .on(table.fieldDefinitionId)
+      .where(sql`${table.valueBoolean} = true`),
   ],
 );
 
@@ -462,6 +521,33 @@ export const actionDefinitions = pgTable(
      * Only one auto-execute action per card type is recommended to avoid conflicts.
      */
     isAutoExecute: boolean("is_auto_execute").notNull().default(false),
+    /**
+     * Whether this action renders as a control on the operator surfaces
+     * (`CardActions` on the card detail, `ActiveCardZone` on the dashboard).
+     *
+     * Deliberately INDEPENDENT of `is_auto_execute`, which now means only
+     * "runs on operational scan". All four combinations are meaningful:
+     *   auto + visible    → fires on scan AND can be corrected by hand (presence)
+     *   auto + hidden     → fires on scan only (the historical auto-action)
+     *   manual + visible  → the historical plain action
+     *   manual + hidden   → reachable through the external API only
+     *
+     * Backfilled to `NOT is_auto_execute` in migration 0021, which reproduces
+     * the previous behaviour byte-for-byte. See ADR
+     * 2026-08-24-presence-control.md.
+     */
+    isOperatorVisible: boolean("is_operator_visible").notNull().default(true),
+    /**
+     * Server-provisioned row: created and retired by feature code, never by a
+     * user. System rows are excluded from every user-facing configuration
+     * surface (wizard, card form, summary/grid pickers, filter builders, design
+     * bindings) and cannot be edited or deleted from the UI. Retiring one sets
+     * `is_active = false` like any other soft delete — it is never hard-deleted.
+     *
+     * A general mechanism, not presence-specific. See constraint #27 in
+     * `docs/context/foundation/04-constraints.md`.
+     */
+    isSystem: boolean("is_system").notNull().default(false),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

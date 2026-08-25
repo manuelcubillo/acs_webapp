@@ -16,6 +16,7 @@ import {
   resolveCardOrigin,
   type RawOriginParams,
 } from "@/lib/cards/return-origin";
+import { excludeSystemFields } from "@/lib/fields/system";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardEditClient from "./CardEditClient";
 import CardLifecycleControls from "@/components/cards/CardLifecycleControls";
@@ -74,7 +75,8 @@ export default async function EditCardPage({ params, searchParams }: EditCardPag
     redirect("/cards");
   }
 
-  const fields: FieldDefinitionShape[] = schema.fieldDefinitions
+  // Same rule as the create form: system fields never render as inputs.
+  const fields: FieldDefinitionShape[] = excludeSystemFields(schema.fieldDefinitions)
     .filter((f) => f.isActive)
     .map((f) => ({
       id: f.id,
@@ -86,8 +88,17 @@ export default async function EditCardPage({ params, searchParams }: EditCardPag
     }));
 
   // Build initial values map from existing field values.
+  //
+  // Scoped to the fields the form actually renders. `useCardForm` seeds its
+  // state from this map and submits it WHOLESALE, so a value included here but
+  // not rendered would be silently re-written on every save. For the presence
+  // field that is not harmless: the re-write fires the `field_values_touch`
+  // trigger, and "Dentro desde" would reset to the moment somebody edited an
+  // unrelated field.
+  const renderedFieldIds = new Set(fields.map((f) => f.id));
   const initialValues: Record<string, unknown> = {};
   for (const fv of card.fields) {
+    if (!renderedFieldIds.has(fv.fieldDefinitionId)) continue;
     initialValues[fv.fieldDefinitionId] = fv.value;
   }
 

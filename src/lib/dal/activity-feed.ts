@@ -24,6 +24,8 @@ import {
 } from "@/lib/db/schema";
 import type { ActivityFeedEntry, ActivityFeedOptions, ActivityFeedSummaryField } from "./types";
 import { extractValue } from "./field-values";
+import { isPresenceRowSql } from "./presence";
+import { readScanLogId, readBooleanAfterValue } from "./metadata-keys";
 import { cardPhotoRoute } from "@/lib/storage/photo-routes";
 
 /**
@@ -77,6 +79,8 @@ export async function getActivityFeed(
       executedAt: actionLogs.executedAt,
       executedBy: actionLogs.executedBy,
       metadata: actionLogs.metadata,
+      // Derived from the join, not stored — see `isPresenceRowSql`.
+      isPresence: isPresenceRowSql,
     })
     .from(actionLogs)
     .innerJoin(cards, eq(actionLogs.cardId, cards.id))
@@ -277,6 +281,14 @@ export async function getActivityFeed(
       metadata: row.metadata,
       operatorOverride:
         (row.metadata as Record<string, unknown> | null)?.operator_override === true,
+      // Projected out of metadata here so `groupFeedRows` reads a typed field
+      // rather than casting jsonb at render time. The client mirror sets the
+      // same three fields directly — see `feed-entries.ts`.
+      scanLogId: readScanLogId(row.metadata),
+      isPresence: row.isPresence === true,
+      presenceAfterValue: row.isPresence === true
+        ? readBooleanAfterValue(row.metadata)
+        : null,
       summaryFields,
     };
   });

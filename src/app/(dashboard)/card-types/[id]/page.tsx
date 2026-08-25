@@ -15,6 +15,7 @@ import {
   AuthorizationError,
 } from "@/lib/api";
 import { getCardTypeWithFullSchema } from "@/lib/dal";
+import { excludeSystemFields, excludeSystemActions } from "@/lib/fields/system";
 import { listDesignsForCardType, countLiveCardsForCardType } from "@/lib/dal";
 import DashboardShell from "@/components/layout/DashboardShell";
 import CardTypeLinkedDesigns from "@/components/card-types/CardTypeLinkedDesigns";
@@ -108,8 +109,12 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
     getCurrentUserProfile(),
   ]);
 
-  const activeFields = cardType.fieldDefinitions.filter((f) => f.isActive);
-  const activeActions = (cardType.actionDefinitions as ActionDefinitionWithField[]).filter((a) => a.isActive);
+  // The detail page is a configuration surface: it lists exactly what a master
+  // can edit in the wizard, so it must show the same set the wizard does.
+  const activeFields = excludeSystemFields(cardType.fieldDefinitions).filter((f) => f.isActive);
+  const activeActions = excludeSystemActions(
+    cardType.actionDefinitions as ActionDefinitionWithField[],
+  ).filter((a) => a.isActive);
   const activeScanValidations = (cardType.scanValidations as ScanValidationWithField[]).filter((sv) => sv.isActive);
   const isActive = cardType.status === "active";
 

@@ -13,6 +13,7 @@ import { requireOperator, getCurrentUserProfile, AuthenticationError, Authorizat
 import {
   getCardByCode,
   getActionsForCardType,
+  getPresenceActionIdsByCardType,
   getDashboardSettings,
   getScanValidationsByCardType,
   listDesignsForCardType,
@@ -98,13 +99,20 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
 
   // Fetch actions, scan validations, dashboard settings, linked designs, and
   // the current user's topbar profile in parallel
-  const [actions, svRules, settings, linkedDesigns, userProfile] = await Promise.all([
+  const [actions, svRules, settings, linkedDesigns, userProfile, presenceActionIds] = await Promise.all([
     getActionsForCardType(card.cardTypeId).catch(() => []),
     getScanValidationsByCardType(card.cardTypeId).catch(() => []),
     getDashboardSettings(tenantId).catch(() => null),
     listDesignsForCardType(tenantId, card.cardTypeId).catch(() => []),
     getCurrentUserProfile(),
+    getPresenceActionIdsByCardType(tenantId).catch(
+      (): Record<string, string> => ({}),
+    ),
   ]);
+
+  // The one action that renders as "Entrada / Salida" rather than a generic
+  // toggle. Null when this card type does not participate in presence.
+  const presenceActionDefinitionId = presenceActionIds[card.cardTypeId] ?? null;
 
   // Run scan validations (pure, never throws)
   const scanResult = validateScan(card.fields, svRules);
@@ -225,6 +233,7 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
         <CardDetailClient
           initialCard={card}
           actions={actions}
+          presenceActionDefinitionId={presenceActionDefinitionId}
           initialScanResult={scanResult}
           initialHasBlockingErrors={hasErrorLevelFailures(scanResult)}
           allowOverrideOnError={settings?.allowOverrideOnError ?? false}

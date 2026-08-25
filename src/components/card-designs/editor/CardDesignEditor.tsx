@@ -37,6 +37,7 @@ import {
 import type { CardDesign, CardTypeWithFields, CommonFieldDefinition, FieldType } from "@/lib/dal";
 import type { CardDesignLayout, LayoutNode } from "@/lib/card-designs/types";
 import { isBindableNode } from "@/lib/card-designs/types";
+import { excludeSystemFields } from "@/lib/fields/system";
 import {
   updateCardDesignAction,
   linkDesignToCardTypeAction,
@@ -695,7 +696,16 @@ export { COMPATIBLE_FIELD_TYPES };
  * Compute the intersection of field definitions across all linked card types.
  * Two fields are considered the same if they share the same `name` and `fieldType`.
  */
-function computeCommonFields(cardTypes: CardTypeWithFields[]): CommonFieldDefinition[] {
+function computeCommonFields(rawCardTypes: CardTypeWithFields[]): CommonFieldDefinition[] {
+  // A design binds nodes to fields, so this is a configuration surface: the
+  // operator picks from this list. Drop system fields before the intersection
+  // is computed, not after — a system field present in every linked type would
+  // otherwise survive into `availableFields` and offer itself as a binding.
+  const cardTypes = rawCardTypes.map((ct) => ({
+    ...ct,
+    fieldDefinitions: excludeSystemFields(ct.fieldDefinitions),
+  }));
+
   if (cardTypes.length === 0) return [];
   if (cardTypes.length === 1) {
     return cardTypes[0].fieldDefinitions.map((fd) => ({
@@ -704,6 +714,7 @@ function computeCommonFields(cardTypes: CardTypeWithFields[]): CommonFieldDefini
       fieldType: fd.fieldType,
       validationRules: fd.validationRules,
       fieldDefinitionIds: [fd.id],
+      isSystem: fd.isSystem,
     }));
   }
   const result: CommonFieldDefinition[] = [];
@@ -724,6 +735,7 @@ function computeCommonFields(cardTypes: CardTypeWithFields[]): CommonFieldDefini
         fieldType: fd.fieldType,
         validationRules: fd.validationRules,
         fieldDefinitionIds: ids,
+        isSystem: fd.isSystem,
       });
     }
   }

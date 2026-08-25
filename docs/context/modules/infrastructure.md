@@ -1,6 +1,6 @@
 # Module: infrastructure
 
-**Last updated**: 2026-08-06 · **Last feature**: migration 0019 (card-design export size) — first `numeric` column in the schema, with the driver's string-return gotcha
+**Last updated**: 2026-08-24 · **Last feature**: migrations 0020–0021 (presence control) — the schema's first enum-value addition and first DB trigger
 
 ## Responsibility
 
@@ -12,6 +12,7 @@ Everything that keeps the app running: database connection, migrations, env vars
 - `src/lib/db/schema/index.ts` — Barrel export.
 - `src/lib/db/schema/auth.ts` — Better Auth tables.
 - `src/lib/db/schema/access-control.ts` — All app tables + enums. Also exports `CARDS_TENANT_CODE_UNIQUE`, the `(tenant_id, code)` constraint name, which `unique()` itself consumes so the literal cannot drift from the code that matches on it.
+- `src/lib/db/constants.ts` — DB values referenced by BOTH a migration and application code, so they cannot live in only one. Currently `SYSTEM_USER_ID` (the seeded sentinel `user` row) — never re-inline the literal.
 - `src/lib/db/pg-errors.ts` — `isUniqueViolation(error, constraintName?)` + `PG_UNIQUE_VIOLATION`. See "Detecting a driver error".
 - `src/lib/db/schema/relations.ts` — Drizzle relations.
 - `drizzle/` — Generated migrations.
@@ -118,6 +119,22 @@ entry, which it produces even when you replace the SQL body. When the enum diff 
 "created or renamed?", it needs a real TTY (`expect`); `generate --custom` scaffolds a
 journal entry but clones the previous snapshot, so it is not a substitute.
 
+**Adding an enum value**: `ALTER TYPE … ADD VALUE` must be **alone in its migration
+file**. drizzle-kit runs each file in one transaction, and Postgres forbids *using*
+a new enum value in the transaction that added it (before PG 12 it forbade the
+`ALTER` in a transaction block at all). Anything that references the new value —
+a seed row, a CHECK, a backfill — goes in a later file. `0020_action_type_toggle.sql`
+is the reference: one statement, nothing appended.
+
+**Triggers and seed rows**: drizzle-kit cannot express either. Generate the
+structural DDL normally, then hand-edit the file, marking the hand-written
+sections. `0021_presence_control.sql` is the reference — it carries a
+behaviour-preserving backfill, `touch_field_value()` + the `field_values_touch`
+trigger (the schema's only trigger, which makes `field_values.updated_at`
+DB-maintained rather than application-maintained), and the sentinel `user` seed
+with `ON CONFLICT DO NOTHING`. Keep drizzle-kit's snapshot + journal entry; rename
+the file descriptively and update the journal `tag` to match.
+
 **Down migrations**: drizzle-kit neither generates nor runs them. Rollbacks live in
 `drizzle/down/<tag>.down.sql`, outside the migrator's path, and are applied by hand with
 `psql -f`. They must also be removed from `drizzle/meta/_journal.json`. See
@@ -214,8 +231,8 @@ that exact violation returns `false` and must be rethrown.
 
 ## Recent changes
 
+- 2026-08-24 — Presence control: migrations `0020_action_type_toggle.sql` (the schema's first `ALTER TYPE … ADD VALUE`, alone in its file for the transaction rule) and `0021_presence_control.sql` (structural DDL + three hand-written sections: the `is_operator_visible = NOT is_auto_execute` backfill, the `field_values_touch` trigger — the schema's **first trigger** — and the sentinel `user` seed). Rollback in `drizzle/down/0021_presence_control.down.sql`, documented as lossy (toggle actions and their logs cannot survive it; the enum value itself cannot be removed). New `src/lib/db/constants.ts` for values shared between a migration and application code. Verified on PG 15.18 (local) and against PG 15.19 (Neon): full replay on a fresh DB is clean and `drizzle-kit` reports no drift. ADR `2026-08-24-presence-control.md`.
 - 2026-08-06 — Migration `0019_lucky_gateway.sql` adds `output_width_cm` / `output_height_cm` / `output_lock_aspect` to `card_designs` (additive, no data migration; rollback in `drizzle/down/0019_card_design_export_size.down.sql`). First use of a `numeric` column in this schema: **both configured drivers return `numeric` as `string`**, so a DAL that exposes it as a number must map on every read path (`mapDesignRow` in `src/lib/dal/card-designs.ts` is the reference) and write `.toString()` to avoid float drift into a `numeric(6,2)`. Feature owned by `card-designs`; ADR `2026-08-06-card-design-export-size.md`.
 - 2026-08-06 — New `src/lib/db/pg-errors.ts`: `isUniqueViolation(error, constraintName?)`, the first helper that inspects a driver error. Added because card code generation needs the `(tenant_id, code)` index to arbitrate uniqueness — the no-interactive-transactions constraint makes a pre-check SELECT racy. Established that drizzle wraps driver errors in `DrizzleQueryError`, putting the SQLSTATE one `cause` down for both `neon-http` and `node-postgres` (both verified). `access-control.ts` now exports `CARDS_TENANT_CODE_UNIQUE` and feeds it to its own `unique()` call — no DDL change, the generated SQL is identical. ADR `2026-08-06-autogenerated-card-codes.md`.
 - 2026-08-02 — Deleted `signCardListPhotos` from `src/lib/dal/photo-urls.ts`: `stripCardListPhotoKeys` had taken over all three card-list producers the day before, leaving it with zero callers. `signCardPhotos` / `buildPhotoReadUrlMap` are unchanged and still the path for surfaces that sign server-side. Dead-code removal, no behaviour change.
 - 2026-08-02 — `cardPhotoRoute` now takes `{ fieldDefinitionId?, download? }` and owns the route's query construction (`URLSearchParams`), replacing hand-built strings in `PhotoRenderer`. New `stripCardListPhotoKeys` in `src/lib/dal/photo-urls.ts` replaces `signCardListPhotos` on the three card-list producers: list surfaces address photos by route, so keys are redacted (`value` **and** `raw.value_text`) rather than signed. Removes ~one signature per photo per list render; adds one hop + one `getCardByCode` per uncached image. ADR `2026-08-02-card-list-photos-stable-route.md`.
-- 2026-07-18 — Card lifecycle phase 5 (final, 5/5): daily retention purge. New `purgeExpiredArchivedRecords()` (cross-tenant DELETE-with-join against each tenant's `archive_retention_days`, single atomic CTE, idempotent) in `src/lib/server/lifecycle/purge.ts`; new `GET /api/cron/purge-archived` endpoint (no session, `CRON_SECRET` Bearer auth, fails closed); `vercel.json` cron at `0 3 * * *`; `CRON_SECRET` added to env docs (`.env.example`, `.env.docker`). Master-gated retention UI at `/settings/retention`. Also corrected the stale Node-version note (v24, per `engines`). ADR `2026-07-18-card-lifecycle-purge-job.md`.

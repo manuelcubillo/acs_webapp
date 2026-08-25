@@ -24,6 +24,7 @@ import {
   getSummaryFieldsForCardTypes,
   getActiveZoneFieldsForCardTypes,
 } from "@/lib/dal";
+import { excludeSystemFields } from "@/lib/fields/system";
 import DashboardSettingsView from "@/components/settings/dashboard/DashboardSettingsView";
 import type {
   FieldDefinition,
@@ -64,9 +65,12 @@ export default async function DashboardSettingsPage() {
     ),
   );
 
+  // Feeds BOTH pickers on this page (feed summary fields and the ActiveCardZone
+  // grid). Neither is a place an operator should be able to surface a
+  // server-provisioned field.
   const fieldsByCardType: Record<string, FieldDefinition[]> = {};
   for (const ct of cardTypesWithFields) {
-    fieldsByCardType[ct.id] = ct.fieldDefinitions;
+    fieldsByCardType[ct.id] = excludeSystemFields(ct.fieldDefinitions);
   }
 
   // Fetch both per-card-type configurations in parallel. They feed different

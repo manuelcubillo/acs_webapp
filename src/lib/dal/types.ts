@@ -177,6 +177,12 @@ export interface EnrichedFieldValue {
   label: string;
   fieldType: FieldType;
   isRequired: boolean;
+  /**
+   * True for a server-provisioned field. Carried here so surfaces that render
+   * a card's values (card detail, card form) can drop it with
+   * `excludeSystemFields` — the DAL itself stays unfiltered.
+   */
+  isSystem: boolean;
   value: unknown;
   raw: FieldValue;
 }
@@ -332,6 +338,21 @@ export interface ExecuteActionInput {
   operatorOverride?: boolean;
   /** Error messages being overridden — stored in metadata for audit trail. */
   overrideValidationErrors?: string[];
+  /**
+   * Extra keys merged into the action log's `metadata` by the CALLER.
+   *
+   * This is how correlation reaches the log without `executeAction` learning
+   * anything about scans, presence, or any other caller-specific concern: it
+   * stays a pure read → compute → write → log primitive and simply carries
+   * whatever annotation it is handed.
+   *
+   * The scan pipeline uses it for `{ scanLogId }` — see
+   * `SCAN_LOG_ID_METADATA_KEY` in `src/lib/dal/metadata-keys.ts`.
+   *
+   * Merged BEFORE the override flags, so a caller cannot overwrite
+   * `operator_override`.
+   */
+  metadataExtra?: Record<string, unknown>;
 }
 
 // ─── Scan log input ──────────────────────────────────────────────────────────
@@ -362,6 +383,19 @@ export interface AutoActionResult {
 export interface ScanWithAutoActionsResult {
   /** The card that was scanned (final state after all auto-actions). */
   card: CardWithFields;
+  /**
+   * `action_logs.id` of the scan row this call wrote.
+   *
+   * Every auto-action executed as part of this scan carries it in
+   * `metadata.scanLogId`, which is what lets the feed group them under one
+   * entry. It is returned to the client so a PAUSED scan can hand it back to
+   * `resumeAutoActionsAction` — otherwise the resumed actions would correlate
+   * to nothing and the scan would split into two feed entries.
+   *
+   * Null only on the resume path, which writes no scan row of its own and
+   * echoes back the id it was given.
+   */
+  scanLogId: string | null;
   /** Initial scan validation result at scan time, before any auto-actions ran. */
   scanResult: import("@/lib/validation/scan-validator").ScanValidationResult;
   /** Results of each auto-execute action that was attempted. */
@@ -441,6 +475,18 @@ export interface ResumeAutoActionsInput {
   pendingActionIds: string[];
   /** Error messages being overridden — stored in each action's metadata. */
   overrideValidationErrors: string[];
+  /**
+   * `action_logs.id` of the scan that paused, from the pausing call's
+   * `ScanWithAutoActionsResult.scanLogId`.
+   *
+   * Stamped onto every action this resume executes, so a scan that paused for
+   * an override and was then confirmed stays ONE feed entry instead of
+   * splitting into a scan group plus a handful of orphan action rows.
+   *
+   * Optional: an older client, or a resume triggered from somewhere that never
+   * had a scan, simply produces uncorrelated rows — which render standalone.
+   */
+  scanLogId?: string | null;
 }
 
 // ─── Action Definition with target field info ────────────────────────────────
@@ -675,6 +721,28 @@ export interface ActivityFeedEntry {
    */
   operatorOverride: boolean;
   /**
+   * `action_logs.id` of the scan this action row belongs to, or null.
+   *
+   * Projected out of `metadata.scanLogId` by BOTH builders — the DAL reads it
+   * from the stored jsonb, `feed-entries.ts` sets it directly — so
+   * `groupFeedRows` reads one typed field instead of casting `unknown` at
+   * render time. Null on scan rows themselves (a scan anchors its group rather
+   * than joining one), on manual actions, and on every row written before
+   * 2026-08-25 (there is no backfill, by design).
+   */
+  scanLogId: string | null;
+  /**
+   * True when this action row is a presence toggle. Derived from the join
+   * server-side (`isPresenceRowSql`) and from the card type's presence action
+   * id client-side. Renderers branch on THIS, never on `action_type`.
+   */
+  isPresence: boolean;
+  /**
+   * For a presence row, the value the toggle settled on: `true` = now inside.
+   * Feeds `presenceDirectionLabel`. Null on every non-presence row.
+   */
+  presenceAfterValue: boolean | null;
+  /**
    * Selected field values for this card, configured per card type via
    * card_type_summary_fields. Surfaced inline so operators can identify cards.
    */
@@ -744,6 +812,15 @@ export interface ActionHistoryEntry {
   executedByName: string | null;
   metadata: Record<string, unknown> | null;
   operatorOverride: boolean;
+  /**
+   * True when this action row is a presence toggle — i.e. its target field is
+   * its card type's `presence_field_definition_id`.
+   *
+   * Derived at read time from the join, never stored. Renderers stay dumb: they
+   * read this flag and never reason about presence themselves. See
+   * `isPresenceRowSql`.
+   */
+  isPresence: boolean;
   summaryFields: ActionHistorySummaryField[];
 }
 
@@ -774,6 +851,8 @@ export interface FilterableFieldDefinition {
   label: string;
   fieldType: FieldType;
   validationRules: unknown | null;
+  /** True for a server-provisioned field — see `excludeSystemFields`. */
+  isSystem: boolean;
 }
 
 /**
@@ -790,4 +869,10 @@ export interface CommonFieldDefinition {
   validationRules: unknown | null;
   /** One field definition ID per card type that has this field. */
   fieldDefinitionIds: string[];
+  /**
+   * True when the underlying field definitions are server-provisioned. A
+   * system field is system in every card type that has it (provisioning is the
+   * only writer), so the flag is unambiguous across the intersection.
+   */
+  isSystem: boolean;
 }

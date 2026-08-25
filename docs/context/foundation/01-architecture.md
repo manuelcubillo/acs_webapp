@@ -1,6 +1,6 @@
 # 01 · Architecture
 
-**Last updated**: 2026-08-04 · **Last sync**: §1 gained `card_type_active_zone_fields` (migration 0018) and clarified that it and `card_type_summary_fields` drive two different surfaces
+**Last updated**: 2026-08-25 · **Last sync**: `action_logs.metadata` gained a documented correlation contract (`scanLogId`); previously presence control — `action_type` gained `toggle`, `field_definitions`/`action_definitions` gained `is_system`, `action_definitions` gained `is_operator_visible`, `card_types` gained `presence_field_definition_id`, and `field_values.updated_at` became trigger-maintained (migrations 0020–0021)
 
 ## 1. Data model — hybrid SQL + dynamic fields
 
@@ -13,11 +13,11 @@ Fixed columns for system fields (`id`, `tenant_id`, `status`, timestamps) plus d
 | `tenants`                     | Organizations. Holds `scan_mode`, `archive_retention_days` (default 30, master-editable). (`allow_override_on_error` lives in `dashboard_settings`.) |
 | `tenant_members`              | User ↔ tenant join, carries `role` and `is_active`. `removed_at` = soft-remove (hidden from all default queries). |
 | `member_invitations`          | Pending email invitations. `token` unique; `expires_at` = 7 days. Status: pending / accepted / revoked / expired. |
-| `card_types`                  | Badge templates per tenant. Name, description, `status` (`lifecycle_status`) + trash metadata.      |
-| `field_definitions`           | Fields attached to a card type. `field_type`, `is_required`, `position`, `validation_rules` jsonb.  |
+| `card_types`                  | Badge templates per tenant. Name, description, `status` (`lifecycle_status`) + trash metadata, `presence_field_definition_id` (nullable FK → `field_definitions`, `SET NULL`) designating the presence boolean. |
+| `field_definitions`           | Fields attached to a card type. `field_type`, `is_required`, `position`, `validation_rules` jsonb, `is_system`. |
 | `cards`                       | Card instances. `code` is client-facing, unique per `(tenant_id, code)`. `status` (`lifecycle_status`) + trash metadata incl. `archived_via_type_id`. |
-| `field_values`                | Values per card. Type-specific columns: `value_text`, `_number`, `_boolean`, `_date`, `_json`.      |
-| `action_definitions`          | Actions declared per card type. `action_type`, `target_field_definition_id`, `config` jsonb.        |
+| `field_values`                | Values per card. Type-specific columns: `value_text`, `_number`, `_boolean`, `_date`, `_json`. `updated_at` is maintained by the `field_values_touch` **trigger**, not by application code. |
+| `action_definitions`          | Actions declared per card type. `action_type`, `target_field_definition_id`, `config` jsonb, `is_auto_execute`, `is_operator_visible`, `is_system`. |
 | `action_logs`                 | Unified log of scans, actions **and** card lifecycle transitions. `log_type: 'scan' \| 'action' \| 'lifecycle'`. `tenant_id` denormalized. |
 | `scan_validations`            | Rules evaluated at scan time. Per-field, with severity (`error` \| `warning`).                      |
 | `dashboard_settings`          | Per-tenant dashboard configuration: feed limits, entry visibility, `allow_override_on_error`.       |
@@ -31,7 +31,7 @@ Fixed columns for system fields (`id`, `tenant_id`, `status`, timestamps) plus d
 ### Key enums
 
 - `field_type`: `text | number | boolean | date | photo | select`
-- `action_type`: `increment | decrement | check | uncheck`
+- `action_type`: `increment | decrement | check | uncheck | toggle` — `toggle` targets a `boolean` field and computes `!(current ?? false)`, so a card with no value row reads as off and its first toggle turns it on.
 - `lifecycle_status`: `active | inactive | archived | expired` — shared by `cards` and `card_types`. Replaced `card_status` and `card_types.is_active` (migration 0017).
 - `tenant_role`: `operator | admin | master`
 - `scan_mode`: `camera | external_reader | both`
@@ -117,6 +117,13 @@ Auth is page-level via guards, not middleware (`src/middleware.ts` does not exis
 
 `executeAction` is sequential: read current value → compute new value → write → log with before/after. Neon HTTP driver does not support interactive transactions, so this is **not** a true atomic transaction. Known risk documented in `modules/actions.md`.
 
+Whether an action **runs on scan** (`is_auto_execute`) and whether it **renders as
+an operator control** (`is_operator_visible`) are independent columns as of
+2026-08-24. They used to be the same flag's job (the surfaces tested
+`!is_auto_execute`); presence needs an action that does both. Migration 0021
+backfilled `is_operator_visible = NOT is_auto_execute`, preserving prior
+behaviour exactly.
+
 Auto-actions attached to a scan execute **sequentially, stopping on first failure**. If a failure occurs and the tenant has `allow_override_on_error = true`, the UI opens a confirmation modal and the operator can explicitly continue.
 
 ## 8. Rendering — component maps
@@ -134,9 +141,62 @@ Adding a new field type = create renderer + input + register in both maps + exte
 
 `getCommonFieldDefinitions(cardTypeIds: string[])` returns fields common across multiple card types (same `name + fieldType` in ALL given card types) — used for cross-card-type filtering, column selection, and summary fields. Located in `src/lib/dal/common-fields.ts`. Photo fields are excluded (not searchable).
 
+## 9b. `action_logs.metadata` — the correlation contract
+
+`metadata` is untyped jsonb with several producers. Keys read by more than one
+layer are declared in `src/lib/dal/metadata-keys.ts` and never spelled inline —
+a mistyped literal fails silently, as a row that simply never matches.
+
+⚠️ **Two naming conventions coexist.** `executeAction` writes snake_case
+(`action_type`, `target_field`, `before_value`, `after_value`,
+`operator_override`, `override_validation_errors`); the scan pipeline writes
+camelCase (`method`, `cardCode`, `scanLogId`). Pre-existing and not normalised.
+
+**`scanLogId`** is the correlation key between a scan and the auto-actions it
+caused. The scan pipeline captures the id of the scan row it inserts and passes
+it to `executeAction` as `metadataExtra`, which merges it into the log row —
+**before** the override flags, so a caller may annotate but never rewrite the
+audit verdict. `executeAction` itself stays a generic read → compute → write →
+log primitive and does not know what the key means (ADR `2026-07-09`).
+
+`resumeAutoActionsAction` stamps the **same** id, which is why both Server
+Action signatures carry it: an override pause waits on a human, so no time
+window could reunite a resumed run with its scan.
+
+Absence of the key means "not caused by a scan" — that is how a manual action is
+identified, and it is also true of every row written before 2026-08-25. There is
+no backfill. `groupFeedRows` consumes it at render. See ADR
+`2026-08-25-feed-grouping-and-scan-correlation.md`.
+
 ## 10. History / audit log
 
 `/history` is a full audit view of `action_logs` for the tenant. It supports date-range, log-type, card-type, action-definition, user, card-code, and field-level filters (14 operators). Results are paginated (page size 50) and exportable as CSV (capped at 10,000 rows). Accessible to OPERATOR+. See `modules/history.md`.
+
+## 10b. Presence — a state read, not a log query
+
+`/presence` ("Recinto") answers *"who is inside right now?"*. It cannot be
+answered from `action_logs`: a scan row carries no direction, because the
+deployment has one attended reader per access point and no reader identity in the
+model. Direction comes from **toggle semantics** instead — each operational scan
+flips a designated boolean on the card.
+
+A presence LOG row is recognised the same way, at read time, by
+`isPresenceRowSql` — comparing the action's target field to the designation —
+which is what lets the feed, the history table, the CSV export and the filter
+dropdown all label it by direction. Never stamped at write time, for the same
+reason `executeAction` stays generic.
+
+The read path is `cards → card_types → field_values`, joined through
+`card_types.presence_field_definition_id` and filtered to `status = 'active'` +
+`value_boolean = true`, backed by the partial index `field_values_presence_idx`.
+"Dentro desde" comes from the trigger-maintained `field_values.updated_at`, so no
+`action_logs` lookup is involved.
+
+The supporting field and toggle action are provisioned by
+`src/lib/server/presence/provisioning.ts` (one data-modifying CTE each,
+idempotent both ways), flagged `is_system = true`, and excluded from every
+configuration surface — see constraint #27. See `modules/presence.md` and ADR
+`2026-08-24-presence-control.md`.
 
 ## 11. Persistence details
 

@@ -8,6 +8,11 @@
  *    to /account-deactivated.
  *
  * Role checks remain page-level via requireOperator/Admin/Master.
+ *
+ * It also resolves ONE piece of shell state: whether this tenant uses presence
+ * control, which decides if the sidebar shows "Recinto". Resolved here rather
+ * than in each page because `DashboardShell` is mounted independently by all of
+ * them — see `PresenceNavContext`.
  */
 
 import { redirect } from "next/navigation";
@@ -15,6 +20,8 @@ import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { getMemberByUserId } from "@/lib/dal/members";
 import { NotFoundError } from "@/lib/dal/errors";
+import { tenantHasPresenceEnabled } from "@/lib/dal/presence";
+import { PresenceNavProvider } from "@/components/layout/PresenceNavContext";
 
 export const dynamic = "force-dynamic";
 
@@ -48,5 +55,15 @@ export default async function DashboardAreaLayout({
     throw err;
   }
 
-  return <>{children}</>;
+  // Never fatal: a failed lookup just hides the nav entry, and /presence still
+  // guards itself.
+  const presenceEnabled = await tenantHasPresenceEnabled(tenantId).catch(
+    () => false,
+  );
+
+  return (
+    <PresenceNavProvider enabled={presenceEnabled}>
+      {children}
+    </PresenceNavProvider>
+  );
 }

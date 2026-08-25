@@ -26,6 +26,7 @@ const TEXT = {
   TAG_SCANNED:    "Escaneado",
   TAG_OVERRIDE:   "Override",
   ARIA_OVERRIDE:  "Intervención manual del operador — ejecutado con errores de validación",
+  ARIA_REPEAT:    "Ejecuciones repetidas agrupadas",
   YES:            "Sí",
   NO:             "No",
   DASH:           "—",
@@ -33,6 +34,19 @@ const TEXT = {
 
 interface ActivityFeedEntryRowProps {
   entry: ActivityFeedEntry;
+  /**
+   * Labels of the auto-actions a scan absorbed, in execution order.
+   *
+   * Rendered as extra badges beside "Escaneado". Supplied by `ActivityFeed`
+   * from `groupFeedRows`; an ungrouped row passes nothing and renders exactly
+   * as it always has.
+   */
+  actionBadges?: string[];
+  /**
+   * How many identical manual actions merged into this row. Renders as "×N".
+   * Only ever >= 2 — a group of one is not a group and passes nothing.
+   */
+  repeatCount?: number;
 }
 
 function formatFieldValue(value: unknown, fieldType: string): string {
@@ -45,7 +59,11 @@ function formatFieldValue(value: unknown, fieldType: string): string {
   return String(value);
 }
 
-export default function ActivityFeedEntryRow({ entry }: ActivityFeedEntryRowProps) {
+export default function ActivityFeedEntryRow({
+  entry,
+  actionBadges,
+  repeatCount,
+}: ActivityFeedEntryRowProps) {
   const isScan = entry.logType === "scan";
 
   const timeAgo = formatDistanceToNow(new Date(entry.executedAt), {
@@ -126,6 +144,29 @@ export default function ActivityFeedEntryRow({ entry }: ActivityFeedEntryRowProp
               )}
             >
               {TEXT.TAG_SCANNED}
+            </Badge>
+          )}
+
+          {/* One badge per auto-action this scan caused. The presence one
+              arrives already resolved to "Entrada" / "Salida" — this component
+              never reasons about presence. */}
+          {actionBadges?.map((label, i) => (
+            <Badge
+              key={`${label}-${i}`}
+              className="bg-accent text-[10px] font-semibold text-accent-foreground"
+            >
+              {label}
+            </Badge>
+          ))}
+
+          {/* Repeated identical manual actions, collapsed. */}
+          {repeatCount !== undefined && repeatCount > 1 && (
+            <Badge
+              variant="outline"
+              title={TEXT.ARIA_REPEAT}
+              className="bg-card text-[10px] font-bold text-muted-foreground tabular-nums"
+            >
+              ×{repeatCount}
             </Badge>
           )}
         </div>

@@ -35,6 +35,7 @@ import {
   executeAction,
   getDashboardSettings,
 } from "@/lib/dal";
+import { SCAN_LOG_ID_METADATA_KEY } from "@/lib/dal/metadata-keys";
 import type {
   CardWithFields,
   PaginatedResult,
@@ -194,12 +195,19 @@ export async function executeScanWithAutoActionsAction(
     // 3. Log the scan entry (log_type = "scan"). ALWAYS — an operational scan is
     //    a real physical event and is logged even for an archived card
     //    (constraint #10). The lifecycle gate below only affects what runs next.
-    await logScanEntry({
+    //    Its id is CAPTURED: every auto-action below stamps it into
+    //    metadata.scanLogId, which is what groups them under this scan in the
+    //    feed. It is also returned to the client so a paused scan can hand it
+    //    back to resumeAutoActionsAction.
+    const scanLog = await logScanEntry({
       cardId: card.id,
       tenantId,
       executedBy: userId,
       metadata: { method: "operational_scan", cardCode: code },
     });
+    const scanLogId = scanLog.id;
+    /** Correlation stamped on every action this scan causes. */
+    const scanCorrelation = { [SCAN_LOG_ID_METADATA_KEY]: scanLogId };
 
     // 4. Fetch dashboard settings to check override flag
     const settings = await getDashboardSettings(tenantId);
@@ -225,6 +233,7 @@ export async function executeScanWithAutoActionsAction(
         pendingAutoActionNames: null,
         pauseValidationErrors: null,
         lifecycleGate,
+        scanLogId,
       };
     }
 
@@ -259,6 +268,7 @@ export async function executeScanWithAutoActionsAction(
           pendingAutoActionNames: autoActionDefs.map((a) => a.name),
           pauseValidationErrors: getErrorLevelChecks(initialScanResult),
           lifecycleGate,
+          scanLogId,
         };
       }
       // BLOCK — no modal, buttons disabled
@@ -275,6 +285,7 @@ export async function executeScanWithAutoActionsAction(
         pendingAutoActionNames: null,
         pauseValidationErrors: null,
         lifecycleGate,
+        scanLogId,
       };
     }
 
@@ -295,6 +306,7 @@ export async function executeScanWithAutoActionsAction(
           actionDefinitionId: def.id,
           tenantId,
           executedBy: userId,
+          metadataExtra: scanCorrelation,
         });
         autoActions.push({
           actionDefinitionId: def.id,
@@ -329,6 +341,7 @@ export async function executeScanWithAutoActionsAction(
               pendingAutoActionNames: remainingDefs.map((a) => a.name),
               pauseValidationErrors: getErrorLevelChecks(revalidation),
               lifecycleGate,
+              scanLogId,
             };
           }
           // STOP permanently — no override
@@ -362,6 +375,7 @@ export async function executeScanWithAutoActionsAction(
       pendingAutoActionNames: null,
       pauseValidationErrors: null,
       lifecycleGate,
+      scanLogId,
     };
   });
 
@@ -432,6 +446,13 @@ export async function resumeAutoActionsAction(
           executedBy: userId,
           operatorOverride: true,
           overrideValidationErrors: input.overrideValidationErrors,
+          // The ORIGINAL scan's id, round-tripped through the confirmation
+          // modal. Without it a scan that paused for an override would split
+          // into a scan group plus orphan action rows in the feed — the pause
+          // can be many seconds long, so no time window could stitch them.
+          ...(input.scanLogId
+            ? { metadataExtra: { [SCAN_LOG_ID_METADATA_KEY]: input.scanLogId } }
+            : {}),
         });
         autoActions.push({
           actionDefinitionId: actionId,
@@ -470,6 +491,7 @@ export async function resumeAutoActionsAction(
               pendingAutoActionNames: remainingNames,
               pauseValidationErrors: getErrorLevelChecks(revalidation),
               lifecycleGate,
+              scanLogId: input.scanLogId ?? null,
             };
           }
           // No override allowed anymore — stop permanently
@@ -503,6 +525,7 @@ export async function resumeAutoActionsAction(
       pendingAutoActionNames: null,
       pauseValidationErrors: null,
       lifecycleGate,
+      scanLogId: input.scanLogId ?? null,
     };
   });
 

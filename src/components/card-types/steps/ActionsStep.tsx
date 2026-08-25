@@ -4,7 +4,7 @@
  * ActionsStep (Step 2)
  *
  * Define action definitions for the card type.
- * Supports: increment, decrement, check, uncheck.
+ * Supports: increment, decrement, check, uncheck, toggle.
  * Each action targets a specific field compatible with its type.
  *
  * The "Auto-ejecutar al escanear" toggle marks an action as is_auto_execute,
@@ -12,7 +12,7 @@
  */
 
 import { useState } from "react";
-import { Plus, Trash2, TrendingUp, TrendingDown, CheckSquare, Square, Zap } from "lucide-react";
+import { Plus, Trash2, TrendingUp, TrendingDown, CheckSquare, Square, Repeat2, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,9 +91,25 @@ const ACTION_TYPE_META: Record<ActionType, ActionTypeMeta> = {
     cardSelected: "border-border bg-muted",
     hasAmount: false,
   },
+  toggle: {
+    label: "Alternar",
+    description: "Invierte un campo Sí/No en cada ejecución",
+    fieldFilter: "boolean",
+    icon: Repeat2,
+    chip: "bg-sky-500/15 text-sky-600 dark:text-sky-400",
+    chipSolid: "bg-sky-600 text-white",
+    cardSelected: "border-sky-500 bg-sky-500/10",
+    hasAmount: false,
+  },
 };
 
-const ACTION_TYPE_ORDER: ActionType[] = ["increment", "decrement", "check", "uncheck"];
+const ACTION_TYPE_ORDER: ActionType[] = [
+  "increment",
+  "decrement",
+  "check",
+  "uncheck",
+  "toggle",
+];
 
 const TEXT = {
   HEADING:     "Acciones de tarjeta",

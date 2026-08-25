@@ -9,6 +9,7 @@
 
 import { z } from "zod";
 import { actionHandler, requireOperator, type ActionResult } from "@/lib/api";
+import { excludeSystemFields } from "@/lib/fields/system";
 import {
   getActionHistory,
   getActionHistoryForExport,
@@ -134,7 +135,7 @@ export async function getFieldDefinitionsForFilterAction(
   return actionHandler(async () => {
     await requireOperator();
     const parsed = z.string().uuid().parse(cardTypeId);
-    return getFilterableFieldDefinitions(parsed);
+    return excludeSystemFields(await getFilterableFieldDefinitions(parsed));
   });
 }
 
@@ -150,6 +151,10 @@ export async function getCommonFieldDefinitionsAction(
   return actionHandler(async () => {
     await requireOperator();
     const parsed = z.array(z.string().uuid()).min(1).parse(cardTypeIds);
-    return getCommonFieldDefinitions(parsed);
+    // Filtered at the boundary, not in the DAL: `getCommonFieldDefinitions` is
+    // the unfiltered source of truth, and both consumers of THIS action
+    // (CardList's and HistoryFilters' field-filter builders) are user-facing
+    // pickers. A system field is not something an operator filters on.
+    return excludeSystemFields(await getCommonFieldDefinitions(parsed));
   });
 }

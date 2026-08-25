@@ -44,6 +44,7 @@ export async function getCommonFieldDefinitions(
       validationRules: fieldDefinitions.validationRules,
       cardTypeId: fieldDefinitions.cardTypeId,
       position: fieldDefinitions.position,
+      isSystem: fieldDefinitions.isSystem,
     })
     .from(fieldDefinitions)
     .where(
@@ -63,6 +64,7 @@ export async function getCommonFieldDefinitions(
     label: string;
     fieldType: string;
     validationRules: unknown | null;
+    isSystem: boolean;
     // Map from cardTypeId → { id, position }
     byCardType: Map<string, { id: string; position: number }>;
   };
@@ -79,6 +81,7 @@ export async function getCommonFieldDefinitions(
         label: row.label,
         fieldType: row.fieldType,
         validationRules: row.validationRules,
+        isSystem: row.isSystem,
         byCardType: new Map([[row.cardTypeId, { id: row.id, position: row.position }]]),
       });
     }
@@ -98,6 +101,7 @@ export async function getCommonFieldDefinitions(
       fieldType: group.fieldType as CommonFieldDefinition["fieldType"],
       validationRules: group.validationRules,
       fieldDefinitionIds,
+      isSystem: group.isSystem,
     });
   }
 

@@ -24,4 +24,5 @@ export * from "./active-card-zone-fields";
 export * from "./activity-feed";
 export * from "./action-history";
 export * from "./common-fields";
+export * from "./presence";
 export * from "./card-designs";

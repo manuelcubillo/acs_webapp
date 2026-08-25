@@ -1,6 +1,6 @@
 # Module: dashboard
 
-**Last updated**: 2026-08-04 · **Last feature**: configurable 3×3 summary grid for the last-scanned card panel, with two-row photo cells
+**Last updated**: 2026-08-25 · **Last feature**: feed grouping at render (scan groups + repeated-action ×N) and `PresenceControl` on the scan panel
 
 ## Responsibility
 
@@ -25,10 +25,12 @@ Does not own action execution (see `actions`) or card lookup (see `cards`).
 - `src/components/dashboard/DashboardView.tsx` — Primary client container. On scan code received: calls `executeScanWithAutoActionsAction` (operational scan pipeline). **Owns the feed's entries**: every mutation it performs (scan, resumed auto-actions, manual action) appends the rows the server just logged, built locally. `refreshFeed` is the only path back to the server for feed data. Composes `DashboardSearchBar` (focal point) + `DashboardKpis` + two-column area of `ActiveCardZone` and `ActivityFeed`. Token-driven; zero inline styles.
 - `src/components/dashboard/DashboardSearchBar.tsx` — **Operational scan input**: manual code entry + external reader. Calls `onScan(code)` → `executeScanWithAutoActionsAction` in parent. Focused on mount for immediate barcode capture. Visually the focal point of the page.
 - `src/components/dashboard/DashboardKpis.tsx` — Read-only KPI strip: scans today, actions today, active card types, last activity. Pure presentation — values come from props.
-- `src/components/dashboard/ActiveCardZone.tsx` — Currently scanned card + inline action execution. State → token mapping: granted=green / warning=amber / denied=red / **override=orange** (phase 2), each with icon + label. Lifecycle takes precedence over scan validation: archived → red denial with no action buttons; inactive/expired → orange `--state-override` surface (via the `lifecycleGate` prop). Shows a neutral `CardStatusBadge`. The summary area (`SummaryGrid`) places each configured field at its grid cell via the `summaryLayout` prop; a two-row photo gets `sm:row-span-2` and the taller `--photo-thumbnail-size-tall` cap. **Empty layout = unconfigured**, which falls back to the legacy first-6-fields-with-a-value grid. Values are resolved by `fieldDefinitionId` (not by walking `card.fields`) so a configured-but-empty field renders "—" instead of collapsing the arrangement. `photo` fields are signed URLs; click falls through the wrapping `Link` to the card detail.
+- `src/components/dashboard/ActiveCardZone.tsx` — Currently scanned card + inline action execution. `toggle` actions render as a `Switch` (state via the `toggleStates` prop); everything else stays a `Button`. State → token mapping: granted=green / warning=amber / denied=red / **override=orange** (phase 2), each with icon + label. Lifecycle takes precedence over scan validation: archived → red denial with no action buttons; inactive/expired → orange `--state-override` surface (via the `lifecycleGate` prop). Shows a neutral `CardStatusBadge`. The summary area (`SummaryGrid`) places each configured field at its grid cell via the `summaryLayout` prop; a two-row photo gets `sm:row-span-2` and the taller `--photo-thumbnail-size-tall` cap. **Empty layout = unconfigured**, which falls back to the legacy first-6-fields-with-a-value grid. Values are resolved by `fieldDefinitionId` (not by walking `card.fields`) so a configured-but-empty field renders "—" instead of collapsing the arrangement. `photo` fields are signed URLs; click falls through the wrapping `Link` to the card detail.
 - `src/components/dashboard/ActivityFeed.tsx` — Recent entries list. Presentational and fully controlled — no polling, no state of its own. `lastRefreshedAt` renders as "Actualizado HH:MM": the last time the SERVER was asked, which is what makes the no-polling trade honest.
 - `src/components/dashboard/ActivityFeedEntryRow.tsx` — Single row renderer. Scan rows show the card's photo thumbnail (`entry.cardPhotoUrl`, `object-cover` avatar), falling back to the `--state-info` scan icon when absent. Action rows keep the `--primary` Zap icon. Override badge = `--state-override` (orange, distinct from amber warning). Renders no photo-typed summary field — see `getFeedSummaryFieldConfig`.
-- `src/lib/dashboard/feed-entries.ts` — Client-side row construction: `buildScanEntries`, `buildActionEntries`, `prependEntries`. **Mirrors the server's logging rules** — keep in step with `src/lib/actions/cards.ts`.
+- `src/lib/dashboard/feed-entries.ts` — Client-side row construction: `buildScanEntries`, `buildActionEntries`, `prependEntries`. **Mirrors the server's logging rules** — keep in step with `src/lib/actions/cards.ts`. Sets `scanLogId` / `isPresence` / `presenceAfterValue` so locally-built rows group and label exactly like server-built ones.
+- `src/lib/dashboard/feed-grouping.ts` — **Pure**, no imports beyond types: `groupFeedRows(entries) → GroupedFeedEntry[]`. The ONLY grouping implementation; neither builder groups. Unit-tested in `__tests__/feed-grouping.unit.test.ts` (15 cases, including a "loses no rows" invariant).
+- `src/components/presence/PresenceControl.tsx` — Two-segment Entrada/Salida group, replacing the phase-1 `Switch`. Rendered on the scan panel, the card detail and `/presence`.
 - `src/app/api/photos/cards/[code]/route.ts` — Session-authenticated (OPERATOR+) card photo. 302 → signed storage URL, minted per request. ADR `2026-07-17-stable-photo-routes.md`.
 - `src/components/dashboard/AutoActionFeedback.tsx` — Per-result feedback for auto-executed actions. Success = state-granted, failure = state-denied.
 - `src/components/layout/DashboardShell.tsx` — Sidebar + topbar shell. Token-driven, includes `ThemeToggle` icon button and `Avatar` primitive.
@@ -52,6 +54,32 @@ Does not own action execution (see `actions`) or card lookup (see `cards`).
 - `action_logs` — source for the feed. `tenant_id` denormalized for single-table queries.
 
 ## Main flows
+
+### Feed grouping (at render)
+
+`ActivityFeed` calls `groupFeedRows` on whatever rows it was handed. **Neither
+builder groups** — the feed is produced twice (server DAL + client mirror), and
+implementing grouping in both would guarantee two algorithms that drift, with "the
+feed rearranges itself on Refrescar" as the symptom.
+
+Three rules:
+
+1. **Scan groups.** A `scan` row absorbs every `action` row whose `scanLogId`
+   equals its `id`, rendering as one "Escaneado" entry with one badge per
+   absorbed auto-action. The presence badge reads **Entrada** / **Salida** via
+   `presenceDirectionLabel`; every other badge is the action's name. An
+   auto-action whose scan fell past the feed limit renders **standalone**, never
+   dropped.
+2. **Repeated manual actions.** Consecutive uncorrelated `action` rows merge into
+   one "×N" when they share card + action definition + **executing user**, each
+   within 10s of its neighbour (a chain, so a steady stream keeps merging). The
+   same-user requirement is not optional: two operators are two facts.
+3. Everything else passes through. A group of one is never a group — no `×1`.
+
+⚠️ **The tenant's feed limit counts RAW rows**, so a grouped feed can show fewer
+entries than the limit: a scan with three auto-actions consumes four of the
+budget and renders as one line. Deliberate — the limit bounds query work, not
+visual density. ADR `2026-08-25-feed-grouping-and-scan-correlation.md`.
 
 ### Activity feed load and refresh
 
@@ -100,8 +128,8 @@ Consequence: rows produced by OTHER dashboards appear only on refresh.
 
 ## Recent changes
 
+- 2026-08-25 — Feed grouping, applied at render by the new pure `feed-grouping.ts`; neither builder groups and `prependEntries` is untouched. Needs a correlation key, so the scan pipeline now stamps `metadata.scanLogId` on every auto-action it causes — including a resumed override run, which round-trips the id through `DashboardView` state so a paused scan stays ONE entry. `ActivityFeedEntry` gained `scanLogId` / `isPresence` / `presenceAfterValue`, projected by both builders so renderers never parse jsonb; `buildScanEntries` now uses the real log id as the client row's id. `ActiveCardZone` renders `PresenceControl` under the state label (its `ResultPanel` was one big `<Link>`, so the panel was restructured — a button inside an anchor is invalid and every click would have navigated), drops presence from the generic manual-action row, and hides a SUCCESSFUL presence toggle from `AutoActionFeedback` (a failed one stays: it may be why the sequence stopped). ADR `2026-08-25-feed-grouping-and-scan-correlation.md`.
+- 2026-08-24 — `DashboardView` filters manual actions on **`is_operator_visible`** instead of `!is_auto_execute` (migration 0021 backfilled the column so nothing renders differently), and `ActiveCardZone` renders a `toggle` action as a shadcn `Switch` showing the target field's current value, computed by `buildToggleStates` from the refreshed card. No optimistic update — `executeAndRefresh` already re-fetches the card, so the switch reflects server state. The feed needed **no** change: `feed-entries.ts` builds rows from `{actionDefinitionId, actionName, success}` with no action-type branching, so a toggle appears instantly like any other action (verified, not assumed). The dashboard-settings field pickers now exclude `is_system` fields. ADR `2026-08-24-presence-control.md`.
 - 2026-08-04 — Configurable panel grid: `ActiveCardZone`'s summary area becomes a per-card-type 3×3 grid (up to 9 cells) with an optional two-row `photo` cell, stored in the NEW `card_type_active_zone_fields` table (migration `0018`) and edited from the now-first section of the Dashboard settings tab. The feed keeps its own `card_type_summary_fields` config, untouched — the decoupling is the whole point of the ADR. Discovered along the way: the panel never read any config at all (it sliced the card's first 6 valued fields), `SummaryFieldsSection` never used `getCommonFieldDefinitions` so photo fields were already selectable there, and no Server Action in the codebase calls `revalidatePath` (every dashboard page is `force-dynamic`). ADR `2026-08-04-active-card-summary-grid.md`.
 - 2026-07-17 — Phase-2 lifecycle surface: `ActiveCardZone` gains an orange `--state-override` state for inactive/expired and a red no-action denial for archived, driven by the new `lifecycleGate` prop; neutral `CardStatusBadge` added. `DashboardView` gates manual actions on the gate (deny / block / override modal) before executing. `CardActions` gained `overrideTone` / `hideBanner`. ADR `2026-07-17-card-lifecycle-scan-behaviour.md`.
 - 2026-07-17 — Feed stops polling: `DashboardView` owns the entries and appends what each mutation logs, built client-side (`feed-entries.ts`); server asked only on load + Refrescar. Thumbnails move to `/api/photos/cards/[code]`; `getActivityFeed` no longer signs. Fixed along the way: `key={feedKey}` remounted the feed on every scan, reverting it to page-load data (and starving it entirely under 15s scan intervals); resumed auto-actions never reached the feed (call commented out); photo summary fields printed the object key as text — now excluded on both paths. ADRs `2026-07-17-dashboard-feed-no-polling.md`, `2026-07-17-stable-photo-routes.md`.
-- 2026-07-16 — Card photo thumbnails on the dashboard: `ActivityFeedEntryRow` scan rows show the card's photo (`cardPhotoUrl`, `object-cover` avatar, fallback to the `--state-info` scan icon); `ActiveCardZone` renders `photo` summary fields as thumbnails. `getActivityFeed` resolves each card's primary photo; scan/resume actions in `src/lib/actions/cards.ts` sign the returned card's photos.
-- 2026-06-06 — Dashboard rebuild: every dashboard file rewritten on shadcn primitives + Layer 2 tokens. Zero inline styles, zero hex left in the rebuilt surface. Override and warning are now visually distinct (orange vs amber). Scan-feed icon is now neutral (`--state-info`), not grant-green. ThemeToggle added in topbar. KPI strip introduced (4 cards from existing DAL only — no new queries). See `decisions/2026-06-06-dashboard-rebuild.md`.

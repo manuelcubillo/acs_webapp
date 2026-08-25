@@ -1,6 +1,6 @@
 # Module: history
 
-**Last updated**: 2026-08-15 · **Last feature**: field-level filters no longer require selecting a card type — with none selected they run against every active type, as on `/cards`
+**Last updated**: 2026-08-25 · **Last feature**: presence rows read as Entrada/Salida in table + CSV; the scan toggle defaults off for presence tenants
 
 ## Responsibility
 
@@ -56,8 +56,18 @@ A field filter is self-contained — it carries one `fieldDefinitionId` per card
 
 ## View state in the URL
 
+⚠️ **`scans` is the one key that is ALWAYS serialized**, as `0` or `1`. Every
+other key is omitted at its default. The scan toggle's default is now
+tenant-dependent — off when presence control is enabled, since each scan
+produces both a scan row and a presence action row — so absence no longer has a
+single meaning. `parseHistoryParams(raw, defaultShowScans)` takes it injected;
+the module stays dependency-free and never becomes tenant-aware itself. Because
+build always emits the key, `sanitizeHistoryQuery` round-trips an `hq` blob
+exactly, which is why the card detail page can keep calling it without knowing
+the tenant.
+
 The filters, scan toggle and page number live in the query string — `df`, `dt`,
-`ct`, `act`, `user`, `code`, `ff` (JSON), `scans=0`, `page` — so a filtered view
+`ct`, `act`, `user`, `code`, `ff` (JSON), `scans=0|1`, `page` — so a filtered view
 is shareable, survives a reload, and can be handed to another page and rebuilt.
 The server page parses them and renders the requested result set directly;
 `ActionHistoryView` seeds its state from the same values and mirrors every change
@@ -107,6 +117,8 @@ ADR `2026-08-02-history-url-state-and-return.md`.
 
 `getHistoryFilterOptionsAction()` returns: active card types, active action definitions (grouped by card type), distinct users who appear in `action_logs` for the tenant. Used to populate dropdowns.
 
+⚠️ The **action** dropdown deliberately still lists system actions (e.g. presence's "Presencia"), unlike the **field** filter builder, which excludes system fields via `excludeSystemFields` inside `getCommonFieldDefinitionsAction`. The distinction is configuration vs audit: a presence toggle produces real `action_logs` rows, so hiding it from the filter would make those rows visible in the table yet unfindable. Constraint #27 governs configuration surfaces; a log filter is a read of history.
+
 ### Field filter builder
 
 `HistoryFilters` resolves the *effective* card types — the selection, or all of `options.cardTypes` when nothing is selected (`getHistoryFilterOptions` returns active types only) — and `getCommonFieldDefinitionsAction(effectiveTypeIds)` returns the fields common to all of them (photo excluded). Operator picks a field, operator, and value → appended as a `FieldFilter` to the query. The builder renders nothing when those types share no filterable field. Changing the type selection clears the field filters, since a filter on a field the new selection does not share would match nothing — same rule as `CardList`.
@@ -132,8 +144,8 @@ ADR `2026-08-02-history-url-state-and-return.md`.
 
 ## Recent changes
 
+- 2026-08-25 — Presence rows read by DIRECTION. `getActionHistory` / `getActionHistoryForExport` project `isPresence`, derived in SQL by comparing the action's target field to `card_types.presence_field_definition_id` (`isPresenceRowSql`) — not stamped at write time, so a tenant that later disables presence sees those rows fall back to the action name, which is accepted degradation. `HistoryTableRow` and `buildCsvFromEntries` both derive the label through the single shared `presenceDirectionLabel`, so the export cannot disagree with the table. `getHistoryFilterOptions` relabels the presence action **"Entrada / Salida"** while keeping it ONE option filtering by `action_definition_id`. The scan toggle now defaults **off** when the tenant has presence enabled (every scan otherwise shows twice): `parseHistoryParams` takes the default as an injected parameter, and `buildHistoryQuery` ALWAYS serializes `scans` as `0`/`1` because absence stopped having a single meaning. ADR `2026-08-25-feed-grouping-and-scan-correlation.md`.
+- 2026-08-24 — The field-filter builder now excludes `is_system = true` fields: the filter is applied in `getCommonFieldDefinitionsAction` (and in the deprecated `getFieldDefinitionsForFilterAction`), not in the DAL, so `getCommonFieldDefinitions` stays the unfiltered source of truth. `CommonFieldDefinition` / `FilterableFieldDefinition` gained `isSystem`. The **action** dropdown is deliberately left unfiltered — see "Filter options load". Presence toggles need no other change here: they are `log_type='action'` rows with the usual `before_value` / `after_value`, so the table, the summary strip and the CSV export render them as-is. ADR `2026-08-24-presence-control.md`.
 - 2026-08-15 — Field-level filters stopped requiring a card type. `buildWhere` gated them on `cardTypeIds`, so a filter set without one was accepted, serialized to `?ff=`, counted in the badge — and silently ignored by the query; the panel hid the builder entirely until a type was picked. Both gates are gone: `HistoryFilters` passes the effective types (selection, or every active type) and the DAL applies each filter on its own `fieldDefinitionIds`. Covered by `src/lib/dal/__tests__/history-field-filters.integration.test.ts`. Bug fix + parity with `/cards`, no ADR.
 - 2026-08-02 — `/cards` adopted this module's URL-state pattern, and the shared parts moved out: the defensive readers to `src/lib/navigation/query-codec.ts`, the scroll memory to `src/lib/navigation/return-scroll.ts`, and the `from`/`hq`/`cq` params to `src/lib/cards/return-origin.ts` (`HistoryTableRow` now builds its link with `cardDetailHref`). Two scroll bugs surfaced and were fixed for both surfaces: the page offset was read from `window.scrollY`, which is always 0 because `DashboardShell` scrolls an inner `<main>`, and a single assignment did not survive the router's post-navigation reset. The card detail also stops dropping `hq` at its edit page — a follow-up from the previous ADR. ADR `2026-08-02-card-list-url-state-and-return.md`.
 - 2026-08-02 — Select fields became filterable in the history view, via the same shared `FieldFilterBuilder` fix as the card list: options were read from `validationRules.options`, a shape nothing writes, so the value dropdown was always empty. Now uses `getSelectOptions` from `@/lib/validation/rules`. `buildFieldFilterSQL` was already correct and is unchanged. Bug fix, no ADR.
-- 2026-08-02 — View state (filters, scan toggle, page) moved into the query string, parsed server-side; new `src/lib/history/` module. Rows are clickable and open `/cards/[code]?from=history&hq=…`; the detail page's back link rebuilds the view from `hq`. Scroll offsets (window + table container) round-trip through a one-shot `sessionStorage` entry keyed by the query. Fixed along the way: the filter panel rendered its date range as the UTC instant, so a restored range came back shifted by the operator's offset. ADR `2026-08-02-history-url-state-and-return.md`.
-- 2026-08-02 — Resumen column renders `photo` summary fields as thumbnails via `cardPhotoRoute` (stable session-authed route), matching the dashboard feed. Previously the cell printed the raw object key as text. `ActionHistoryEntry.summaryFields` gained `fieldDefinitionId` (needed to address the exact object) and now ships a presence flag instead of the key for photo fields. ADR `2026-08-02-card-list-photos-stable-route.md`.

@@ -141,6 +141,20 @@
       "when": 1786043276462,
       "tag": "0019_lucky_gateway",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1787593493742,
+      "tag": "0020_action_type_toggle",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1787593563196,
+      "tag": "0021_presence_control",
+      "breakpoints": true
     }
   ]
 }

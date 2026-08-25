@@ -1,6 +1,6 @@
 # 04 · Non-negotiable Constraints
 
-**Last updated**: 2026-06-06
+**Last updated**: 2026-08-24
 
 These rules are **non-negotiable**. Any proposed change to one of them requires an ADR in `decisions/` that explicitly supersedes this document.
 
@@ -53,3 +53,10 @@ These rules are **non-negotiable**. Any proposed change to one of them requires 
 ## Invitation flow
 
 26. Member invitations use a `member_invitations` table with a cryptographically random token. Emails are sent via Resend. Tokens expire in 7 days. The accept route (`/invitations/[token]`) is public — the token is the authentication. The `TODO: INVITATIONS` marker has been resolved.
+
+## System-provisioned rows
+
+27. Rows flagged `is_system = true` on `field_definitions` / `action_definitions` are provisioned and retired exclusively by server-side feature code. No user-facing surface may list, edit or delete them. They are never hard-deleted; disabling a feature sets `is_active = false`.
+    - The filter is applied **at each consumer**, via `excludeSystemFields` / `excludeSystemActions` (`src/lib/fields/system.ts`), never inside the DAL read. `getCardTypeWithFullSchema` and friends stay the unfiltered source of truth, because the same read feeds surfaces that MUST see system rows — the scan pipeline has to run the system toggle.
+    - Operator action controls are the one surface that does not use this filter: they gate on `is_operator_visible` instead. A system action can be invisible to configuration and still visible as a control — that is exactly what presence control is.
+    - See ADR `2026-08-24-presence-control.md`.

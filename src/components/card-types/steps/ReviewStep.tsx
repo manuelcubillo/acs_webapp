@@ -8,7 +8,7 @@
 
 import {
   Type, Hash, ToggleLeft, Calendar, Camera, List,
-  TrendingUp, TrendingDown, CheckSquare, Square,
+  TrendingUp, TrendingDown, CheckSquare, Square, Repeat2,
   AlertCircle, AlertTriangle, CheckCircle,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -33,6 +33,9 @@ const TEXT = {
   KV_NAME:      "Nombre",
   KV_DESC:      "Descripción",
   NO_DESC:      "Sin descripción",
+  KV_PRESENCE:  "Control de presencia",
+  PRESENCE_ON:  "Activado — cada escaneo alterna entrada y salida",
+  PRESENCE_OFF: "Desactivado",
   EMPTY_FIELDS: "No se han definido campos.",
   EMPTY_ACTIONS: "No se han definido acciones.",
   EMPTY_SCANVAL: "No se han definido validaciones de escaneo.",
@@ -58,6 +61,7 @@ const ACTION_META: Record<ActionType, { icon: React.ComponentType<{ className?: 
   decrement: { icon: TrendingDown, chip: "bg-rose-500/15 text-rose-600 dark:text-rose-400", label: "Decrementar" },
   check:     { icon: CheckSquare,  chip: "bg-accent text-primary", label: "Marcar Sí" },
   uncheck:   { icon: Square,       chip: "bg-muted text-muted-foreground", label: "Marcar No" },
+  toggle:    { icon: Repeat2,      chip: "bg-sky-500/15 text-sky-600 dark:text-sky-400", label: "Alternar" },
 };
 
 // Severity IS an access-control validation outcome → state tokens.
@@ -114,6 +118,18 @@ export default function ReviewStep({
           <KV
             label={TEXT.KV_DESC}
             value={basicInfo.description || <span className="italic text-muted-foreground">{TEXT.NO_DESC}</span>}
+          />
+          {/* Presence provisions a hidden field + action, so the review step is
+              the only place a master sees that it is about to happen. */}
+          <KV
+            label={TEXT.KV_PRESENCE}
+            value={
+              basicInfo.presenceEnabled ? (
+                TEXT.PRESENCE_ON
+              ) : (
+                <span className="italic text-muted-foreground">{TEXT.PRESENCE_OFF}</span>
+              )
+            }
           />
         </div>
       </Section>

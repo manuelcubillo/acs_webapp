@@ -16,6 +16,7 @@ import {
   CircleDot,
   CircleOff,
 } from "lucide-react";
+import { excludeSystemFields, excludeSystemActions } from "@/lib/fields/system";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -41,9 +42,11 @@ export default function CardTypeCard({
 }: CardTypeCardProps) {
   const router = useRouter();
 
-  const activeFields = cardType.fieldDefinitions.filter((f) => f.isActive);
+  // Counts must match the detail page and the wizard — system rows are not
+  // part of what a master configured.
+  const activeFields = excludeSystemFields(cardType.fieldDefinitions).filter((f) => f.isActive);
   const requiredFields = activeFields.filter((f) => f.isRequired);
-  const activeActions = cardType.actionDefinitions.filter((a) => a.isActive);
+  const activeActions = excludeSystemActions(cardType.actionDefinitions).filter((a) => a.isActive);
   const isActive = cardType.status === "active";
 
   return (
