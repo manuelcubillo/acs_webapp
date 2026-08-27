@@ -25,6 +25,8 @@ export default function RootLayout({
       <body className="bg-background text-foreground antialiased">
         <ThemeProvider>{children}</ThemeProvider>
       </body>
+        <SpeedInsights />
+        <Analytics />
     </html>
   );
 }
