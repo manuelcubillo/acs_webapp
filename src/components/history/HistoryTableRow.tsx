@@ -12,6 +12,19 @@
  *
  * Columns: Date/Time | Card Code | Card Type | Action | Executed By | Summary Fields | Details
  *
+ * Every value on this row is the value AS OF the event, resolved from the
+ * frozen snapshot by the DAL — including the card code and the card type name,
+ * which is why `cardCodeAtEvent` is what the cell PRINTS while `cardCode` (the
+ * live one) is what every link and photo route is BUILT from. A card renamed
+ * after this row was written therefore still navigates.
+ *
+ * The Details column has three modes, and they are not interchangeable:
+ *   - the event changed the card  → the field-level diff, up to three inline
+ *     and the rest behind a "+N"
+ *   - the event only observed it  → nothing to say
+ *   - the row predates migration 0022 → the legacy `metadata.before_value` /
+ *     `after_value` pair, which is all those rows will ever have
+ *
  * A `photo` summary field renders as a thumbnail served by the stable photo
  * route, exactly like the dashboard feed — its stored value is an object key,
  * which printed as text would be a file path. The DAL ships presence only, so
@@ -27,22 +40,30 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { cardPhotoRoute } from "@/lib/storage/photo-routes";
 import { cardDetailHref } from "@/lib/cards/return-origin";
 import { rememberHistoryScroll } from "@/lib/history/scroll-restore";
 import { readPageScroll } from "@/lib/navigation/return-scroll";
-import { readBooleanAfterValue } from "@/lib/dal/metadata-keys";
-import { presenceDirectionLabel } from "@/lib/presence/labels";
+import { excludeSystemFields } from "@/lib/fields/system";
+import { historyRowLabel, lifecycleTransitionLabel } from "@/lib/history/log-types";
+import { formatChange, MAX_INLINE_CHANGES } from "@/lib/history/detail-format";
 import type { ActionHistoryEntry } from "@/lib/dal";
 
 const TEXT = {
-  SCAN:     "Escaneo",
-  ACTION:   "Acción",
   OVERRIDE: "Override",
   OVERRIDE_TITLE: "Intervención del operador — ejecutado con errores de validación",
   EMPTY:    "—",
+  MORE_CHANGES: (n: number) => `+${n}`,
+  ALL_CHANGES: "Cambios de este evento",
+  /** Shown on the code cell when the card has since been renamed. */
+  RENAMED_TITLE: (current: string) => `Código actual: ${current}`,
 } as const;
 
 // ─── Color helpers ────────────────────────────────────────────────────────────
@@ -104,13 +125,19 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
-function formatDetails(entry: ActionHistoryEntry): string {
-  if (entry.logType !== "action" || !entry.metadata) return "—";
+/**
+ * The Detail text for a row written BEFORE migration 0022.
+ *
+ * Those rows have no snapshot and there is no backfill, so this metadata pair
+ * is the only record they will ever have of what changed. Do not delete it.
+ */
+function formatLegacyDetails(entry: ActionHistoryEntry): string {
+  if (entry.logType !== "action" || !entry.metadata) return TEXT.EMPTY;
   const m = entry.metadata;
   const field = m.target_field;
   const before = m.before_value;
   const after = m.after_value;
-  if (field === undefined) return "—";
+  if (field === undefined) return TEXT.EMPTY;
   return `${field}: ${formatValue(before)} → ${formatValue(after)}`;
 }
 
@@ -134,22 +161,34 @@ export default function HistoryTableRow({
   viewQuery,
 }: HistoryTableRowProps) {
   const router = useRouter();
-  const presenceAfter = entry.isPresence
-    ? readBooleanAfterValue(entry.metadata)
-    : null;
-  const isScan = entry.logType === "scan";
-  // A presence row reads by DIRECTION, not by the action's name — "Presencia"
-  // tells the operator nothing about which way the person went. Falls back to
-  // the name when the after-value is unreadable, or when the tenant later
-  // disabled presence on this card type and the flag no longer derives.
-  const actionLabel =
-    entry.isPresence && presenceAfter !== null
-      ? presenceDirectionLabel(presenceAfter)
-      : (entry.actionName ?? TEXT.ACTION);
-  const accentColor = isScan ? NEUTRAL_ACCENT : resolveColor(entry.actionColor);
+  const isAction = entry.logType === "action";
+  // ONE derivation, shared with the CSV export — see `historyRowLabel`. A
+  // `card_edit` or `lifecycle` row has no action definition, so without it the
+  // cell would fall through to a name it does not have.
+  const rowLabel = historyRowLabel(entry);
+  // Only a real action carries a configured colour; everything else is neutral.
+  const accentColor = isAction ? resolveColor(entry.actionColor) : NEUTRAL_ACCENT;
   const { relative, absolute } = formatDateTime(entry.executedAt);
-  const details = formatDetails(entry);
   const cardHref = cardDetailHref(entry.cardCode, "history", viewQuery);
+
+  // The code and type this row REPORTS. The live ones stay behind the link.
+  const displayCode = entry.cardCodeAtEvent ?? entry.cardCode;
+  const displayCardType = entry.cardTypeNameAtEvent ?? entry.cardTypeName;
+  const wasRenamed = displayCode !== entry.cardCode;
+
+  // A system field's value is machine state, not a card attribute, so it is
+  // dropped HERE rather than in `diffSnapshots` — each surface declares that
+  // intent itself (`src/lib/fields/system.ts`). A presence toggle therefore
+  // shows an empty Detail, which is correct: its Entrada / Salida label in the
+  // Acción column already carries the fact.
+  const changes = excludeSystemFields(entry.snapshotChanges);
+  const inlineChanges = changes.slice(0, MAX_INLINE_CHANGES);
+  const hiddenCount = changes.length - inlineChanges.length;
+  // A lifecycle row carries no snapshot — a status change is not a field
+  // change — so its Detail is the transition it recorded.
+  const lifecycleTransition =
+    entry.logType === "lifecycle" ? lifecycleTransitionLabel(entry.metadata) : null;
+  const legacyDetails = entry.hasSnapshot ? null : formatLegacyDetails(entry);
 
   /** The rows scroll inside the table container, not the page — store both. */
   const rememberScroll = (origin: HTMLElement) => {
@@ -192,16 +231,19 @@ export default function HistoryTableRow({
         <Link
           href={cardHref}
           onClick={(e) => rememberScroll(e.currentTarget)}
+          // The href carries the CURRENT code so a renamed card still resolves;
+          // the text is the code as of the event.
+          title={wasRenamed ? TEXT.RENAMED_TITLE(entry.cardCode) : undefined}
           className="font-mono text-xs font-bold text-primary hover:underline"
         >
-          {entry.cardCode}
+          {displayCode}
         </Link>
       </TableCell>
 
       {/* Card Type */}
       <TableCell className={CELL}>
         <Badge variant="outline" className="bg-card text-muted-foreground">
-          {entry.cardTypeName}
+          {displayCardType}
         </Badge>
       </TableCell>
 
@@ -213,9 +255,7 @@ export default function HistoryTableRow({
             style={{ backgroundColor: accentColor }}
             className="size-2 shrink-0 rounded-full"
           />
-          <span className="font-semibold">
-            {isScan ? TEXT.SCAN : actionLabel}
-          </span>
+          <span className="font-semibold">{rowLabel}</span>
           {entry.operatorOverride && (
             <Badge
               title={TEXT.OVERRIDE_TITLE}
@@ -278,8 +318,47 @@ export default function HistoryTableRow({
       </TableCell>
 
       {/* Details */}
-      <TableCell className={cn(CELL, "text-[11px] text-muted-foreground", !isScan && "font-mono")}>
-        {details}
+      <TableCell className={cn(CELL, "text-[11px] text-muted-foreground")}>
+        {lifecycleTransition ? (
+          <span className="font-mono">{lifecycleTransition}</span>
+        ) : legacyDetails !== null ? (
+          <span className={cn(isAction && "font-mono")}>{legacyDetails}</span>
+        ) : changes.length === 0 ? (
+          /* The event observed the card without changing it — or changed only
+             system fields, whose value is machine state. */
+          <span>{TEXT.EMPTY}</span>
+        ) : (
+          <div className="flex flex-col items-start gap-0.5 font-mono">
+            {inlineChanges.map((c) => (
+              <span key={c.fieldDefinitionId}>{formatChange(c)}</span>
+            ))}
+            {hiddenCount > 0 && (
+              <Popover>
+                <PopoverTrigger
+                  // The whole row navigates on click; this button must not.
+                  onClick={(e) => e.stopPropagation()}
+                  className="mt-0.5 rounded-full border border-border bg-card px-2 py-0.5 font-sans text-[11px] font-semibold text-foreground hover:bg-muted"
+                >
+                  {TEXT.MORE_CHANGES(hiddenCount)}
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  onClick={(e) => e.stopPropagation()}
+                  className="max-h-64 w-80 overflow-y-auto"
+                >
+                  <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                    {TEXT.ALL_CHANGES}
+                  </div>
+                  <div className="flex flex-col gap-1 font-mono text-[11px] text-foreground">
+                    {changes.map((c) => (
+                      <span key={c.fieldDefinitionId}>{formatChange(c)}</span>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
+        )}
       </TableCell>
     </TableRow>
   );

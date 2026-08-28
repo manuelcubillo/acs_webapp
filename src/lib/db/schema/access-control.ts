@@ -145,12 +145,24 @@ export const scanModeEnum = pgEnum("scan_mode", [
  *              / restore). actionDefinitionId is null; metadata carries
  *              from/to statuses. Card types are NOT audited — they only bump
  *              updated_at.
+ * - card_edit: An administrator saved the card edit form AND it changed at
+ *              least one field value. actionDefinitionId is null; the change
+ *              itself is recorded by the `card_snapshot_id` this row points at,
+ *              not by metadata. A save that altered nothing writes no row —
+ *              see `updateCard` in src/lib/dal/cards.ts.
  *
- * `lifecycle` entries are deliberately NOT surfaced by the activity feed or the
- * /history view: both filter explicitly to scan|action. Exposing them is UI work
- * belonging to a later phase.
+ * `lifecycle` entries are deliberately NOT surfaced by the activity feed.
+ * `card_edit` entries are surfaced NOWHERE yet: the feed excludes them
+ * permanently (an administrative edit is not a door event) and /history
+ * excludes them until the read-path change lands. See ADR
+ * 2026-08-28-card-snapshots-write-path.md.
  */
-export const logTypeEnum = pgEnum("log_type", ["scan", "action", "lifecycle"]);
+export const logTypeEnum = pgEnum("log_type", [
+  "scan",
+  "action",
+  "lifecycle",
+  "card_edit",
+]);
 
 /** Kind of visual design template: badge-sized card or passbook-style pass. */
 export const designKindEnum = pgEnum("design_kind", ["card", "passbook"]);
@@ -379,6 +391,21 @@ export const cards = pgTable(
       () => cardTypes.id,
       { onDelete: "set null" },
     ),
+    /**
+     * The immutable snapshot holding this card's field state as it stands now.
+     *
+     * Null until the card's first snapshot is taken. A pre-existing card
+     * bootstraps lazily on its first scan or edit — `ensureCardSnapshot`
+     * treats a null hash as "different from anything", so no backfill job is
+     * needed. See src/lib/snapshots/.
+     *
+     * ON DELETE SET NULL rather than CASCADE: a snapshot disappearing must
+     * never take the card with it.
+     */
+    currentSnapshotId: uuid("current_snapshot_id").references(
+      (): AnyPgColumn => cardSnapshots.id,
+      { onDelete: "set null" },
+    ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -468,6 +495,87 @@ export const fieldValues = pgTable(
     index("field_values_presence_idx")
       .on(table.fieldDefinitionId)
       .where(sql`${table.valueBoolean} = true`),
+  ],
+);
+
+// ─── Card Snapshots ──────────────────────────────────────────────────────────
+
+/**
+ * An immutable, frozen copy of one card's complete field state.
+ *
+ * `action_logs` rows point at the snapshot that was in force when they were
+ * written, which is what makes the audit log stop mutating retroactively: a
+ * scan logged in March keeps showing March's values, labels, card type name and
+ * code, no matter what has been edited since.
+ *
+ * ## Deduplicated by content, not one per log row
+ *
+ * `ensureCardSnapshot` inserts only when the card's `content_hash` differs from
+ * the one currently in force; otherwise the log row simply points at the
+ * existing snapshot. A card scanned 500 times and edited twice therefore holds
+ * 3 snapshots, not 502. `action_logs.snapshot_created` records which of the two
+ * happened for a given row.
+ *
+ * ## Chained, not deduplicated across history
+ *
+ * The comparison is against `cards.current_snapshot_id` ONLY, never the whole
+ * history. A card returning to a state it held before gets a NEW snapshot
+ * rather than a pointer back to the old one, because `previous_snapshot_id` has
+ * to describe what actually preceded this state — reusing an older row would
+ * fork the chain the diff walks.
+ *
+ * ## Retention
+ *
+ * `card_id` is NOT NULL + CASCADE deliberately, consistent with ADR
+ * 2026-07-17-card-lifecycle-archiving.md: purging a card leaves no trace, and
+ * the frozen personal data in `payload` must go with it. Do not relax this —
+ * it is what keeps snapshots inside the existing GDPR posture.
+ *
+ * See ADR 2026-08-28-card-snapshots-write-path.md.
+ */
+export const cardSnapshots = pgTable(
+  "card_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Denormalized for tenant-scoped reads, mirroring `action_logs`. */
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    cardId: uuid("card_id")
+      .notNull()
+      .references(() => cards.id, { onDelete: "cascade" }),
+    /**
+     * The snapshot this one superseded, forming a per-card chain the A2 diff
+     * walks backwards. Null on a card's very first snapshot.
+     *
+     * SET NULL rather than CASCADE: losing a link must break the chain, never
+     * delete the rest of it.
+     */
+    previousSnapshotId: uuid("previous_snapshot_id").references(
+      (): AnyPgColumn => cardSnapshots.id,
+      { onDelete: "set null" },
+    ),
+    /**
+     * The frozen state, shaped by `CardSnapshotPayload` (src/lib/snapshots/).
+     * Versioned by its own `v` key — read it through that module, never by
+     * walking the jsonb inline.
+     */
+    payload: jsonb("payload").notNull(),
+    /**
+     * sha256 hex of the canonical JSON serialization of `payload`. Computed in
+     * Node (src/lib/snapshots/payload.ts), never by pgcrypto — no new database
+     * extension. The payload's key order and its ascending sort by
+     * `fieldDefinitionId` are part of the hash contract.
+     */
+    contentHash: text("content_hash").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    /** Walking one card's snapshots newest-first. */
+    index("card_snapshots_card_created_idx").on(
+      table.cardId,
+      table.createdAt.desc(),
+    ),
   ],
 );
 
@@ -651,6 +759,31 @@ export const actionLogs = pgTable(
     ),
     /** Distinguishes scan-only entries from action execution entries. */
     logType: logTypeEnum("log_type").notNull().default("action"),
+    /**
+     * The card state this row observed, frozen at write time.
+     *
+     * NULL means "written before card snapshots existed" — there is no
+     * backfill, and read paths fall back to joining current values for those
+     * rows, the same way `metadata.scanLogId` is absent on pre-2026-08-25 rows.
+     *
+     * ON DELETE SET NULL, never CASCADE: an audit row must not be destroyed by
+     * a snapshot disappearing.
+     */
+    cardSnapshotId: uuid("card_snapshot_id").references(
+      () => cardSnapshots.id,
+      { onDelete: "set null" },
+    ),
+    /**
+     * True when THIS row's write is what produced the snapshot it points at —
+     * i.e. it changed something. False when it merely observed the state
+     * already in force.
+     *
+     * Stored rather than derived, because the derivation
+     * ("is this the oldest row pointing at this snapshot?") is a window
+     * function over the whole table and is wrong the moment two rows are
+     * written in the same millisecond.
+     */
+    snapshotCreated: boolean("snapshot_created").notNull().default(false),
     executedAt: timestamp("executed_at").notNull().defaultNow(),
     /** User who performed the action (references auth user table) */
     executedBy: text("executed_by").references(() => user.id, {

@@ -31,6 +31,7 @@ import {
   resolveActionStrategy,
   createActionStrategyContext,
 } from "@/lib/action-strategies";
+import { captureCardSnapshot } from "@/lib/snapshots";
 import type { StrategyAction } from "@/lib/action-strategies";
 import type {
   ActionDefinitionWithField,
@@ -368,14 +369,26 @@ export async function getCompatibleFieldsForAction(
 // ─── Action Execution ────────────────────────────────────────────────────────
 
 /**
- * Execute an action on a card atomically.
+ * Execute an action on a card.
  *
- * Transaction steps:
+ * NOT atomic. The neon-http driver has no interactive transactions, so the
+ * steps below are separate sequential statements with no rollback — see the
+ * NOTE in the body for the failure modes this leaves open. An earlier version
+ * of this docblock claimed a surrounding transaction; there has never been one.
+ *
+ * Steps:
  *   1. Load action definition + target field (type, name, label)
  *   2. Read current field value for this card
- *   3. Compute new value (increment/decrement/check/uncheck)
+ *   3. Resolve the tenant's action strategy and compute the new value
+ *      (see src/lib/action-strategies) — a custom strategy may also write
+ *      auxiliary fields of its own, equally unwrapped and unlogged
  *   4. Upsert field value with new value
- *   5. Insert action log with rich metadata { action_type, target_field, before_value, after_value }
+ *   5. Freeze the resulting card state (`captureCardSnapshot`) — deduplicated
+ *      by content, so an action that changed nothing reuses the snapshot
+ *      already in force
+ *   6. Insert action log with rich metadata { action_type, target_field,
+ *      before_value, after_value }, plus any strategy- or caller-supplied keys,
+ *      stamped with the snapshot id and whether this row created it
  *
  * @param input - Execution payload (includes tenantId for log denormalization).
  * @returns Audit log + before/after values.
@@ -501,7 +514,21 @@ export async function executeAction(
       set: { ...typedPayload, updatedAt: new Date() },
     });
 
-  // 5. Write audit log (log_type = "action")
+  // 5. Freeze the card's POST-action state and resolve the snapshot this log
+  //    row will point at.
+  //
+  //    Read fresh from the database rather than derived by patching the
+  //    pre-action payload with `newValue`: there are no interactive
+  //    transactions here, so a patched payload would assert a state nobody ever
+  //    verified — and a custom strategy's auxiliary `setFieldValue` writes
+  //    (step 3) would be missing from it entirely.
+  //
+  //    Snapshotting belongs in `executeAction` precisely because it is generic:
+  //    it knows nothing about action types or callers, exactly like the rest of
+  //    this primitive (ADR 2026-07-09).
+  const snapshot = await captureCardSnapshot(input.tenantId, input.cardId);
+
+  // 6. Write audit log (log_type = "action")
   const baseMetadata: Record<string, unknown> = {
     action_type: actionDef.actionType,
     target_field: actionDef.fieldName,
@@ -536,6 +563,11 @@ export async function executeAction(
       logType: "action",
       executedBy: input.executedBy ?? null,
       metadata: baseMetadata,
+      cardSnapshotId: snapshot.snapshotId,
+      // True when this action is what changed the card. False when it settled
+      // the target field on the value it already held — a real occurrence with
+      // `check` / `uncheck`, and with three of the four invitation settlements.
+      snapshotCreated: snapshot.created,
     })
     .returning();
 
@@ -552,10 +584,22 @@ export async function executeAction(
  * Insert a scan-only log entry (log_type = "scan").
  * Called during operational scans before auto-actions run.
  *
+ * The card state is frozen here, not by the caller. The scan row is logged
+ * BEFORE any auto-action runs, so its snapshot is the state the operator's scan
+ * actually observed — moving either the snapshot or this call would make the
+ * row report the post-action state instead. Keeping the capture inside this
+ * function is what makes "every scan row carries a snapshot" impossible for a
+ * future caller to forget.
+ *
+ * A scan that mutates nothing creates no snapshot: it points at the one already
+ * in force and records `snapshot_created = false`.
+ *
  * @param input - Scan log payload.
  * @returns The inserted log row.
  */
 export async function logScanEntry(input: LogScanEntryInput): Promise<ActionLog> {
+  const snapshot = await captureCardSnapshot(input.tenantId, input.cardId);
+
   const [log] = await db
     .insert(actionLogs)
     .values({
@@ -565,6 +609,11 @@ export async function logScanEntry(input: LogScanEntryInput): Promise<ActionLog>
       logType: "scan",
       executedBy: input.executedBy ?? null,
       metadata: input.metadata ?? null,
+      cardSnapshotId: snapshot.snapshotId,
+      // Almost always false — a scan observes, it does not mutate. True only on
+      // the very first scan of a card that predates snapshots, which is where
+      // its V0 gets bootstrapped.
+      snapshotCreated: snapshot.created,
     })
     .returning();
 

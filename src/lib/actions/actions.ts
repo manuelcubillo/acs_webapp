@@ -35,9 +35,10 @@ import {
   getDashboardSettings,
 } from "@/lib/dal";
 import { resolveLifecycleGate } from "@/lib/server/lifecycle";
+import { loadClientSnapshots } from "@/lib/snapshots";
 import type {
   ActionDefinitionWithField,
-  ActionExecutionResult,
+  ActionExecutionResultWithSnapshots,
   ActionLog,
   FieldDefinition,
   PaginatedResult,
@@ -122,11 +123,17 @@ export async function getCompatibleFieldsForActionAction(
  * Execute an action on a card.
  * The `executedBy` and `tenantId` fields are set server-side from the session.
  * Returns before/after field values alongside the log entry.
+ *
+ * Also returns `snapshots`: the payload of the snapshot the new log row points
+ * at, so the client builds its feed row with `projectSnapshotFields` — the same
+ * function `getActivityFeed` uses on refresh. Without it the client would build
+ * the row from the card's live values and the row would change on Refrescar.
+ *
  * @role operator | admin | master
  */
 export async function executeActionAction(
   input: unknown,
-): Promise<ActionResult<ActionExecutionResult>> {
+): Promise<ActionResult<ActionExecutionResultWithSnapshots>> {
   return actionHandler(async () => {
     const { userId, tenantId } = await requireOperator();
     const data = ExecuteActionSchema.parse(input);
@@ -158,7 +165,7 @@ export async function executeActionAction(
       }
     }
 
-    return executeAction({
+    const result = await executeAction({
       cardId: data.cardId,
       actionDefinitionId: data.actionDefinitionId,
       tenantId,
@@ -167,6 +174,16 @@ export async function executeActionAction(
       overrideValidationErrors:
         overrideValidationErrors.length > 0 ? overrideValidationErrors : undefined,
     });
+
+    // Resolved at the BOUNDARY, not in the DAL: this is also where photo object
+    // keys are stripped, and keeping the sanitisation next to the wire crossing
+    // is what stops an unsanitised payload reaching a browser.
+    return {
+      ...result,
+      snapshots: await loadClientSnapshots(tenantId, [
+        { cardSnapshotId: result.log.cardSnapshotId },
+      ]),
+    };
   });
 }
 

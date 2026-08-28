@@ -20,6 +20,7 @@ Follow `docs/context/UPDATE-PROTOCOL.md` strictly. The protocol is deterministic
 ## Non-negotiable rules (full list in `docs/context/foundation/04-constraints.md`)
 
 - **Node v24.** `engines.node: ">=24"`. Older notes about Node v20 are stale.
+- **Every command targets local by default.** `pnpm dev` / `test` / `db:migrate` hit the Dockerized Postgres. Production is reached only via a `:prod` / `:branch` script, which injects `ALLOW_NEON_DB=1` — never put that flag in an env file. One set of secrets per environment; `RESEND_APIKEY` only on Vercel. **`docs/ENVIRONMENTS.md` is the reference** for which command connects where.
 - `tenant_id` is always derived from the authenticated session via `getCurrentTenant()`. Never from client input, URL, or body — except the external API (`/api/cards/...`), which has a documented `TODO: API_AUTH`.
 - Card UUIDs are never exposed to the client. The public Card identifier is `code`, unique per `(tenant_id, code)`.
 - Soft delete everywhere. Never hard-delete `field_definitions`, `card_types`, `action_definitions`, `scan_validations`, or `cards`.

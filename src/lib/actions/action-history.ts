@@ -56,7 +56,9 @@ const FieldFilterSchema = z.object({
 const ActionHistoryFiltersSchema = z.object({
   dateFrom: z.coerce.date().optional(),
   dateTo: z.coerce.date().optional(),
-  logTypes: z.array(z.enum(["scan", "action"])).optional(),
+  // Every log_type: /history is the audit surface. The FEED still shows only
+  // scans and actions — that whitelist lives in `getActivityFeed`.
+  logTypes: z.array(z.enum(["scan", "action", "card_edit", "lifecycle"])).optional(),
   cardTypeIds: z.array(z.string().uuid()).optional(),
   actionDefinitionIds: z.array(z.string().uuid()).optional(),
   executedBy: z.string().optional(),

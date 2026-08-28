@@ -32,11 +32,7 @@
  *   pnpm design:veredillas-personal
  */
 
-import { config } from "dotenv";
-// Mirror the legacy importer: .env.local-db wins for the DB vars when the
-// dotenv-cli overlay requested it, .env.local supplies S3/MinIO credentials.
-config({ path: ".env.local-db" });
-config({ path: ".env.local" });
+import "./load-env";
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

@@ -15,11 +15,20 @@
  *     nothing: its log is emitted after the mutation, so a throw skips it.
  *   - Newest-first therefore reads: last action … first action, then the scan.
  *
+ * The VALUES on each row come from the frozen snapshot the server just wrote,
+ * projected with `projectSnapshotFields` — the very function `getActivityFeed`
+ * calls. Never from `card.fields`: `card` is the FINAL state, after the
+ * auto-actions, so a scan that decremented a balance from 10 to 9 would show 9
+ * here and 10 after the next Refrescar. The scan row uses the SCAN row's
+ * snapshot (pre-action); each action row uses its own.
+ *
  * Two deliberate divergences from server-built rows:
  *   - `id` is a client UUID. It is only ever React's list key — no row renders
  *     it, and a refresh swaps in rows carrying real log ids anyway.
  *   - `executedAt` comes from the client clock, which drifts from the server's.
  *     Rows are therefore PREPENDED in order, never sorted by `executedAt`.
+ *
+ * Only 'scan' and 'action' rows are ever built here — see `MakeEntryArgs.logType`.
  *
  * See ADR 2026-07-17-dashboard-feed-no-polling.md.
  */
@@ -32,6 +41,12 @@ import type {
   FeedSummaryFieldConfig,
 } from "@/lib/dal";
 import { cardPhotoRoute } from "@/lib/storage/photo-routes";
+// Imported from the pure modules directly, NOT from the `@/lib/snapshots`
+// barrel: this file runs in the browser, and the barrel re-exports the DB-backed
+// resolver and the `node:crypto` hasher alongside them.
+import { projectSnapshotFields } from "@/lib/snapshots/project";
+import type { CardSnapshotPayload } from "@/lib/snapshots/payload";
+import type { SnapshotPayloadMap } from "@/lib/snapshots/resolve";
 
 /**
  * Static per-tenant data the client needs to build a row, sent once at page
@@ -62,10 +77,27 @@ export interface FeedVisibility {
   feedLimit: number;
 }
 
+/**
+ * The row's values, from the snapshot when one is available.
+ *
+ * The snapshot path is `projectSnapshotFields`, byte-for-byte the same call
+ * `getActivityFeed` makes, so a locally-built row and the server-built row that
+ * replaces it on Refrescar cannot disagree.
+ *
+ * The live fallback below serves only the case where no payload arrived — an
+ * older cached client bundle, or a row the server could not resolve. It reads
+ * the card's CURRENT values, which for an action row is right and for a scan row
+ * is the pre-A2 behaviour: better a stale approximation than a blank row.
+ */
 function buildSummaryFields(
   card: CardWithFields,
   config: FeedSummaryFieldConfig[],
+  snapshotPayload: CardSnapshotPayload | null,
 ): ActivityFeedSummaryField[] {
+  if (snapshotPayload) {
+    return projectSnapshotFields(snapshotPayload, config) as ActivityFeedSummaryField[];
+  }
+
   const valueByFieldId = new Map(
     card.fields.map((f) => [f.fieldDefinitionId, f.value]),
   );
@@ -82,7 +114,16 @@ function buildSummaryFields(
 }
 
 interface MakeEntryArgs {
-  logType: ActivityFeedEntry["logType"];
+  /**
+   * Narrowed to the two the feed shows, deliberately — NOT
+   * `ActivityFeedEntry["logType"]`, which is the whole `log_type` enum.
+   *
+   * The feed is an operational surface: `lifecycle` and `card_edit` rows are
+   * excluded by `getActivityFeed`'s whitelist, and a client-built row for
+   * either would appear until the next Refrescar silently dropped it. Narrowing
+   * here makes that a compile error instead of a bug someone has to notice.
+   */
+  logType: "scan" | "action";
   card: CardWithFields;
   config: FeedBuilderConfig;
   executedAt: Date;
@@ -96,6 +137,11 @@ interface MakeEntryArgs {
   scanLogId?: string | null;
   /** The value a presence toggle settled on, from the execution result. */
   presenceAfterValue?: boolean | null;
+  /**
+   * The frozen state THIS row observed — the scan row's snapshot for a scan,
+   * the action's own for an action. Null only when the server returned none.
+   */
+  snapshotPayload?: CardSnapshotPayload | null;
 }
 
 function makeEntry({
@@ -107,6 +153,7 @@ function makeEntry({
   operatorOverride = false,
   scanLogId = null,
   presenceAfterValue = null,
+  snapshotPayload = null,
 }: MakeEntryArgs): ActivityFeedEntry {
   // A photo field's value is a signed URL by the time it reaches the client
   // (the scan action signs them), so its mere presence means the card has a
@@ -143,6 +190,7 @@ function makeEntry({
     summaryFields: buildSummaryFields(
       card,
       config.summaryFields[card.cardTypeId] ?? [],
+      snapshotPayload,
     ),
   };
 }
@@ -155,6 +203,7 @@ function actionEntries(
   executedAt: Date,
   operatorOverride: boolean,
   scanLogId: string | null,
+  snapshots: SnapshotPayloadMap,
 ): ActivityFeedEntry[] {
   const presenceActionId = config.presenceActionIds[card.cardTypeId];
 
@@ -169,6 +218,9 @@ function actionEntries(
         action: { id: a.actionDefinitionId, name: a.actionName },
         operatorOverride,
         scanLogId,
+        // Each action row shows the state ITS OWN execution produced. The log
+        // row it mirrors points at exactly this snapshot.
+        snapshotPayload: snapshotPayloadFor(snapshots, a.result?.log.cardSnapshotId),
         // The server reads this from metadata.after_value; the client already
         // holds the same number in the execution result it was handed.
         presenceAfterValue:
@@ -179,6 +231,15 @@ function actionEntries(
       }),
     )
     .reverse();
+}
+
+/** Look one payload up, tolerating a null id and a missing entry. */
+function snapshotPayloadFor(
+  snapshots: SnapshotPayloadMap,
+  snapshotId: string | null | undefined,
+): CardSnapshotPayload | null {
+  if (!snapshotId) return null;
+  return snapshots[snapshotId] ?? null;
 }
 
 function applyVisibility(
@@ -207,6 +268,17 @@ export interface ScanEntriesArgs {
    * throwaway UUID" divergence for scan rows specifically.
    */
   scanLogId?: string | null;
+  /**
+   * `card_snapshots.id` the SCAN row points at, from
+   * `ScanWithAutoActionsResult.scanSnapshotId` — the state the scan observed,
+   * BEFORE the auto-actions ran.
+   */
+  scanSnapshotId?: string | null;
+  /**
+   * The payloads the scan action returned, keyed by snapshot id. Every row this
+   * call builds looks its own state up here rather than reading `card`.
+   */
+  snapshots?: SnapshotPayloadMap;
   /** Injectable for tests; defaults to now. */
   executedAt?: Date;
 }
@@ -221,9 +293,19 @@ export function buildScanEntries({
   config,
   visibility,
   scanLogId = null,
+  scanSnapshotId = null,
+  snapshots = {},
   executedAt = new Date(),
 }: ScanEntriesArgs): ActivityFeedEntry[] {
-  const scanRow = makeEntry({ logType: "scan", card, config, executedAt });
+  const scanRow = makeEntry({
+    logType: "scan",
+    card,
+    config,
+    executedAt,
+    // The pre-auto-action state. `card` here is the FINAL state — using it
+    // would show 9 where the next Refrescar shows the 10 that was scanned.
+    snapshotPayload: snapshotPayloadFor(snapshots, scanSnapshotId),
+  });
   // The scan row anchors the group, so its id must be what the action rows
   // point at. Fall back to the generated one when no id was supplied — the rows
   // then simply render ungrouped rather than grouping under the wrong anchor.
@@ -231,7 +313,15 @@ export function buildScanEntries({
 
   return applyVisibility(
     [
-      ...actionEntries(card, autoActions, config, executedAt, false, scanRow.id),
+      ...actionEntries(
+        card,
+        autoActions,
+        config,
+        executedAt,
+        false,
+        scanRow.id,
+        snapshots,
+      ),
       scanRow,
     ],
     visibility,
@@ -252,6 +342,11 @@ export interface ActionEntriesArgs {
    * exactly what marks them as manual.
    */
   scanLogId?: string | null;
+  /**
+   * The payloads the action returned, keyed by snapshot id. Each row looks its
+   * own state up here — see `ScanEntriesArgs.snapshots`.
+   */
+  snapshots?: SnapshotPayloadMap;
   executedAt?: Date;
 }
 
@@ -266,10 +361,19 @@ export function buildActionEntries({
   visibility,
   operatorOverride = false,
   scanLogId = null,
+  snapshots = {},
   executedAt = new Date(),
 }: ActionEntriesArgs): ActivityFeedEntry[] {
   return applyVisibility(
-    actionEntries(card, autoActions, config, executedAt, operatorOverride, scanLogId),
+    actionEntries(
+      card,
+      autoActions,
+      config,
+      executedAt,
+      operatorOverride,
+      scanLogId,
+      snapshots,
+    ),
     visibility,
   );
 }

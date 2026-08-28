@@ -29,7 +29,8 @@ import {
   readParam,
   type RawParams,
 } from "@/lib/navigation/query-codec";
-import type { ActionHistoryFilters } from "@/lib/dal/types";
+import type { ActionHistoryFilters, LogType } from "@/lib/dal/types";
+import { HISTORY_LOG_TYPES } from "./log-types";
 
 // ─── Query keys ───────────────────────────────────────────────────────────────
 
@@ -46,6 +47,7 @@ export const HISTORY_PARAM = {
   USER:          "user",
   CARD_CODE:     "code",
   FIELD_FILTERS: "ff",
+  LOG_TYPES:     "lt",
   SCANS:         "scans",
   PAGE:          "page",
 } as const;
@@ -56,8 +58,10 @@ export const HISTORY_PARAM_KEYS: readonly string[] = Object.values(HISTORY_PARAM
 /** The complete restorable state of the history view. */
 export interface HistoryViewState {
   /**
-   * User-chosen filters, WITHOUT `logTypes` — the scan toggle owns that
-   * dimension and is merged in by `toEffectiveFilters`.
+   * User-chosen filters. `logTypes` here is the panel's selection, which may be
+   * empty meaning "no preference"; the scan toggle is a SEPARATE control over
+   * the same dimension and the two are composed by `toEffectiveFilters`. Never
+   * send `filters` straight to the DAL.
    */
   filters: ActionHistoryFilters;
   /**
@@ -131,11 +135,32 @@ export function parseHistoryParams(
   const fieldFilters = parseFieldFilters(readParam(raw, HISTORY_PARAM.FIELD_FILTERS));
   if (fieldFilters.length > 0) filters.fieldFilters = fieldFilters;
 
+  const logTypes = parseLogTypes(readParam(raw, HISTORY_PARAM.LOG_TYPES));
+  if (logTypes.length > 0) filters.logTypes = logTypes;
+
   return {
     filters,
     showScans: readScansParam(readParam(raw, HISTORY_PARAM.SCANS), defaultShowScans),
     page: parsePage(readParam(raw, HISTORY_PARAM.PAGE)),
   };
+}
+
+/**
+ * Read the log-type selection, dropping anything that is not a real log type.
+ * A hand-typed `lt=nonsense` therefore filters nothing rather than erroring at
+ * the Server Action boundary, where it would surface as a silently empty table.
+ */
+function parseLogTypes(value: string | null | undefined): LogType[] {
+  if (!value) return [];
+  const known = new Set<string>(HISTORY_LOG_TYPES);
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((v) => v.trim())
+        .filter((v): v is LogType => known.has(v)),
+    ),
+  ];
 }
 
 /**
@@ -181,6 +206,9 @@ export function buildHistoryQuery(state: HistoryViewState): string {
   if (filters.fieldFilters?.length) {
     params.set(HISTORY_PARAM.FIELD_FILTERS, JSON.stringify(filters.fieldFilters));
   }
+  if (filters.logTypes?.length) {
+    params.set(HISTORY_PARAM.LOG_TYPES, filters.logTypes.join(","));
+  }
   // ALWAYS serialized, unlike every other key, which is omitted at its default.
   // With a tenant-dependent default, absence no longer has a single meaning —
   // an explicit 0/1 is what makes a shared link, a reload and the `hq` return
@@ -221,10 +249,22 @@ export function sanitizeHistoryQuery(
 // ─── Effective filters ────────────────────────────────────────────────────────
 
 /**
- * Merge the scan toggle into the filters actually sent to the DAL.
+ * Compose the two controls over the log-type dimension into the list actually
+ * sent to the DAL.
  *
- * Off → only action rows. On → no `logTypes` constraint at all, so the query
- * covers both; `lifecycle` rows are excluded by the DAL regardless.
+ * There are two, deliberately: the filter panel's "Tipo de registro" selection
+ * says WHICH types interest the operator, and the inline scan toggle is the
+ * fast way to silence the scan rows that presence control doubles up. They
+ * intersect — the toggle can only ever remove `scan`.
+ *
+ * The result is ALWAYS an explicit list, never `undefined`. Before A2 this
+ * function deleted the key when the toggle was on, which meant no log-type
+ * predicate was applied at all — which is how `lifecycle` rows had been
+ * reaching `/history` for a month while three documents claimed they could not.
+ *
+ * An empty result is meaningful and is passed through as such: it happens only
+ * when the operator selected `scan` alone and then hid scans, and `buildWhere`
+ * honours it as "match nothing" rather than "match everything".
  *
  * Single definition on purpose: the server page and the client view must send
  * identical filters or the first client refetch would silently change the
@@ -234,8 +274,9 @@ export function toEffectiveFilters(
   base: ActionHistoryFilters,
   showScans: boolean,
 ): ActionHistoryFilters {
-  if (!showScans) return { ...base, logTypes: ["action"] };
-  const rest = { ...base };
-  delete rest.logTypes;
-  return rest;
+  const chosen = base.logTypes?.length ? base.logTypes : HISTORY_LOG_TYPES;
+  return {
+    ...base,
+    logTypes: showScans ? [...chosen] : chosen.filter((t) => t !== "scan"),
+  };
 }

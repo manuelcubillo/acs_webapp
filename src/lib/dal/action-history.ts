@@ -30,9 +30,20 @@ import {
 } from "@/lib/db/schema";
 import { extractValue } from "./field-values";
 import { isPresenceRowSql } from "./presence";
-import { presenceDirectionLabel, PRESENCE_FILTER_LABEL } from "@/lib/presence/labels";
-import { readBooleanAfterValue } from "./metadata-keys";
+import { PRESENCE_FILTER_LABEL } from "@/lib/presence/labels";
+import { historyRowLabel, lifecycleTransitionLabel } from "@/lib/history/log-types";
+import {
+  diffSnapshots,
+  loadSnapshotsForLogRows,
+  projectSnapshotFields,
+  type SnapshotFieldChange,
+  type SummaryFieldConfig,
+} from "@/lib/snapshots";
+import { excludeSystemFields } from "@/lib/fields/system";
+import { formatChangeForExport, orderChangesForDisplay } from "@/lib/history/detail-format";
 import type {
+  FieldType,
+  LogType,
   ActionHistoryFilters,
   ActionHistoryEntry,
   ActionHistorySummaryField,
@@ -149,9 +160,19 @@ function buildWhere(tenantId: string, filters: ActionHistoryFilters) {
   if (filters.dateFrom) conds.push(gte(actionLogs.executedAt, filters.dateFrom));
   if (filters.dateTo)   conds.push(lte(actionLogs.executedAt, filters.dateTo));
 
-  if (filters.logTypes?.length) {
-    const ltConds = filters.logTypes.map((lt) => eq(actionLogs.logType, lt));
-    conds.push(ltConds.length === 1 ? ltConds[0] : or(...ltConds));
+  // Three states, not two. `undefined` is "no constraint"; a non-empty array is
+  // a whitelist; an EMPTY array means the user deselected every log type and
+  // must match nothing. Treating empty as "no constraint" is what would show
+  // the whole table to someone who asked for none of it — and it is how
+  // `card_edit` rows were reaching the table before `toEffectiveFilters` began
+  // always sending an explicit list.
+  if (filters.logTypes) {
+    if (filters.logTypes.length === 0) {
+      conds.push(sql`false`);
+    } else {
+      const ltConds = filters.logTypes.map((lt) => eq(actionLogs.logType, lt));
+      conds.push(ltConds.length === 1 ? ltConds[0] : or(...ltConds));
+    }
   }
 
   if (filters.cardTypeIds?.length) {
@@ -186,11 +207,20 @@ function buildWhere(tenantId: string, filters: ActionHistoryFilters) {
   return and(...conds);
 }
 
-// ─── Summary field enrichment (shared with activity-feed) ─────────────────────
+// ─── Summary field enrichment ────────────────────────────────────────────────
+//
+// A2 moved the VALUES to the frozen snapshot. Which fields to show still comes
+// from the tenant's CURRENT `card_type_summary_fields` configuration, so a
+// summary field added today populates for a row from last year — while the
+// values stay those of the moment the row was written.
+//
+// Pre-migration-0022 rows have no snapshot and there is no backfill, so the old
+// live join is still here, now loaded ONLY for the cards those rows point at.
+// On a page written entirely after 0022 it costs no query at all.
 
 type RawRow = {
   id: string;
-  logType: "scan" | "action";
+  logType: LogType;
   cardId: string;
   cardCode: string;
   cardTypeId: string;
@@ -205,7 +235,31 @@ type RawRow = {
   metadata: unknown;
   /** Derived in SQL by `isPresenceRowSql`, not stored. */
   isPresence: boolean;
+  /** Null for a row written before migration 0022. */
+  cardSnapshotId: string | null;
+  snapshotCreated: boolean;
 };
+
+/**
+ * Reduce a `photo` change to a presence flag.
+ *
+ * The payload holds a storage object key. It must not reach the browser (ADR
+ * `2026-08-02-card-list-photos-stable-route.md`) and would be meaningless in a
+ * Detail cell, so all a photo change can report is whether an image arrived,
+ * left, or was replaced. Historical photo serving is out of scope: the key in
+ * an old payload may point at an image that has since been overwritten.
+ */
+function reducePhotoChanges(changes: SnapshotFieldChange[]): SnapshotFieldChange[] {
+  return changes.map((c) =>
+    c.type === "photo"
+      ? {
+          ...c,
+          before: typeof c.before === "string" && c.before.length > 0,
+          after: typeof c.after === "string" && c.after.length > 0,
+        }
+      : c,
+  );
+}
 
 async function enrichWithSummaryFields(
   tenantId: string,
@@ -214,9 +268,12 @@ async function enrichWithSummaryFields(
   if (rows.length === 0) return [];
 
   const cardTypeIds = [...new Set(rows.map((r) => r.cardTypeId))];
-  const cardIds = [...new Set(rows.map((r) => r.cardId))];
 
-  // Load summary field definitions for all card types
+  // ── Which fields this surface shows: today's configuration ────────────────
+  //
+  // Photo fields are NOT excluded here, unlike the dashboard feed's config:
+  // `HistoryTableRow` renders a thumbnail for one, addressed by route from the
+  // card code plus the field id.
   const summaryFieldDefs = await db
     .select({
       cardTypeId: cardTypeSummaryFields.cardTypeId,
@@ -238,16 +295,28 @@ async function enrichWithSummaryFields(
     )
     .orderBy(cardTypeSummaryFields.position);
 
-  const summaryDefsByType = new Map<
-    string,
-    { fieldDefinitionId: string; label: string; fieldType: string }[]
-  >();
+  const summaryDefsByType = new Map<string, SummaryFieldConfig[]>();
   for (const d of summaryFieldDefs) {
     const list = summaryDefsByType.get(d.cardTypeId) ?? [];
-    list.push(d);
+    list.push({
+      fieldDefinitionId: d.fieldDefinitionId,
+      label: d.label,
+      fieldType: d.fieldType as FieldType,
+    });
     summaryDefsByType.set(d.cardTypeId, list);
   }
 
+  // ── The values: one query for every distinct snapshot on the page ──────────
+  const snapshots = await loadSnapshotsForLogRows(tenantId, rows);
+
+  // ── The fallback: live values, for pre-0022 rows only ──────────────────────
+  const fallbackCardIds = [
+    ...new Set(
+      rows
+        .filter((r) => !r.cardSnapshotId || !snapshots.has(r.cardSnapshotId))
+        .map((r) => r.cardId),
+    ),
+  ];
   const allFieldDefIds = [...new Set(summaryFieldDefs.map((d) => d.fieldDefinitionId))];
 
   let fvRows: {
@@ -260,7 +329,7 @@ async function enrichWithSummaryFields(
     valueJson: unknown;
   }[] = [];
 
-  if (allFieldDefIds.length > 0 && cardIds.length > 0) {
+  if (allFieldDefIds.length > 0 && fallbackCardIds.length > 0) {
     fvRows = await db
       .select({
         cardId: fieldValues.cardId,
@@ -274,7 +343,7 @@ async function enrichWithSummaryFields(
       .from(fieldValues)
       .where(
         and(
-          inArray(fieldValues.cardId, cardIds),
+          inArray(fieldValues.cardId, fallbackCardIds),
           inArray(fieldValues.fieldDefinitionId, allFieldDefIds),
         ),
       );
@@ -285,9 +354,10 @@ async function enrichWithSummaryFields(
     fvMap.set(`${fv.cardId}:${fv.fieldDefinitionId}`, fv);
   }
 
-  return rows.map((row): ActionHistoryEntry => {
+  /** The live join, unchanged — the only thing serving pre-0022 rows. */
+  function liveSummaryFields(row: RawRow): ActionHistorySummaryField[] {
     const defs = summaryDefsByType.get(row.cardTypeId) ?? [];
-    const summaryFields = defs.map((def): ActionHistorySummaryField => {
+    return defs.map((def): ActionHistorySummaryField => {
       const fv = fvMap.get(`${row.cardId}:${def.fieldDefinitionId}`);
       const value = fv
         ? extractValue(
@@ -301,13 +371,33 @@ async function enrichWithSummaryFields(
       return {
         fieldDefinitionId: def.fieldDefinitionId,
         label: def.label,
-        fieldType: def.fieldType as ActionHistorySummaryField["fieldType"],
+        fieldType: def.fieldType,
         value:
           def.fieldType === "photo"
             ? typeof value === "string" && value.length > 0
             : value,
       };
     });
+  }
+
+  return rows.map((row): ActionHistoryEntry => {
+    const defs = summaryDefsByType.get(row.cardTypeId) ?? [];
+    const resolved = row.cardSnapshotId
+      ? (snapshots.get(row.cardSnapshotId) ?? null)
+      : null;
+
+    // The Detail diff, and ONLY when this event changed something. A row with
+    // `snapshot_created = false` observed the card without touching it, and a
+    // V0 has no predecessor — `diffSnapshots` returns nothing for either, so
+    // the first scan of a pre-0022 card does not render as "12 fields changed".
+    const snapshotChanges =
+      resolved && row.snapshotCreated
+        ? orderChangesForDisplay(
+            reducePhotoChanges(
+              diffSnapshots(resolved.previousPayload, resolved.payload),
+            ),
+          )
+        : [];
 
     return {
       id: row.id,
@@ -316,6 +406,14 @@ async function enrichWithSummaryFields(
       cardCode: row.cardCode,
       cardTypeId: row.cardTypeId,
       cardTypeName: row.cardTypeName,
+      // Frozen identity, for display. The live `cardCode` above stays the one
+      // every link and photo route is built from, so a card renamed after this
+      // row was written still navigates.
+      cardCodeAtEvent: resolved?.payload.code ?? null,
+      cardTypeNameAtEvent: resolved?.payload.cardTypeName ?? null,
+      hasSnapshot: resolved !== null,
+      snapshotCreated: row.snapshotCreated === true,
+      snapshotChanges,
       actionDefinitionId: row.actionDefinitionId,
       actionName: row.actionName,
       actionColor: row.actionColor,
@@ -327,7 +425,9 @@ async function enrichWithSummaryFields(
       operatorOverride:
         (row.metadata as Record<string, unknown> | null)?.operator_override === true,
       isPresence: row.isPresence === true,
-      summaryFields,
+      summaryFields: resolved
+        ? projectSnapshotFields(resolved.payload, defs)
+        : liveSummaryFields(row),
     };
   });
 }
@@ -352,8 +452,14 @@ function baseQuery(tenantId: string, filters: ActionHistoryFilters) {
       executedBy: actionLogs.executedBy,
       executedByName: user.name,
       metadata: actionLogs.metadata,
-      // Derived from the join, not stored — see `isPresenceRowSql`.
+      // Derived from the join, not stored — see `isPresenceRowSql`. A row with
+      // no action definition (card_edit, lifecycle) can never be flagged: the
+      // left join yields a null target field and the predicate requires one.
       isPresence: isPresenceRowSql,
+      // The frozen card state this row observed, and whether it changed it.
+      // Null / false on rows written before migration 0022.
+      cardSnapshotId: actionLogs.cardSnapshotId,
+      snapshotCreated: actionLogs.snapshotCreated,
     })
     .from(actionLogs)
     .innerJoin(cards, eq(actionLogs.cardId, cards.id))
@@ -555,13 +661,46 @@ function formatCsvValue(value: unknown): string {
   return String(value);
 }
 
-function formatDetailsCell(metadata: Record<string, unknown> | null): string {
+/**
+ * The Detail cell for a row written BEFORE migration 0022.
+ *
+ * The only thing serving those rows: they have no snapshot and there is no
+ * backfill, so `metadata.before_value` / `after_value` remain their sole record
+ * of what changed — one field, the action's target. Do not delete this path.
+ */
+function formatLegacyDetailsCell(metadata: Record<string, unknown> | null): string {
   if (!metadata) return "—";
   const field = metadata.target_field;
   const before = metadata.before_value;
   const after = metadata.after_value;
   if (field === undefined) return "—";
   return `${field}: ${formatCsvValue(before)} → ${formatCsvValue(after)}`;
+}
+
+/**
+ * The Detail cell for one exported row.
+ *
+ * Identical in content to what `HistoryTableRow` renders, because both derive it
+ * from `snapshotChanges` through `formatChange`. The three cases mirror the
+ * table exactly:
+ *   - a snapshot that this event CREATED  → the field-level diff
+ *   - a snapshot it merely observed        → nothing changed, so nothing to say
+ *   - no snapshot (pre-0022)               → the legacy metadata pair
+ *
+ * System fields are dropped here rather than in `diffSnapshots`: a system
+ * field's value is machine state, not a card attribute, and each surface
+ * declares that intent itself (`src/lib/fields/system.ts`).
+ */
+function formatDetailsCell(entry: ActionHistoryEntry): string {
+  if (entry.logType === "lifecycle") {
+    return lifecycleTransitionLabel(entry.metadata) ?? "—";
+  }
+  if (entry.hasSnapshot) {
+    return formatChangeForExport(excludeSystemFields(entry.snapshotChanges));
+  }
+  return entry.logType === "action"
+    ? formatLegacyDetailsCell(entry.metadata)
+    : "—";
 }
 
 export function buildCsvFromEntries(
@@ -595,17 +734,17 @@ export function buildCsvFromEntries(
 
     return [
       e.executedAt.toISOString().replace("T", " ").slice(0, 19),
-      e.cardCode,
-      e.cardTypeName,
-      // Same derivation as HistoryTableRow — the export must not disagree with
-      // the table it was exported from.
-      e.isPresence && readBooleanAfterValue(e.metadata) !== null
-        ? presenceDirectionLabel(readBooleanAfterValue(e.metadata)!)
-        : (e.actionName ?? "Scan"),
+      // The code and type AS OF the event, exactly as the table shows them.
+      // Falls back to the live values for a row with no snapshot.
+      e.cardCodeAtEvent ?? e.cardCode,
+      e.cardTypeNameAtEvent ?? e.cardTypeName,
+      // One shared derivation with HistoryTableRow — the export must not
+      // disagree with the table it was exported from.
+      historyRowLabel(e),
       e.executedByName ?? "—",
       e.operatorOverride ? "Yes" : "No",
       ...summaryValues,
-      e.logType === "action" ? formatDetailsCell(e.metadata) : "—",
+      formatDetailsCell(e),
     ];
   });
 

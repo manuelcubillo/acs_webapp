@@ -20,7 +20,9 @@ describe("DalError hierarchy", () => {
     expect(err).toBeInstanceOf(Error);
     expect(err.code).toBe("NOT_FOUND");
     expect(err.name).toBe("NotFoundError");
-    expect(err.message).toContain("Card not found: abc-123");
+    // The shipped message is Spanish — see NotFoundError in `src/lib/dal/errors.ts`.
+    // Asserted verbatim because it is user-visible wherever a DAL error surfaces.
+    expect(err.message).toContain("Card no encontrado: abc-123");
   });
 
   it("ValidationError extends DalError with code VALIDATION_ERROR", () => {

@@ -1,8 +1,8 @@
 /**
  * Integration tests for the card / card type lifecycle.
  *
- * These run against a real Postgres (using .env.local, same as
- * `src/lib/dal/__tests__/critical-rules.integration.test.ts`) because the
+ * These run against the dedicated `acs_test` Postgres (wired by
+ * `src/test/setup-integration.ts`) because the
  * behaviour under test lives in SQL: the cascade CTE, the CHECK constraints and
  * the trash metadata. Mocking the database would test nothing real.
  *
@@ -21,20 +21,6 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { config } from "dotenv";
-
-// Load env before any import that touches DATABASE_URL.
-// TEST_DATABASE_URL points these tests at the Dockerized Postgres
-// (`docker compose --profile db up`) instead of the shared Neon dev branch, so a
-// failed run cannot leave debris on a database other people are using.
-// Falls back to .env.local to match the pre-existing integration test.
-config({ path: ".env.test.local" });
-config({ path: ".env.local" });
-
-if (process.env.TEST_DATABASE_URL) {
-  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
-  process.env.DB_DRIVER = "local";
-}
 
 import { eq, and, like, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -207,7 +193,8 @@ describe("card transitions", () => {
     const c = await makeCard("C11", "active");
     await expect(
       archiveCard(c.id, { userId: USER_ID, tenantId: other.id }),
-    ).rejects.toThrow(/not found/i);
+      // NotFoundError's message is Spanish ("Card no encontrado: …").
+    ).rejects.toThrow(/no encontrado/i);
   });
 });
 

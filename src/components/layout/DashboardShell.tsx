@@ -10,6 +10,9 @@
  *   - Same NAV_ITEMS, same role gating.
  *   - Same sign-out flow (dynamic import of authClient → signOut → push /login).
  *   - Same tenantLogoUrl / userAvatarUrl props.
+ *
+ * Below the `md` breakpoint the sidebar is hidden, so the topbar carries a
+ * `MobileNavMenu` dropdown with the very same entries.
  */
 
 import { usePathname } from "next/navigation";
@@ -25,10 +28,20 @@ import {
   Palette,
   Trash2,
   DoorOpen,
+  Menu,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { UserProfileProvider, useUserProfile } from "@/components/layout/UserProfileContext";
@@ -50,6 +63,8 @@ const TEXT = {
   NAV_DESIGNS:     "Diseños de Tarjeta",
   NAV_SETTINGS:    "Configuración",
   NAV_SIGNOUT:     "Cerrar sesión",
+  NAV_MENU:        "Menú",
+  NAV_MENU_ARIA:   "Abrir menú de navegación",
 } as const;
 
 interface NavItem {
@@ -162,6 +177,10 @@ function DashboardShellBody({ children, title, role, tenantName, tenantLogoUrl }
           userName={userName}
           userAvatarUrl={userAvatarUrl}
           initials={initials}
+          tenantName={displayTenantName}
+          tenantLogoUrl={tenantLogoUrl}
+          visibleNav={visibleNav}
+          isActive={isActive}
         />
 
         {/* The dashboard's scroll container — the window itself never scrolls.
@@ -265,16 +284,22 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
   );
 }
 
+/**
+ * Shared by the sidebar button and the mobile menu entry. The redirect is a
+ * full page load, not a router push, so no client cache survives the session
+ * change.
+ */
+async function signOutAndRedirect() {
+  const { authClient } = await import("@/lib/auth-client");
+  await authClient.signOut();
+  window.location.href = "/login";
+}
+
 function SignOutButton() {
-  async function handleSignOut() {
-    const { authClient } = await import("@/lib/auth-client");
-    await authClient.signOut();
-    window.location.href = "/login";
-  }
   return (
     <button
       type="button"
-      onClick={handleSignOut}
+      onClick={signOutAndRedirect}
       className={cn(
         "group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
         "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -295,14 +320,36 @@ interface TopbarProps {
   userName?: string;
   userAvatarUrl?: string | null;
   initials: string;
+  tenantName: string;
+  tenantLogoUrl?: string | null;
+  visibleNav: NavItem[];
+  isActive: (href: string) => boolean;
 }
 
-function Topbar({ title, role, userName, userAvatarUrl, initials }: TopbarProps) {
+function Topbar({
+  title,
+  role,
+  userName,
+  userAvatarUrl,
+  initials,
+  tenantName,
+  tenantLogoUrl,
+  visibleNav,
+  isActive,
+}: TopbarProps) {
   return (
     <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-6 lg:px-8">
-      <h1 className="truncate font-heading text-lg font-semibold text-foreground">
-        {title}
-      </h1>
+      <div className="flex min-w-0 items-center gap-2">
+        <MobileNavMenu
+          tenantName={tenantName}
+          tenantLogoUrl={tenantLogoUrl}
+          visibleNav={visibleNav}
+          isActive={isActive}
+        />
+        <h1 className="truncate font-heading text-lg font-semibold text-foreground">
+          {title}
+        </h1>
+      </div>
 
       <div className="flex items-center gap-3">
         <ThemeToggle />
@@ -323,5 +370,93 @@ function Topbar({ title, role, userName, userAvatarUrl, initials }: TopbarProps)
         )}
       </div>
     </header>
+  );
+}
+
+// ─── Mobile navigation ──────────────────────────────────────────────────────
+
+interface MobileNavMenuProps {
+  tenantName: string;
+  tenantLogoUrl?: string | null;
+  visibleNav: NavItem[];
+  isActive: (href: string) => boolean;
+}
+
+/**
+ * Mobile counterpart of `Sidebar` — below `md` the aside is hidden, so this
+ * dropdown is the only way to reach the nav. It consumes the same already
+ * role- and presence-filtered `visibleNav`, so visibility rules stay in one
+ * place. Radix closes the menu on item select, which covers the Link entries.
+ */
+function MobileNavMenu({ tenantName, tenantLogoUrl, visibleNav, isActive }: MobileNavMenuProps) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="md:hidden"
+          aria-label={TEXT.NAV_MENU_ARIA}
+          title={TEXT.NAV_MENU}
+        >
+          <Menu strokeWidth={1.8} />
+        </Button>
+      </DropdownMenuTrigger>
+
+      {/* `md:hidden` on the content too: the portal outlives a resize that
+          hides the trigger while the menu is open. */}
+      <DropdownMenuContent align="start" className="w-60 md:hidden">
+        <DropdownMenuLabel className="flex items-center gap-2.5 px-2 py-2">
+          <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary text-primary-foreground">
+            {tenantLogoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={tenantLogoUrl} alt={tenantName} className="size-full object-cover" />
+            ) : (
+              <Shield className="size-4" strokeWidth={1.8} />
+            )}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-heading text-sm font-bold leading-tight text-foreground">
+              {tenantName}
+            </span>
+            <span className="block truncate text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              {TEXT.BRAND_SUBTITLE}
+            </span>
+          </span>
+        </DropdownMenuLabel>
+
+        <DropdownMenuSeparator />
+
+        {visibleNav.map((item) => (
+          <MobileNavItem key={item.href} item={item} active={isActive(item.href)} />
+        ))}
+
+        <DropdownMenuSeparator />
+
+        <MobileNavItem
+          item={{ href: "/settings", label: TEXT.NAV_SETTINGS, icon: Settings }}
+          active={isActive("/settings")}
+        />
+        <DropdownMenuItem onClick={signOutAndRedirect}>
+          <LogOut strokeWidth={1.8} />
+          <span>{TEXT.NAV_SIGNOUT}</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function MobileNavItem({ item, active }: { item: NavItem; active: boolean }) {
+  const { href, label, icon: Icon } = item;
+  return (
+    <DropdownMenuItem asChild className={cn(active && "bg-accent text-accent-foreground")}>
+      <Link href={href} aria-current={active ? "page" : undefined}>
+        {/* `text-current` opts the icon out of the item's default muted svg
+            color so the active entry tints icon and label alike. */}
+        <Icon className={cn("size-4", active && "text-current")} strokeWidth={1.8} />
+        <span className="truncate">{label}</span>
+      </Link>
+    </DropdownMenuItem>
   );
 }

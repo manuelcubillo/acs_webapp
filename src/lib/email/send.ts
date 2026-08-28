@@ -2,8 +2,8 @@
  * Shared Resend email client and transactional email helpers.
  *
  * The Resend client is created once and shared across all email sending.
- * auth.ts imports `resend` and `FROM_EMAIL` from here so the password-reset
- * flow keeps working unchanged.
+ * auth.ts imports `deliverEmail` and `FROM_EMAIL` from here so the
+ * password-reset flow keeps working unchanged.
  */
 
 import { Resend } from "resend";
@@ -23,6 +23,45 @@ export function getResendClient(): Resend {
 /** Must be a domain verified in your Resend account. */
 export const FROM_EMAIL =
   process.env.RESEND_FROM_EMAIL ?? "noreply@yourdomain.com";
+
+// ─── Delivery ─────────────────────────────────────────────────────────────────
+
+interface OutgoingEmail {
+  from: string;
+  to: string;
+  subject: string;
+  html: string;
+}
+
+/**
+ * Sends an email, or logs it, depending on whether RESEND_APIKEY is set.
+ *
+ * Every environment except production leaves the key empty on purpose: a local
+ * run must not be able to send real mail from the production Resend account to
+ * a real member's address. When the key is absent the message is written to the
+ * server console instead, with the action link pulled out — that link is the
+ * only part a developer actually needs to continue an invitation or
+ * password-reset flow.
+ */
+export async function deliverEmail(email: OutgoingEmail): Promise<void> {
+  if (!process.env.RESEND_APIKEY) {
+    const link = /href="([^"]+)"/.exec(email.html)?.[1];
+    console.info(
+      [
+        "",
+        "┌─ EMAIL (not sent — RESEND_APIKEY is empty) ──────────────────────",
+        `│ to:      ${email.to}`,
+        `│ subject: ${email.subject}`,
+        link ? `│ link:    ${link}` : "│ link:    (none found in body)",
+        "└──────────────────────────────────────────────────────────────────",
+        "",
+      ].join("\n"),
+    );
+    return;
+  }
+
+  await getResendClient().emails.send(email);
+}
 
 // ─── Role labels (Spanish) ────────────────────────────────────────────────────
 
@@ -55,7 +94,7 @@ export async function sendInvitationEmail({
 }: SendInvitationEmailParams): Promise<void> {
   const roleLabel = ROLE_LABELS[role] ?? role;
 
-  await getResendClient().emails.send({
+  await deliverEmail({
     from: FROM_EMAIL,
     to,
     subject: `Invitación a ${tenantName}`,

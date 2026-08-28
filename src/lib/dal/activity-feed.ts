@@ -7,8 +7,20 @@
  *   - Scan-only log entries (log_type = "scan") — card was scanned, no field mutation.
  *   - Action log entries (log_type = "action") — a named action was executed.
  *
- * Field values configured as "summary fields" for the card's type are fetched
- * in a second query and attached inline for quick card identification.
+ * Field values configured as "summary fields" for the card's type come from the
+ * FROZEN SNAPSHOT each log row points at, so a row keeps reading as it did when
+ * it was written. The live `field_values` join remains for rows written before
+ * migration 0022, which have no snapshot and are never backfilled.
+ *
+ * The projection is shared with the client mirror in
+ * `src/lib/dashboard/feed-entries.ts` (`projectSnapshotFields`). That is not
+ * tidiness: the feed has two producers, and the last time they each derived a
+ * display value independently one said "Presencia" where the other said
+ * "Entrada".
+ *
+ * The card CODE and card type name stay live here, unlike `/history`. The feed
+ * is a twenty-row operational window answering "what is at the door now", and
+ * the code is what the operator reads off the card in their hand.
  */
 
 import { eq, and, desc, inArray, or, ne } from "drizzle-orm";
@@ -27,6 +39,9 @@ import { extractValue } from "./field-values";
 import { isPresenceRowSql } from "./presence";
 import { readScanLogId, readBooleanAfterValue } from "./metadata-keys";
 import { cardPhotoRoute } from "@/lib/storage/photo-routes";
+import { loadSnapshotsForLogRows, projectSnapshotFields } from "@/lib/snapshots";
+import type { SummaryFieldConfig } from "@/lib/snapshots";
+import type { FieldType } from "./types";
 
 /**
  * Get the activity feed for a tenant's operational dashboard.
@@ -52,7 +67,18 @@ export async function getActivityFeed(
   const includeScan = options.includeScanEntries !== false;
   const includeAction = options.includeActionEntries !== false;
 
-  // Build log_type filter
+  // Build log_type filter.
+  //
+  // This is a positive WHITELIST — scan and/or action, never "everything except
+  // X" — which is what excludes `lifecycle` and `card_edit` rows from the feed.
+  //
+  // For `card_edit` that exclusion is PERMANENT, not a staging step for A2: the
+  // feed is an operational surface answering "what is happening at the door
+  // right now", and an administrator correcting a phone number in the office is
+  // not a door event. It belongs in `/history`, which is the audit surface.
+  //
+  // Adding a log type to the feed therefore means adding it here deliberately,
+  // and mirroring it in `src/lib/dashboard/feed-entries.ts`.
   const logTypeConditions: ReturnType<typeof eq>[] = [];
   if (includeScan) logTypeConditions.push(eq(actionLogs.logType, "scan"));
   if (includeAction) logTypeConditions.push(eq(actionLogs.logType, "action"));
@@ -81,6 +107,8 @@ export async function getActivityFeed(
       metadata: actionLogs.metadata,
       // Derived from the join, not stored — see `isPresenceRowSql`.
       isPresence: isPresenceRowSql,
+      // The frozen card state this row observed. Null before migration 0022.
+      cardSnapshotId: actionLogs.cardSnapshotId,
     })
     .from(actionLogs)
     .innerJoin(cards, eq(actionLogs.cardId, cards.id))
@@ -184,16 +212,24 @@ export async function getActivityFeed(
     )
     .orderBy(cardTypeSummaryFields.position);
 
-  // Build map: cardTypeId → [{fieldDefinitionId, label, fieldType}]
-  const summaryDefsByCardType = new Map<
-    string,
-    { fieldDefinitionId: string; label: string; fieldType: string; position: number }[]
-  >();
+  // Build map: cardTypeId → ordered summary field config. Same shape the client
+  // mirror receives from `getFeedSummaryFieldConfig`, so both feed the SAME
+  // `projectSnapshotFields`.
+  const summaryDefsByCardType = new Map<string, SummaryFieldConfig[]>();
   for (const def of summaryFieldDefs) {
     const existing = summaryDefsByCardType.get(def.cardTypeId) ?? [];
-    existing.push(def);
+    existing.push({
+      fieldDefinitionId: def.fieldDefinitionId,
+      label: def.label,
+      fieldType: def.fieldType as FieldType,
+    });
     summaryDefsByCardType.set(def.cardTypeId, existing);
   }
+
+  // ── Step 3b: Resolve the frozen state of every row, in ONE query ───────────
+  // Distinct snapshots, not one per row: a card scanned twenty times in this
+  // window points at one snapshot, which is fetched once.
+  const snapshots = await loadSnapshotsForLogRows(tenantId, rows);
 
   // ── Step 4: Load field values for all cards that have summary fields ────────
 
@@ -210,7 +246,17 @@ export async function getActivityFeed(
     valueJson: unknown;
   }[] = [];
 
-  if (allFieldDefIds.length > 0 && cardIds.length > 0) {
+  // Only the cards whose rows resolved NO snapshot — i.e. rows written before
+  // migration 0022. On a feed built entirely after it, this query never runs.
+  const fallbackCardIds = [
+    ...new Set(
+      rows
+        .filter((r) => !r.cardSnapshotId || !snapshots.has(r.cardSnapshotId))
+        .map((r) => r.cardId),
+    ),
+  ];
+
+  if (allFieldDefIds.length > 0 && fallbackCardIds.length > 0) {
     cardFieldValues = await db
       .select({
         cardId: fieldValues.cardId,
@@ -224,7 +270,7 @@ export async function getActivityFeed(
       .from(fieldValues)
       .where(
         and(
-          inArray(fieldValues.cardId, cardIds),
+          inArray(fieldValues.cardId, fallbackCardIds),
           inArray(fieldValues.fieldDefinitionId, allFieldDefIds),
         ),
       );
@@ -240,29 +286,42 @@ export async function getActivityFeed(
 
   return rows.map((row): ActivityFeedEntry => {
     const defs = summaryDefsByCardType.get(row.cardTypeId) ?? [];
+    const resolved = row.cardSnapshotId
+      ? (snapshots.get(row.cardSnapshotId) ?? null)
+      : null;
 
-    const summaryFields: ActivityFeedSummaryField[] = defs.map((def) => {
-      const fv = fvMap.get(`${row.cardId}:${def.fieldDefinitionId}`);
-      const value = fv
-        ? extractValue(
-            {
-              valueText: fv.valueText,
-              valueNumber: fv.valueNumber,
-              valueBoolean: fv.valueBoolean,
-              valueDate: fv.valueDate,
-              valueJson: fv.valueJson,
-            } as Parameters<typeof extractValue>[0],
-            def.fieldType as Parameters<typeof extractValue>[1],
-          )
-        : null;
+    /** The live join, unchanged — the only thing serving pre-0022 rows. */
+    const liveSummaryFields = (): ActivityFeedSummaryField[] =>
+      defs.map((def) => {
+        const fv = fvMap.get(`${row.cardId}:${def.fieldDefinitionId}`);
+        const value = fv
+          ? extractValue(
+              {
+                valueText: fv.valueText,
+                valueNumber: fv.valueNumber,
+                valueBoolean: fv.valueBoolean,
+                valueDate: fv.valueDate,
+                valueJson: fv.valueJson,
+              } as Parameters<typeof extractValue>[0],
+              def.fieldType as Parameters<typeof extractValue>[1],
+            )
+          : null;
 
-      return {
-        fieldDefinitionId: def.fieldDefinitionId,
-        label: def.label,
-        fieldType: def.fieldType as ActivityFeedSummaryField["fieldType"],
-        value,
-      };
-    });
+        return {
+          fieldDefinitionId: def.fieldDefinitionId,
+          label: def.label,
+          fieldType: def.fieldType as ActivityFeedSummaryField["fieldType"],
+          value,
+        };
+      });
+
+    // The values a SCAN row shows are the ones the operator's scan observed —
+    // BEFORE the auto-actions it triggered ran, because `logScanEntry` freezes
+    // the state first. The client mirror must do the same or the numbers will
+    // change under the operator on the next Refrescar.
+    const summaryFields: ActivityFeedSummaryField[] = resolved
+      ? projectSnapshotFields(resolved.payload, defs)
+      : liveSummaryFields();
 
     return {
       id: row.id,

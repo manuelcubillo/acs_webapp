@@ -3,7 +3,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { username } from "better-auth/plugins";
 import { db } from "@/lib/db";
 import * as schema from "@/lib/db/schema";
-import { getResendClient, FROM_EMAIL } from "@/lib/email/send";
+import { deliverEmail, FROM_EMAIL } from "@/lib/email/send";
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -13,7 +13,7 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     sendResetPassword: async ({ user, url }) => {
-      await getResendClient().emails.send({
+      await deliverEmail({
         from: FROM_EMAIL,
         to: user.email,
         subject: "Restablecer contraseña — ACS",

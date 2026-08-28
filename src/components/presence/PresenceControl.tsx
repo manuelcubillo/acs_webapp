@@ -99,7 +99,7 @@ export default function PresenceControl({
         active={isInside}
         compact={compact}
         locked={locked}
-        activeClasses="bg-state-granted text-state-granted-foreground border-state-granted-border"
+        activeClasses="bg-state-granted-border/50 text-state-granted-foreground border-state-granted-border"
         onSelect={() => onChange(true)}
       />
       <Segment

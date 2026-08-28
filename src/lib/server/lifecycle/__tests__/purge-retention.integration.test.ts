@@ -31,16 +31,6 @@ import {
   afterAll,
   afterEach,
 } from "vitest";
-import { config } from "dotenv";
-
-// Load env before any import that touches DATABASE_URL (see sibling tests).
-config({ path: ".env.test.local" });
-config({ path: ".env.local" });
-
-if (process.env.TEST_DATABASE_URL) {
-  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
-  process.env.DB_DRIVER = "local";
-}
 
 // The endpoint reads CRON_SECRET at request time; fix it for the whole suite.
 const CRON_SECRET = "test-cron-secret-123";

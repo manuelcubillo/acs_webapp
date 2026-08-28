@@ -25,20 +25,42 @@
  * `executeActionAction` path, so it is lifecycle-gated, written to
  * `action_logs`, and attributed to the operator exactly like any other action.
  * No optimistic update: the row disappears only after the server confirms.
+ *
+ * ## Emptying the facility
+ *
+ * "Vaciar recinto" closes everyone at once through `closePresenceAction`, which
+ * is one server-side statement rather than N executions. It is confirmed with
+ * the light `ConfirmDialog` (a typed phrase would be overkill — a wrong close is
+ * corrected by registering an entry again) and styled neutrally, NOT red: on an
+ * access-control surface red means denied access, and `--state-denied` is
+ * reserved for outcomes (constraint #18). On success the page re-reads through
+ * the same path Refrescar uses, so the "Actualizado" stamp stays honest.
  */
 
 import { useCallback, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
-import { AlertCircle, Clock, DoorOpen, RefreshCw, Search, Users } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  DoorOpen,
+  RefreshCw,
+  Search,
+  Users,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import PresenceControl from "@/components/presence/PresenceControl";
 import { cn } from "@/lib/utils";
 import { executeActionAction } from "@/lib/actions/actions";
-import { getPresenceOccupantsAction } from "@/lib/actions/presence";
+import {
+  closePresenceAction,
+  getPresenceOccupantsAction,
+} from "@/lib/actions/presence";
 import type { PresenceOccupant } from "@/lib/dal";
 
 // ─── Text ───────────────────────────────────────────────────────────────────
@@ -48,6 +70,21 @@ const TEXT = {
   TOTAL_LABEL_MANY: "personas dentro del recinto",
   REFRESH: "Refrescar",
   REFRESHING: "Actualizando…",
+  CLOSE_ALL: "Vaciar recinto",
+  CLOSE_ALL_TITLE: "Vaciar el recinto",
+  CLOSE_ALL_DESCRIPTION: "Se registrará la salida de todas las personas dentro.",
+  CLOSE_ALL_BODY: (count: number) =>
+    `Se registrará la salida de ${count} ${
+      count === 1 ? "tarjeta" : "tarjetas"
+    }. Puedes corregirlo registrando la entrada de nuevo.`,
+  CLOSE_ALL_CONFIRM: "Vaciar recinto",
+  CLOSE_ALL_CONFIRMING: "Vaciando…",
+  CLOSE_ALL_CANCEL: "Cancelar",
+  CLOSE_ALL_SUCCESS: (count: number) =>
+    `Recinto vaciado: ${count} ${
+      count === 1 ? "salida registrada" : "salidas registradas"
+    }.`,
+  ERR_CLOSE_ALL: "No se pudo vaciar el recinto.",
   UPDATED_AT: "Actualizado",
   SEARCH_PLACEHOLDER: "Buscar por código o dato…",
   SEARCH_LABEL: "Buscar entre las personas dentro",
@@ -119,20 +156,56 @@ export default function PresenceClient({
   const [search, setSearch] = useState("");
   const [pendingCardId, setPendingCardId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [isConfirmingClose, setIsConfirmingClose] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
   const [isRefreshing, startRefresh] = useTransition();
+
+  /**
+   * Re-read the recinto from the server and re-stamp "Actualizado".
+   *
+   * Shared by Refrescar and by the bulk close, so both land on exactly the same
+   * state — the close does not patch the list locally.
+   */
+  const reload = useCallback(async () => {
+    const res = await getPresenceOccupantsAction();
+    if (!res.success) {
+      setError(res.error ?? TEXT.ERR_REFRESH);
+      return;
+    }
+    setOccupants(res.data);
+    setRefreshedAt(new Date().toISOString());
+  }, []);
 
   const refresh = useCallback(() => {
     startRefresh(async () => {
       setError(null);
-      const res = await getPresenceOccupantsAction();
+      setNotice(null);
+      await reload();
+    });
+  }, [reload]);
+
+  const handleCloseAll = useCallback(async () => {
+    setIsClosing(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await closePresenceAction();
+      // Dismiss either way: the error banner lives on the page, behind the modal.
+      setIsConfirmingClose(false);
       if (!res.success) {
-        setError(res.error ?? TEXT.ERR_REFRESH);
+        setError(res.error ?? TEXT.ERR_CLOSE_ALL);
         return;
       }
-      setOccupants(res.data);
-      setRefreshedAt(new Date().toISOString());
-    });
-  }, []);
+      setNotice(TEXT.CLOSE_ALL_SUCCESS(res.data.closed));
+      // Never optimistic: the list comes back from the server, like Refrescar.
+      startRefresh(async () => {
+        await reload();
+      });
+    } finally {
+      setIsClosing(false);
+    }
+  }, [reload]);
 
   const handleExit = useCallback(async (occupant: PresenceOccupant) => {
     if (pendingCardId) return;
@@ -199,22 +272,63 @@ export default function PresenceClient({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* On a phone this drops to its own full-width row under the count, with
+            the stamp on the left and both controls kept together on the right. */}
+        <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-2 sm:w-auto sm:justify-end">
           <span className="whitespace-nowrap text-xs text-muted-foreground">
             {TEXT.UPDATED_AT} {formatClock(refreshedAt)}
           </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={refresh}
-            disabled={isRefreshing}
-          >
-            <RefreshCw className={cn("size-4", isRefreshing && "animate-spin")} strokeWidth={2} />
-            {isRefreshing ? TEXT.REFRESHING : TEXT.REFRESH}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={refresh}
+              disabled={isRefreshing || isClosing}
+            >
+              <RefreshCw className={cn("size-4", isRefreshing && "animate-spin")} strokeWidth={2} />
+              {isRefreshing ? TEXT.REFRESHING : TEXT.REFRESH}
+            </Button>
+            {/* Neutral, never destructive-red: on an access-control surface red
+                reads as "denied access". A close is correctable. */}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setIsConfirmingClose(true)}
+              disabled={total === 0 || isClosing || isRefreshing}
+            >
+              <DoorOpen className="size-4" strokeWidth={2} />
+              {TEXT.CLOSE_ALL}
+            </Button>
+          </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={isConfirmingClose}
+        isLoading={isClosing}
+        title={TEXT.CLOSE_ALL_TITLE}
+        description={TEXT.CLOSE_ALL_DESCRIPTION}
+        icon={DoorOpen}
+        confirmLabel={TEXT.CLOSE_ALL_CONFIRM}
+        confirmingLabel={TEXT.CLOSE_ALL_CONFIRMING}
+        cancelLabel={TEXT.CLOSE_ALL_CANCEL}
+        onConfirm={handleCloseAll}
+        onCancel={() => setIsConfirmingClose(false)}
+      >
+        {TEXT.CLOSE_ALL_BODY(total)}
+      </ConfirmDialog>
+
+      {notice && (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-lg border bg-muted/40 px-4 py-3 text-sm text-foreground"
+        >
+          <CheckCircle2 aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          {notice}
+        </div>
+      )}
 
       {error && (
         <div

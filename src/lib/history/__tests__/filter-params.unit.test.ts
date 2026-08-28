@@ -220,14 +220,71 @@ describe("parseHistoryParams — injected scan default", () => {
 describe("toEffectiveFilters", () => {
   const base: ActionHistoryFilters = { cardCode: "A1" };
 
-  it("restricts to action rows when scans are hidden", () => {
-    expect(toEffectiveFilters(base, false)).toEqual({
+  it("sends an EXPLICIT list even when nothing is selected", () => {
+    // Never `undefined`. Before A2 the toggle-on path deleted the key, so no
+    // log-type predicate was applied at all — which is how `lifecycle` rows had
+    // been reaching /history for a month while the docs said they could not.
+    expect(toEffectiveFilters(base, true)).toEqual({
       cardCode: "A1",
-      logTypes: ["action"],
+      logTypes: ["scan", "action", "card_edit", "lifecycle"],
     });
   });
 
-  it("applies no log-type constraint when scans are shown", () => {
-    expect(toEffectiveFilters({ ...base, logTypes: ["action"] }, true)).toEqual(base);
+  it("removes only `scan` when scans are hidden", () => {
+    expect(toEffectiveFilters(base, false)).toEqual({
+      cardCode: "A1",
+      logTypes: ["action", "card_edit", "lifecycle"],
+    });
+  });
+
+  it("honours the panel's selection when there is one", () => {
+    expect(toEffectiveFilters({ ...base, logTypes: ["card_edit"] }, true)).toEqual({
+      cardCode: "A1",
+      logTypes: ["card_edit"],
+    });
+  });
+
+  it("intersects the two controls — the toggle can only ever remove `scan`", () => {
+    expect(
+      toEffectiveFilters({ ...base, logTypes: ["scan", "card_edit"] }, false),
+    ).toEqual({ cardCode: "A1", logTypes: ["card_edit"] });
+  });
+
+  it("yields an EMPTY list when the two controls contradict each other", () => {
+    // Only scans selected, then scans hidden. Empty means "match nothing" —
+    // `buildWhere` honours it as such rather than falling back to "match
+    // everything", which is what would show the whole table to an operator who
+    // asked for none of it.
+    expect(toEffectiveFilters({ ...base, logTypes: ["scan"] }, false)).toEqual({
+      cardCode: "A1",
+      logTypes: [],
+    });
+  });
+});
+
+describe("log types in the query string", () => {
+  it("round trips a selection", () => {
+    const q = buildHistoryQuery({
+      filters: { logTypes: ["card_edit", "lifecycle"] },
+      showScans: true,
+      page: 1,
+    });
+    expect(q).toContain("lt=card_edit%2Clifecycle");
+    expect(parseHistoryParams(new URLSearchParams(q.slice(1))).filters.logTypes).toEqual([
+      "card_edit",
+      "lifecycle",
+    ]);
+  });
+
+  it("drops anything that is not a real log type", () => {
+    // A hand-typed URL must filter nothing rather than reach Zod, where it
+    // would surface as a silently empty table.
+    const parsed = parseHistoryParams({ lt: "card_edit,nonsense,,scan" });
+    expect(parsed.filters.logTypes).toEqual(["card_edit", "scan"]);
+  });
+
+  it("omits the key entirely when nothing is selected", () => {
+    const q = buildHistoryQuery({ filters: {}, showScans: true, page: 1 });
+    expect(q).not.toContain("lt=");
   });
 });

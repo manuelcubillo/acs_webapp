@@ -216,6 +216,11 @@ export default function DashboardView({
         // The real log id, so these rows group locally exactly as the
         // server-built ones will after a Refrescar.
         scanLogId: data.scanLogId,
+        // And the real snapshots, so the VALUES match too. The scan row shows
+        // the state the scan observed, not `data.card` — which is the state
+        // after the auto-actions and would change on the next Refrescar.
+        scanSnapshotId: data.scanSnapshotId,
+        snapshots: data.snapshots,
       }),
     );
   }, [appendFeedEntries, feedConfig, visibility]);
@@ -282,6 +287,8 @@ export default function DashboardView({
             // The ORIGINAL scan's id, so the resumed rows join the group that
             // scan already anchored instead of appearing beside it.
             scanLogId: resumeResult.data.scanLogId,
+            // Each resumed action row reads its own frozen state from here.
+            snapshots: resumeResult.data.snapshots,
           }),
         );
       } else {
@@ -344,11 +351,19 @@ export default function DashboardView({
             actionDefinitionId: actionId,
             actionName: definition?.name ?? TEXT.ERR_ACTION,
             success: true,
+            // Carries `newValue`, which is what lets a presence row label
+            // itself "Entrada" / "Salida" immediately. Without it the row
+            // would read "Presencia" until the next Refrescar replaced it
+            // with the server-built one.
+            result: execResult.data,
           },
         ],
         config: feedConfig,
         visibility,
         operatorOverride: withOverride,
+        // The snapshot this execution produced. Same values the server-built
+        // row will carry after a Refrescar, projected by the same function.
+        snapshots: execResult.data.snapshots,
       }),
     );
   }, [activeCard, manualActions, appendFeedEntries, feedConfig, visibility]);

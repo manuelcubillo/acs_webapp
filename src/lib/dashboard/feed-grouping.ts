@@ -120,12 +120,23 @@ export type GroupedFeedEntry =
       oldest: ActivityFeedEntry;
     };
 
-/** Rows that can merge as repeats: same card, same action, same person. */
+/** Rows that can merge as repeats: same card, same action, same person, same direction. */
 function repeatKey(entry: ActivityFeedEntry): string {
   // The user is part of the identity on purpose. Two operators firing the same
   // action on the same card are two facts; merging them would erase who did
   // what, which is the one thing an audit surface must not do.
-  return [entry.cardId, entry.actionDefinitionId ?? "", entry.executedBy ?? ""].join("|");
+  //
+  // The presence direction is part of it for the same reason: an entry and an
+  // exit are two facts, and the group renders the NEWEST row's label, so
+  // merging them would show "Salida ×2" for one entry and one exit. In practice
+  // this stops presence rows from merging at all — consecutive toggles always
+  // alternate, since PresenceControl's active segment does not fire.
+  return [
+    entry.cardId,
+    entry.actionDefinitionId ?? "",
+    entry.executedBy ?? "",
+    entry.presenceAfterValue === null ? "" : String(entry.presenceAfterValue),
+  ].join("|");
 }
 
 /**
@@ -136,7 +147,8 @@ function repeatKey(entry: ActivityFeedEntry): string {
  * feed limit) renders standalone; it is never dropped.
  *
  * Rule 2 — consecutive uncorrelated `action` rows merge when they share card +
- * action + user and each is within `MANUAL_GROUP_WINDOW_MS` of its neighbour.
+ * action + user + presence direction and each is within
+ * `MANUAL_GROUP_WINDOW_MS` of its neighbour.
  *
  * Rule 3 — everything else passes through untouched.
  *

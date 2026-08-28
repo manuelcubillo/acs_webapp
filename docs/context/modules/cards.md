@@ -1,6 +1,6 @@
 # Module: cards
 
-**Last updated**: 2026-08-25 · **Last feature**: the scan/resume signatures carry `scanLogId` so an overridden scan stays one feed entry
+**Last updated**: 2026-08-28 · **Last feature**: card snapshots — every mutation (a code change included) freezes state and audits itself; the read paths now render it
 
 ## Responsibility
 
@@ -42,6 +42,14 @@ Card lifecycle: creation, editing, viewing, searching, and the multiple UI repre
 - `src/hooks/useCardColumns.ts` — localStorage-persisted column visibility. Reads storage in an effect **after** mount, never in the `useState` initializer (see "Column visibility and hydration").
 - `src/lib/dal/cards.ts` — `getCardByCode`, `getCardById`, `getCardLifecycleStatus` (light status-only lookup for the action gate), `countLiveCardsForCardType` (non-archived count for the archive cascade warning), `listArchivedCards` (trash listing: only archived, joins the archiver's name), `searchCards` (accepts a `status` filter: all/active/inactive), create/update. `createCard(cardTypeId, tenantId, code: string | null | undefined, values)` — a blank code triggers generation (see "Code assignment").
 - `src/lib/dal/scopes.ts` — `notArchived` / `onlyArchived` / `archivedViaType` reusable Drizzle scopes.
+- `src/lib/snapshots/payload.ts` — **Pure**, no DB and no React: `buildCardSnapshotPayload`, `hashCardSnapshotPayload`, `canonicalPayloadJson`, `CARD_SNAPSHOT_PAYLOAD_VERSION`. The payload shape and its canonical hash. Unit-tested in `__tests__/payload.unit.test.ts` (20 cases).
+- `src/lib/snapshots/source.ts` — `loadCardSnapshotSource` / `buildCardSnapshotFromDb`. ONE query, anchored on `cards` with LEFT JOINs outward, so a card type with no field definitions still yields the card's identity. The single reason a snapshot cannot be built from what a caller already holds — see "Card snapshots" below.
+- `src/lib/snapshots/ensure-snapshot.ts` — `ensureCardSnapshot`: the dedupe + chain + pointer update, as one data-modifying CTE.
+- `src/lib/snapshots/capture.ts` — `captureCardSnapshot(tenantId, cardId)`: load → build → ensure. What the four write paths call.
+- `src/lib/snapshots/diff.ts` — **Pure**: `diffSnapshots(previous, current)` → the field-level changes the `/history` Detail column renders, plus the synthetic `__code` / `__cardType` entries. `previous === null` returns nothing — a V0 is a state, not a transition. 13 unit tests.
+- `src/lib/snapshots/project.ts` — **Pure**, and separate from `resolve.ts` precisely so the CLIENT can import it: `projectSnapshotFields` (config decides which fields, payload supplies values + labels) and `sanitizePayloadForClient` (strips photo object keys).
+- `src/lib/snapshots/resolve.ts` — server-only: `loadSnapshotsForLogRows` (one query per page over the DISTINCT snapshot ids + their predecessors), `distinctSnapshotIds`, `loadClientSnapshots` (the sanitised map a Server Action returns).
+- `src/lib/snapshots/index.ts` — barrel. ⚠️ Do NOT import it from a client component; it re-exports the DB-backed resolver and the `node:crypto` hasher. Import `./project` or `./diff` directly.
 - `src/lib/server/lifecycle/` — lifecycle service: `state-machine.ts` (pure rules), `scan-gate.ts` (pure `resolveLifecycleGate` + `buildLifecycleScanCheck`), `cards.ts`, `card-types.ts`, `retention.ts`.
 - `src/lib/actions/lifecycle.ts` — Server Actions: `activate/deactivate/archive/restoreCardAction` (ADMIN), `…CardTypeAction` (MASTER), and the phase-4 hard-delete: `purgeArchivedCardNowAction` / `purgeArchivedCardTypeNowAction` / `emptyTrashAction` (MASTER).
 - `src/lib/actions/cards.ts` — Server Actions: `getCardByCodeAction` (informational lookup), `executeScanWithAutoActionsAction` (operational scan + auto-actions), `resumeAutoActionsAction` (override continuation), `validateBeforeActionAction`, `createCardAction`, `updateCardAction`, `updateCardCodeAction`, `deleteCardAction`, `listCardsAction`, `searchCardsAction`.
@@ -49,8 +57,9 @@ Card lifecycle: creation, editing, viewing, searching, and the multiple UI repre
 
 ## Data model (relevant subset)
 
-- `cards(id, code, card_type_id, tenant_id, status, archived_at, archived_by, status_before_archive, archived_via_type_id, timestamps)` — unique `(tenant_id, code)`.
+- `cards(id, code, card_type_id, tenant_id, status, archived_at, archived_by, status_before_archive, archived_via_type_id, current_snapshot_id, timestamps)` — unique `(tenant_id, code)`.
 - `field_values(id, card_id, field_definition_id, value_text, value_number, value_boolean, value_date, value_json, timestamps)`.
+- `card_snapshots(id, tenant_id, card_id, previous_snapshot_id, payload, content_hash, created_at)` — immutable. `card_id` `NOT NULL` + `CASCADE`; `cards.current_snapshot_id` and `action_logs.card_snapshot_id` are both `SET NULL`.
 
 Primary lookup: `code + tenantId`. UUID is internal only.
 
@@ -62,7 +71,7 @@ Primary lookup: `code + tenantId`. UUID is internal only.
 
 1. `/cards/new?cardTypeId=...` → server component fetches `getCardTypeWithFullSchema`.
 2. `CardForm` renders the code control (see "Code assignment") + `DynamicFieldInput` for each field definition.
-3. Submit → Server Action validates + creates `card` + writes `field_values`.
+3. Submit → Server Action validates + creates `card` + writes `field_values` + takes the card's **V0 snapshot** (no log row — creation auditing is out of scope).
 4. `CardNewClient` shows the success banner using the **created** card's code and remounts the form.
 
 ### Code assignment (manual or automatic)
@@ -96,8 +105,66 @@ design. ADR `2026-08-06-autogenerated-card-codes.md`.
 
 1. Same loader pattern, pre-fills form values via `extractValue(fieldType, row)` per field.
 2. Submit writes the diff (insert / update per field value).
+3. `updateCard` then snapshots and, **only if the content hash changed**, writes a
+   `log_type = 'card_edit'` audit row carrying `executed_by` (threaded from
+   `requireAdmin()` — the DAL never reads a session). Before 2026-08-28 a manual
+   edit left no trace at all. The row is now visible in `/history`, with the
+   fields it changed in the Detail column.
 
 ⚠️ `initialValues` is scoped to **the fields the form renders**, not all of `card.fields`. `useCardForm` seeds its state from that map and submits it **wholesale**, so a value included but not rendered is silently re-written on every save. For the presence field that is not harmless: the re-write fires the `field_values_touch` trigger and "Dentro desde" would reset whenever somebody edited an unrelated field.
+
+### Card snapshots (write path)
+
+Every card mutation freezes the resulting state into `card_snapshots` via
+`captureCardSnapshot`, so a log row can say what the card looked like *then*
+instead of resolving values *now*. Deduplicated by content hash — a scan that
+changes nothing creates no snapshot, it points at the one in force.
+
+Five write paths, in the order that matters:
+
+| Path | When | Log row |
+| ---- | ---- | ------- |
+| `createCard` | after the initial `field_values` writes | none — creation auditing is out of scope |
+| `updateCard` | after the value upserts + the `updated_at` bump | `card_edit`, **only if `created === true`** |
+| `updateCardCode` | after the code write | `card_edit`, **only if `created === true`** |
+| `executeAction` | after the value write, read FRESH | the `action` row, stamped |
+| `logScanEntry` | BEFORE auto-actions run | the `scan` row, stamped |
+
+⚠️ **`logScanEntry`'s position is load-bearing.** The scan row is logged before
+any auto-action executes, so its snapshot is the state the operator's scan
+actually observed. Moving either the call or the capture inside it would make the
+scan row report the post-action state.
+
+⚠️ **`updateCard` gates on the hash, not on "an UPDATE ran".** `useCardForm`
+submits its seed map wholesale, so an ordinary save re-writes untouched values
+and every upsert reports a row affected. Gating on that would fill the history
+with empty edit rows.
+
+⚠️ **A snapshot cannot be built from what a caller already holds.**
+`CardWithFields.fields` comes from `enrichFieldValues`, which maps over
+`field_values` ROWS — a field with no value is absent — and its definitions come
+from `getFieldDefinitionsByCardType`, which filters `is_active = true`. Neither
+carries the card type name. So `loadCardSnapshotSource` is one extra indexed
+query, shared by all four paths rather than four projections that could
+disagree. The scan path goes from ~6 queries to ~7.
+
+No backfill: a pre-existing card bootstraps its V0 lazily on the first scan or
+edit, because `NULL IS DISTINCT FROM $hash`. ADR
+`2026-08-28-card-snapshots-write-path.md`.
+
+`code` is part of the payload, so `updateCardCode` versions the card too and
+writes its own `card_edit` row (`executedBy` threaded from `requireAdmin()`,
+like `updateCard`). It is the only write path whose change shows up in the
+Detail column under a synthetic field id rather than a real one.
+
+### Card snapshots (read path)
+
+`/history` and the dashboard feed both resolve a page of log rows through
+`loadSnapshotsForLogRows` + `projectSnapshotFields`, falling back to the live
+`field_values` join per row when `card_snapshot_id` is NULL. That fallback is the
+only thing serving pre-0022 rows and must not be deleted. Details in
+`modules/history.md` and `modules/dashboard.md`; ADR
+`2026-08-28-card-snapshots-read-path.md`.
 
 ### Design preview (card detail)
 
@@ -233,8 +300,13 @@ Restore reuses `restoreCardAction` (admin+master) / `restoreCardTypeAction` (mas
 
 ## Recent changes
 
+- 2026-08-28 — **Card snapshots, read path (A2).** `updateCardCode` now versions the card and writes its own `card_edit` row (the code is part of the payload, so a rename was previously folded into whatever event happened next). New pure `diff.ts` (13 unit tests) and `project.ts`, plus server-only `resolve.ts`; `project.ts` is split out of `resolve.ts` because the CLIENT feed builder must import the projection and `resolve.ts` touches the DB. Two shipped tests that asserted an English `NotFoundError` message against the Spanish one were corrected. `/history` and the feed now render frozen values — see those modules. 26 tests added; suite 641/641. ADR `2026-08-28-card-snapshots-read-path.md`.
+- 2026-08-28 — **Card snapshots, write path (A1).** New `card_snapshots` table plus `cards.current_snapshot_id`; `createCard` takes a V0 at birth and `updateCard` snapshots and — only when the content hash actually changed — writes the first `log_type = 'card_edit'` audit row this project has ever had (a manual edit previously left no trace of who changed what, or when). `updateCard` gained a 4th `executedBy` param, threaded from `requireAdmin()`. New pure `payload.ts` (20 unit tests) + `ensure-snapshot.ts` (one data-modifying CTE) + `source.ts`, the one loader all write paths share — necessary because `CardWithFields.fields` omits valueless fields and inactive definitions and carries no card type name, so the payload contract cannot be met from memory. ADR `2026-08-28-card-snapshots-write-path.md`.
 - 2026-08-25 — The operational scan pipeline gained a correlation key. `executeScanWithAutoActionsAction` captures the id of the scan row it inserts (`logScanEntry` always returned it; the call simply discarded it), stamps it on every auto-action via `metadataExtra`, and returns it as `ScanWithAutoActionsResult.scanLogId`. `ResumeAutoActionsInput` gained an optional `scanLogId` and stamps the SAME id, so a scan that paused for an override stays one feed entry instead of splitting — the id round-trips through `DashboardView`'"'"'s paused state, because a pause waits on a human and no time window could stitch the rows back together. `CardDetailClient` takes `presenceActionDefinitionId` and renders that one action as `PresenceControl`. ADR `2026-08-25-feed-grouping-and-scan-correlation.md`.
 - 2026-08-24 — System fields (`is_system = true`) are excluded from every card surface an operator configures or fills in: both card forms, the list/table/profile columns, and the card-detail value grid. `EnrichedFieldValue` gained `isSystem` to make that possible from `card.fields`. The edit form's `initialValues` is now scoped to the rendered fields — it was submitting every loaded value wholesale, which would have reset the presence timestamp on unrelated edits. `CardActions` switched from `!is_auto_execute` to `is_operator_visible`, and a `toggle` action renders as a switch — which makes the card detail page mutate presence, a documented exception to the informational invariant. ADR `2026-08-24-presence-control.md`.
 - 2026-08-15 — The card-type multi-select moved from its own row above the toolbar into the "Filtros" panel, as the first section ("Tipo de carnet"), above the field filters. Same pills, same immediate-apply behaviour (a type change still drops the field filters). The panel and its button are now offered whenever there is more than one card type **or** a common filterable field — gating on the field filters alone would have stranded the type selector for a tenant whose types share none. The badge counts a narrowed type selection as one filter, and the panel opens on mount for either dimension, so a collapsed panel never hides that the list is filtered. "Limpiar" still clears field filters only; resetting the types is the "Todos" pill. UI-only, no ADR — query keys, `parseCardListParams` and `searchCards` untouched.
-- 2026-08-06 — Cards can be created without a code. `createCard` takes `code: string | null | undefined`; a blank one is allocated by the new `src/lib/card-codes/` (random digits → insert → retry on `(tenant_id, code)` violation; 5 digits, +1 after 8 collisions, cap 12), with no pre-check SELECT — the unique index arbitrates, matched via the new `isUniqueViolation` helper. `CreateCardSchema.code` relaxed from `z.string().min(1)` to `.optional()`, which had been rejecting empty submissions before they reached the DAL. `CardForm` gained the create-only `allowAutoCode` switch (default on, hides the code input, skips code validation); `CardNewClient` now takes the code from `res.data.code` for its success banner. Manual entry, edit mode and `updateCardCodeAction` untouched. ADR `2026-08-06-autogenerated-card-codes.md`.
-- 2026-08-02 — Card list view state (types, search, status, field filters, view, page) moved into the query string, parsed server-side; new `src/lib/cards/` (`list-params`, `return-origin`, `scroll-restore`) over the shared `src/lib/navigation/` primitives now used by `history` too. Rows open `/cards/[code]?from=cards&cq=…`; the detail's back link rebuilds the list, forwards the origin to the editor, and archiving redirects to the filtered list. `CardList` now holds one state object committed through `commit`. Scroll restore was fixed twice over: page offsets come from `DashboardShell`'s inner `<main data-slot="page-scroll">` (the window never scrolls) and are re-applied until they survive the router's post-navigation reset — which also fixes the same two bugs on `/history`. ADR `2026-08-02-card-list-url-state-and-return.md`.
+
+_Pruned to the 5-entry cap: the card-list URL-state entry (2026-08-02) lives on
+in ADR `2026-08-02-card-list-url-state-and-return.md`, and code autogeneration
+(2026-08-06) is described above under "Code allocation" and in
+`2026-08-06-autogenerated-card-codes.md`._

@@ -10,7 +10,13 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { ChevronDown, ChevronUp, SlidersHorizontal } from "lucide-react";
-import type { ActionHistoryFilters, HistoryFilterOptions, FieldFilter } from "@/lib/dal";
+import type {
+  ActionHistoryFilters,
+  HistoryFilterOptions,
+  FieldFilter,
+  LogType,
+} from "@/lib/dal";
+import { HISTORY_LOG_TYPES, LOG_TYPE_LABEL } from "@/lib/history/log-types";
 import HistoryFieldFilters from "./HistoryFieldFilters";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,8 +41,17 @@ const TEXT = {
   CARD_CODE:    "Código de carnet",
   CARD_CODE_PH: "Buscar por código…",
   ACTION:       "Acción",
+  LOG_TYPE:     "Tipo de registro",
   CLEAR:        "Limpiar",
   APPLY:        "Aplicar filtros",
+  /**
+   * The one thing an operator cannot work out from the screen: a row can match
+   * `saldo = 0` and display `saldo: 3`, because the filter reads the card as it
+   * is now and the table reads it as it was. Without this line that looks like
+   * a bug. See the ADR — filters staying on current values is settled.
+   */
+  VALUE_SCOPE_NOTE:
+    "Los filtros buscan en los valores ACTUALES del carnet. La tabla muestra los valores de cada evento, tal como estaban en ese momento.",
 } as const;
 
 // Sentinel for the "all operators" option (Select cannot use an empty value).
@@ -69,6 +84,7 @@ function filtersToForm(filters: ActionHistoryFilters): FormState {
     dateFrom: filters.dateFrom ? toDateTimeLocal(filters.dateFrom) : "",
     dateTo: filters.dateTo ? toDateTimeLocal(filters.dateTo) : "",
     cardTypeIds: filters.cardTypeIds ?? [],
+    logTypes: filters.logTypes ?? [],
     actionDefinitionIds: filters.actionDefinitionIds ?? [],
     executedBy: filters.executedBy ?? "",
     cardCode: filters.cardCode ?? "",
@@ -81,6 +97,11 @@ interface FormState {
   dateTo: string;
   /** Selected card type IDs — multi-select toggle buttons. */
   cardTypeIds: string[];
+  /**
+   * Selected log types. Empty means "no preference", NOT "none" — the DAL is
+   * sent an explicit list by `toEffectiveFilters`, which fills the blank in.
+   */
+  logTypes: LogType[];
   actionDefinitionIds: string[];
   executedBy: string;
   cardCode: string;
@@ -92,6 +113,7 @@ function emptyForm(): FormState {
     dateFrom: "",
     dateTo: "",
     cardTypeIds: [],
+    logTypes: [],
     actionDefinitionIds: [],
     executedBy: "",
     cardCode: "",
@@ -140,6 +162,15 @@ export default function HistoryFilters({
     }));
   };
 
+  const handleLogTypeToggle = (lt: LogType) => {
+    setForm((f) => ({
+      ...f,
+      logTypes: f.logTypes.includes(lt)
+        ? f.logTypes.filter((x) => x !== lt)
+        : [...f.logTypes, lt],
+    }));
+  };
+
   const handleActionToggle = (id: string) => {
     setForm((f) => ({
       ...f,
@@ -154,6 +185,7 @@ export default function HistoryFilters({
     if (form.dateFrom) filters.dateFrom = new Date(form.dateFrom);
     if (form.dateTo) filters.dateTo = new Date(form.dateTo);
     if (form.cardTypeIds.length > 0) filters.cardTypeIds = form.cardTypeIds;
+    if (form.logTypes.length > 0) filters.logTypes = form.logTypes;
     if (form.actionDefinitionIds.length > 0)
       filters.actionDefinitionIds = form.actionDefinitionIds;
     if (form.executedBy) filters.executedBy = form.executedBy;
@@ -167,11 +199,12 @@ export default function HistoryFilters({
     onApply({});
   };
 
-  // Count active filters (excluding logTypes which is handled by the toggle)
+  // The scan toggle lives outside this panel and is not counted here.
   const activeCount = [
     appliedFilters.dateFrom,
     appliedFilters.dateTo,
     appliedFilters.cardTypeIds?.length,
+    appliedFilters.logTypes?.length,
     appliedFilters.actionDefinitionIds?.length,
     appliedFilters.executedBy,
     appliedFilters.cardCode,
@@ -251,6 +284,35 @@ export default function HistoryFilters({
               </div>
             )}
 
+            {/* Log type — multi-select toggle buttons.
+                All four types, because /history is the audit surface: scans,
+                actions, manual edits and lifecycle transitions. Composed with
+                the inline scan toggle by `toEffectiveFilters`; nothing selected
+                means "no preference". */}
+            <div className="col-span-full">
+              <Label className={LABEL}>{TEXT.LOG_TYPE}</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {HISTORY_LOG_TYPES.map((lt) => {
+                  const selected = form.logTypes.includes(lt);
+                  return (
+                    <button
+                      key={lt}
+                      type="button"
+                      onClick={() => handleLogTypeToggle(lt)}
+                      className={cn(
+                        "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-sm transition-colors",
+                        selected
+                          ? "border-primary bg-accent font-bold text-primary"
+                          : "border-border bg-card font-medium text-foreground hover:bg-muted",
+                      )}
+                    >
+                      {LOG_TYPE_LABEL[lt]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Executed by */}
             <div>
               <Label className={LABEL}>{TEXT.OPERATOR}</Label>
@@ -324,6 +386,11 @@ export default function HistoryFilters({
               />
             </div>
           )}
+
+          {/* Why a filtered row can display a value the filter would not match. */}
+          <p className="mt-3.5 text-[11px] leading-relaxed text-muted-foreground">
+            {TEXT.VALUE_SCOPE_NOTE}
+          </p>
 
           {/* Apply / Clear */}
           <div className="mt-4 flex justify-end gap-2">

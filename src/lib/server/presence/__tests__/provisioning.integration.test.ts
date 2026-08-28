@@ -1,10 +1,8 @@
 /**
- * Verifies the enable/disable provisioning CTEs against a real Postgres.
- * Run with DB_DRIVER=local + a migrated DATABASE_URL.
+ * Verifies the enable/disable provisioning CTEs against a real Postgres —
+ * the dedicated `acs_test` database, wired by `src/test/setup-integration.ts`.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { config } from "dotenv";
-config({ path: ".env.local" });
 
 import { eq, and, like } from "drizzle-orm";
 import { db } from "@/lib/db";

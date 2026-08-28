@@ -32,3 +32,16 @@ Introduce a **strategy pattern selected by tenant config**: a new `TenantActionS
 - **Feature flag + hardcoded `if (tenant)` logic inside `executeAction`** — rejected: pollutes the shared hot path, couples unrelated tenant behavior, and grows unbounded as more custom rules appear; poor testability and blast-radius control.
 - **A new `action_type` enum value** — rejected: `computeNewValue` is a pure `(value, amount) → value` function with no access to card identity, history, or time, so it structurally cannot express the invitation rule. The seam has to be at the execution/orchestration layer, not the value-type layer.
 - **A rule/DSL engine driven by data** — rejected as premature: far more surface area and runtime complexity than a single custom tenant warrants; the strategy interface can be backed by a DSL later if multiple tenants ever need configurable rules.
+
+## Correction (2026-08-27)
+
+Two statements above are factually wrong and are corrected here rather than
+edited in place:
+
+- `allow_override_on_error` lives on `dashboard_settings`, not `tenants`.
+  Every consumer reads it via `getDashboardSettings(tenantId)`.
+  `foundation/01-architecture.md` was correct throughout.
+- The `InvitationActionStrategy` stub did **not** ship as a safe no-op. It
+  contained a name-matched `accesos` branch with a floating `.then()` whose
+  write raced past the return — an unlogged write on a live path. Replaced
+  wholesale by the implementation dated 2026-08-27.

@@ -29,9 +29,13 @@ Router for tasks. Read `foundation/` once per session. Then read only the module
 | Feed grouping, scan correlation, `scanLogId`, `action_logs.metadata` | `dashboard`, `actions`, `cards`, `decisions/2026-08-25-feed-grouping-and-scan-correlation.md` |
 | Last-scanned-card panel, ActiveCardZone grid, two-row photo cell | `dashboard`, `decisions/2026-08-04-active-card-summary-grid.md` |
 | History, audit log, export, filter logs              | `history`, `dashboard` (shared table), `actions` (log producers) |
+| Card snapshot, frozen card state, `card_snapshots`, `card_edit` log, "values at the time", audit mutating retroactively | `cards`, `actions`, `history`, `decisions/2026-08-28-card-snapshots-write-path.md` |
+| History Detail column, multi-field diff, `diffSnapshots`, why a filtered row shows a different value, log-type filter | `history`, `decisions/2026-08-28-card-snapshots-read-path.md` |
+| Feed shows the wrong value, the two feed producers disagree, `projectSnapshotFields` | `dashboard`, `history`, `decisions/2026-08-28-card-snapshots-read-path.md` |
 | Role, permission, member, tenant, guard              | `auth-tenants`, `<affected module>`             |
 | DB migration, schema change, Drizzle                 | `infrastructure`, `<affected module>`           |
 | Deploy, env vars, build, Node version                | `infrastructure`                                |
+| Which database a command hits, `.env` files, secrets, local vs prod, Neon branch | `docs/ENVIRONMENTS.md` (reference), `infrastructure`, `decisions/2026-08-26-environment-topology.md` |
 | Shared components, cross-card-type field filtering   | `fields`, `cards`                               |
 | Design system, tokens, theming, brand swap, dark mode | `decisions/2026-06-06-design-system-tokens.md`, `decisions/2026-06-06-adopt-shadcn-ui.md` |
 | shadcn primitive, button, dialog, badge, card variants | `decisions/2026-06-06-adopt-shadcn-ui.md`       |

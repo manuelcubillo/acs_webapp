@@ -7,8 +7,6 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { config } from "dotenv";
-config({ path: ".env.local" });
 
 import { eq, like } from "drizzle-orm";
 import { db } from "@/lib/db";

@@ -13,6 +13,7 @@ import {
   cardTypes,
   fieldDefinitions,
   cards,
+  cardSnapshots,
   fieldValues,
   actionDefinitions,
   actionLogs,
@@ -104,6 +105,29 @@ export const cardsRelations = relations(cards, ({ one, many }) => ({
   }),
   fieldValues: many(fieldValues),
   actionLogs: many(actionLogs),
+  /** Every frozen state this card has ever held, newest last. */
+  snapshots: many(cardSnapshots),
+}));
+
+// ─── Card Snapshot Relations ─────────────────────────────────────────────────
+
+export const cardSnapshotsRelations = relations(cardSnapshots, ({ one, many }) => ({
+  tenant: one(tenants, {
+    fields: [cardSnapshots.tenantId],
+    references: [tenants.id],
+  }),
+  card: one(cards, {
+    fields: [cardSnapshots.cardId],
+    references: [cards.id],
+  }),
+  /** The state this one superseded. Null on a card's first snapshot. */
+  previousSnapshot: one(cardSnapshots, {
+    fields: [cardSnapshots.previousSnapshotId],
+    references: [cardSnapshots.id],
+    relationName: "snapshotChain",
+  }),
+  /** Log rows written while this snapshot was the one in force. */
+  actionLogs: many(actionLogs),
 }));
 
 // ─── Field Value Relations ───────────────────────────────────────────────────
@@ -172,6 +196,14 @@ export const actionLogsRelations = relations(actionLogs, ({ one }) => ({
   executedByUser: one(user, {
     fields: [actionLogs.executedBy],
     references: [user.id],
+  }),
+  /**
+   * The card state this row observed. Null for rows written before card
+   * snapshots existed — there is no backfill.
+   */
+  cardSnapshot: one(cardSnapshots, {
+    fields: [actionLogs.cardSnapshotId],
+    references: [cardSnapshots.id],
   }),
 }));
 

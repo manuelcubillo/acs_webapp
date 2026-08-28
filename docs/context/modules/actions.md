@@ -1,6 +1,6 @@
 # Module: actions
 
-**Last updated**: 2026-08-25 · **Last feature**: `metadataExtra` — caller-supplied log annotation, keeping `executeAction` generic
+**Last updated**: 2026-08-28 · **Last feature**: Server Actions return the snapshot payloads of the rows they wrote, so the client feed builder projects the same frozen state
 
 ## Responsibility
 
@@ -18,6 +18,7 @@ Does not own scan triggering (see `scanning`) or validation rules (see `validati
 - `src/components/cards/CardActions.tsx` — Execute controls on card detail. Filters on `is_operator_visible` (prop `onlyOperatorVisible`) — **not** `!is_auto_execute` any more. A `toggle` action renders as a shadcn `Switch` reflecting `toggleStates[action.id]`; everything else is a `Button`. One action loading at a time (`loadingId` state).
 - `src/components/dashboard/ActiveCardZone.tsx` — Displays operational scan result (active card + auto-action feedback + manual action controls). `toggle` actions render as a `Switch`. Delegates execution to `DashboardView` via `onManualAction`; `DashboardView` is where the `is_operator_visible` filter is applied.
 - `src/lib/action-strategies/compute-new-value.ts` — The `action_type` switch (relocated out of `executeAction` by ADR `2026-07-09`). `toggle` returns `!(current ?? false)`.
+- `src/lib/action-strategies/invitation-strategy.ts` — The one live custom strategy (`scan_strategy = 'invitation'`). Half-day guest entry/exit accounting over two number fields. Exported pure functions (`resolveLocalMoment`, `decideEntry`, `decideExit`, `countSettlements`, …) with I/O at the edges; `INVITATION_CONFIG` at the top holds the four tenant UUIDs. ADR `2026-08-27-invitation-accounting.md`.
 - `src/lib/fields/toggle-state.ts` — `buildToggleStates(actions, fields)`: `actionId → current boolean`, so a switch can show the value it would flip. Called by the parents, which are the only place both the card values and the action list are in hand.
 - `src/components/dashboard/AutoActionFeedback.tsx` — Toast/feedback for auto-executed actions after an operational scan.
 - `src/app/api/cards/[code]/actions/[actionDefinitionId]/execute/route.ts` — External execution endpoint.
@@ -50,7 +51,16 @@ Does not own scan triggering (see `scanning`) or validation rules (see `validati
 
 ### `action_logs`
 
-Unified table for scans **and** actions. `log_type: 'scan' | 'action'`. `tenant_id` is denormalized for fast feed queries (must be kept in sync on card operations).
+Unified table for scans, actions, lifecycle transitions **and** manual card edits. `log_type: 'scan' | 'action' | 'lifecycle' | 'card_edit'`. `tenant_id` is denormalized for fast feed queries (must be kept in sync on card operations).
+
+Two columns carry the frozen card state (migration 0022):
+
+| Column | Notes |
+| ------ | ----- |
+| `card_snapshot_id` | The `card_snapshots` row holding the card's field state as this row observed it. `SET NULL`, never `CASCADE` — an audit row must not be destroyed by a snapshot disappearing. **NULL means "written before 2026-08-28"**; there is no backfill, exactly like `metadata.scanLogId`. |
+| `snapshot_created` | Whether THIS row's write produced that snapshot, i.e. whether it changed anything. Stored, not derived: the derivation is a window function over the largest table in the schema and is wrong whenever two rows share a timestamp — which the scan path produces routinely. |
+
+`card_edit` rows are written by `updateCard` (see `modules/cards.md`), carry a null `action_definition_id`, and are excluded from the feed permanently and from `/history` until the A2 read-path change.
 
 **The `metadata` contract.** Untyped jsonb with several producers. Keys read by more than one layer are declared in `src/lib/dal/metadata-keys.ts` — never spell one inline, a typo fails silently as a row that never matches.
 
@@ -59,13 +69,22 @@ Unified table for scans **and** actions. `log_type: 'scan' | 'action'`. `tenant_
 | `executeAction` | `action_type`, `target_field`, `before_value`, `after_value` |
 | …override branch | `operator_override`, `override_validation_errors` |
 | …`metadataExtra` (caller) | currently `scanLogId` |
-| …strategy result | whatever a `TenantActionStrategy` returns |
+| …strategy result | whatever a `TenantActionStrategy` returns — currently `invitationSettlement`, `invitationSlot`, `invitationDate` |
 | `logScanEntry` ← scan pipeline | `method: "operational_scan"`, `cardCode` |
 | lifecycle CTEs | `from`, `to`, `transition`, `cascaded_from_card_type_id` |
+| presence bulk close (CTE) | `action_type`, `target_field`, `before_value`, `after_value` — hand-written to match `executeAction` |
+
+⚠️ **`executeAction` is no longer the only producer of presence `action_logs` rows.** The bulk
+close (`closeAllPresence`, `src/lib/server/presence/close.ts`) writes exit rows itself, from
+inside one CTE, reproducing the four `executeAction` metadata keys column for column — that is
+what keeps `isPresenceRowSql` and `presenceDirectionLabel` working on them. Any change to the
+shape written here must be mirrored there. See `modules/presence.md` → "Emptying the facility".
 
 ⚠️ Two naming conventions coexist: `executeAction` writes **snake_case**, the scan pipeline **camelCase**. Pre-existing; `scanLogId` follows the scan side. Nothing normalises existing rows.
 
 **`metadataExtra`** is how a caller annotates a log row without `executeAction` learning anything caller-specific — it stays a pure read → compute → write → log primitive (ADR `2026-07-09`). Merged **before** the override flags, so a caller can annotate but never rewrite `operator_override`. The scan pipeline is its only current user.
+
+**`invitationSettlement`** (`full_spent | half_spent | half_refunded | none`) is the first **strategy-owned** metadata key: written by `InvitationActionStrategy` on every guest entry/exit and read back by it to cap refunds. It is the settlement record of record — for that tenant `before_value` / `after_value` are NOT sufficient, because three of the four settlements leave the target field unchanged. Not declared in `metadata-keys.ts`: only the strategy reads it. ADR `2026-08-27-invitation-accounting.md`.
 
 **`scanLogId`** correlates an auto-action with the scan that caused it. Present on every action a scan executes, **including a resumed override run** (the id round-trips through the client — see `modules/cards.md`). Absent on manual actions, and that absence is the definition. Absent on every row written before 2026-08-25; there is no backfill, so historical rows never group. ADR `2026-08-25-feed-grouping-and-scan-correlation.md`.
 
@@ -74,18 +93,29 @@ Unified table for scans **and** actions. `log_type: 'scan' | 'action'`. `tenant_
 ### `executeAction` (single action, user-triggered)
 
 1. Read current `field_value` for the target field.
-2. Compute new value based on `action_type` + `config`.
+2. Resolve the tenant's strategy (`tenants.scan_strategy`) and delegate the value computation to it. `standard` → `computeNewValue(action_type, current, config.amount)`. A custom strategy may also write auxiliary fields and return extra log metadata.
 3. Write new value.
-4. Insert row in `action_logs` with `log_type='action'`, before/after metadata, `executed_at`, `executed_by`.
+4. `captureCardSnapshot` — freeze the POST-action card state, read **fresh from the database**.
+5. Insert row in `action_logs` with `log_type='action'`, before/after metadata, `executed_at`, `executed_by`, `card_snapshot_id` and `snapshot_created`.
 
-**Atomicity note:** Neon HTTP driver does not support interactive transactions. The sequence is read → write → log using separate DB calls. A crash between steps could leave partial state. This is a known limitation tracked for migration to a transaction-capable driver.
+⚠️ **The inserted row is returned in full** (`ActionExecutionResult.log` is an `ActionLog`), so `log.id`, `log.cardSnapshotId` and `log.snapshotCreated` have always crossed to the client — a caller needing a per-action log id does not need a contract change. What A2 added at the Server Action boundary is the payload itself: `executeActionAction` returns `ActionExecutionResultWithSnapshots`, i.e. the result plus `snapshots` (snapshotId → payload, photo object keys stripped by `loadClientSnapshots`). Resolved at the boundary, not in the DAL, so the sanitisation sits next to the wire crossing.
+
+⚠️ **Step 4 is a fresh read, not a patch of the pre-action payload.** With no interactive transactions, patching would assert a state nobody verified — and it would silently omit a custom strategy's auxiliary `setFieldValue` writes, which happen in step 2, outside the main upsert. Snapshotting lives here precisely because it is generic: it knows nothing about action types or callers, like the rest of this primitive (ADR `2026-07-09`). `metadata.before_value` / `after_value` are untouched and remain the only detail for pre-2026-08-28 rows.
+
+**Atomicity note:** Neon HTTP driver does not support interactive transactions. The sequence is read → write → log using separate DB calls. A crash between steps could leave partial state. A custom strategy's auxiliary `setFieldValue` writes are equally unwrapped **and unlogged**. This is a known limitation tracked for migration to a transaction-capable driver. The `executeAction` docblock claimed a surrounding transaction until 2026-08-27; there has never been one.
+
+### Invitation accounting — `scan_strategy = 'invitation'`
+
+The only live custom strategy. `GUEST_ENTRY` spends a `HALF_INVITATION` credit if one exists (not refundable), otherwise an `INVITATIONS` unit (refundable). `GUEST_EXIT` returns one half-credit while `refunded < spent` within the same local day **and** half-day slot (`MORNING` < 15:00 ≤ `AFTERNOON`, `Europe/Madrid`), which caps refunds at one per full invitation consumed. Both counts come from `invitationSettlement` markers on prior `log_type='action'` rows — there is no entry↔exit pairing key.
+
+Three things a reader trips over: both actions **target** `invitations` but three of the four settlements do not **change** it (they move `HALF_INVITATION` via `setFieldValue`, or nothing); matching is by UUID only, so the strategy is inert until `INVITATION_CONFIG` is correct; and a repointed target falls through to standard behaviour with a `console.warn` rather than throwing — a misconfiguration must not leave someone stuck at the door. Until R3 lands, an entry at zero balance drives `INVITATIONS` negative. ADR `2026-08-27-invitation-accounting.md`.
 
 ### Operational scan — `executeScanWithAutoActionsAction(code)`
 
 Full sequence (implemented in `src/lib/actions/cards.ts`, primary home in this module):
 
 1. Fetch card by code. Run initial scan validations (`validateScan`).
-2. Log the scan entry (`logScanEntry` → `log_type='scan'`).
+2. Log the scan entry (`logScanEntry` → `log_type='scan'`). `logScanEntry` captures the card snapshot itself, so the row records the state the operator's scan **observed** — this is why it must stay before the auto-action loop, and why the capture is inside the function rather than at the call site.
 3. Fetch `dashboard_settings` to check `allow_override_on_error`.
 4. If initial validations have **error-level failures**:
    - `allow_override_on_error=false` → return `hasBlockingErrors=true`, no modal. Auto-actions do not run.
@@ -108,6 +138,7 @@ Called from `CardActions` (card detail page) and `DashboardView` (active card zo
 
 - **New action type** → extend the `action_type` enum (its own migration — `ALTER TYPE … ADD VALUE` cannot be followed by a use of the value in the same transaction), add a case to `computeNewValue`, add an entry to `REQUIRED_FIELD_TYPE`, and extend the maps in `ActionsStep` (`ACTION_TYPE_META` + `ACTION_TYPE_ORDER`) and `ReviewStep` (`ACTION_META`). ⚠️ Also the two **hand-written duplicates** of the union that do not derive from the table: `ActionType` in `src/hooks/useCardTypeWizard.ts` and `ActionTypeSchema` in `src/lib/actions/actions.ts`. `ActionType` in `src/lib/dal/types.ts` derives from the schema and updates itself.
 - **New target field compatibility** → update the compatibility map in `ActionsStep` + DAL validator.
+- **New per-tenant behaviour** → a strategy file in `src/lib/action-strategies/`, an entry in `resolve-strategy.ts`, a key in `ScanStrategyKey`, and the tenant's `scan_strategy` value. A strategy may own metadata keys (see `invitationSettlement`); keep the decision logic in exported pure functions with the DB reads at the edges so it is testable without a database.
 
 ## Module interactions
 
@@ -119,6 +150,9 @@ Called from `CardActions` (card detail page) and `DashboardView` (active card zo
 ## Open TODOs
 
 - [ ] Atomicity — revisit when/if a transaction-capable driver replaces Neon HTTP, or add a compensating-write strategy.
+- [ ] **R3 — insufficient-balance validation for the invitation tenant.** Scan-time `warning` + a real block at `GUEST_ENTRY` riding `allow_override_on_error`, `GUEST_EXIT` never gated. Not implementable inside the strategy: the seam sits below where scan results are assembled, and `ActionStrategyContext` carries neither `operatorOverride` nor `allowOverrideOnError`. The gate belongs inside `executeAction`, not per-caller (the external route bypasses caller-level gates). Must **not** use `scan_validations` — that model is a conjunction, the real condition is a sum. See ADR `2026-08-27-invitation-accounting.md`.
+- [ ] **Invitation audit trail is incomplete** — `half_spent` / `half_refunded` / `none` log `before_value === after_value`; the real mutation is an unlogged `setFieldValue`. See the same TODO in `history` / `dashboard`.
+- [ ] **Possible unlogged writes on the invitation tenant** — the pre-2026-08-27 stub was live code (a name-matched `accesos` branch with a floating `.then()`), not the safe no-op ADR `2026-07-09` claimed.
 
 ## Future considerations
 
@@ -126,8 +160,10 @@ Called from `CardActions` (card detail page) and `DashboardView` (active card zo
 
 ## Recent changes
 
+- 2026-08-28 — **Log ids and snapshot payloads in the return values (A2).** `executeActionAction` now returns `ActionExecutionResultWithSnapshots` — the same result plus `snapshots` — and `ScanWithAutoActionsResult` gained `scanSnapshotId` + `snapshots`. Per-action log ids needed nothing: `ActionExecutionResult.log` was already the full inserted row. This exists so the client feed builder projects the SAME frozen state the server will serve on the next Refrescar; without it a scan row built from the post-auto-action card would show 9 where the server shows 10. Payloads are sanitised at the boundary (photo object keys never cross). Nothing in `executeAction` or `logScanEntry` changed. ADR `2026-08-28-card-snapshots-read-path.md`.
+- 2026-08-28 — **Card snapshots reach the log writers.** `executeAction` gained a step between the value write and the log insert: `captureCardSnapshot` freezes the post-action state (fresh read, never a patch of the pre-action payload), and the row is stamped with `card_snapshot_id` + `snapshot_created`. `logScanEntry` does the same, capturing INSIDE the function so "every scan row carries a snapshot" is a property rather than a convention a caller can forget — and before auto-actions run, so the row reports what the scan observed. `log_type` gained `card_edit`, written by `updateCard` and `updateCardCode`, not by anything here. No metadata keys changed. ADR `2026-08-28-card-snapshots-write-path.md`.
+- 2026-08-27 — `InvitationActionStrategy` implemented; it had shipped as a stub. Half-day guest accounting: `GUEST_ENTRY` spends a half-credit then a full invitation, `GUEST_EXIT` refunds one half-credit per full invitation consumed in the same `Europe/Madrid` day + slot. No schema change and no context change — the settlement is recorded as an `invitationSettlement` marker in `action_logs.metadata`, a channel `executeAction` already merged, and read back through `getCardActionHistory`. Matching is by UUID only (names are tenant-editable); a repointed target degrades to standard behaviour with a warning rather than throwing. 33 unit tests. Two doc corrections fell out: the `executeAction` docblock claimed a transaction that never existed, and ADR `2026-07-09` described the stub as a safe no-op when it contained a live unlogged write (correction note appended there). ADR `2026-08-27-invitation-accounting.md`.
 - 2026-08-25 — `ExecuteActionInput` gained `metadataExtra?: Record<string, unknown>`, merged into the log row's metadata before the override flags. It exists so the scan pipeline can stamp `scanLogId` without `executeAction` knowing what a scan is; a caller can annotate but not overwrite `operator_override`. Well-known metadata keys and their readers now live in `src/lib/dal/metadata-keys.ts`. ADR `2026-08-25-feed-grouping-and-scan-correlation.md`.
 - 2026-08-24 — New `toggle` action type (general purpose: any boolean field, any card type; `!(current ?? false)`, so a missing value row reads as off and the first toggle turns it on). `is_operator_visible` split out of `is_auto_execute` — both operator surfaces now filter on the new column, backfilled to `NOT is_auto_execute` so existing data renders identically. `toggle` actions render as a shadcn `Switch` (state from `buildToggleStates`) instead of a `Button`, in both `CardActions` and `ActiveCardZone`. Type compatibility consolidated into one `REQUIRED_FIELD_TYPE` map. First consumer is presence control — see `modules/presence.md`. ADR `2026-08-24-presence-control.md`.
-- 2026-07-17 — Phase-2 lifecycle gate. `executeActionAction` enforces `resolveLifecycleGate` server-side (archived → `CardArchivedError` 403; inactive/expired → `LifecycleBlockedError` / `OverrideRequiredError` 422). The operational pipeline denies archived (no auto-actions, scan still logged) and pauses/blocks inactive/expired via a synthetic scan check. New error classes in `src/lib/api/errors.ts`. External `execute` route gates too (archived 403, off 422, no interactive override). See `modules/cards.md` and ADR `2026-07-17-card-lifecycle-scan-behaviour.md`.
-- 2026-04-19 — Initial extraction from technical handoff + memory context about auto-action sequencing and override flow.
-- 2026-04-19 — Synchronized documentation against source code: added `logScanEntry`, `executeScanWithAutoActionsAction`, `resumeAutoActionsAction`; corrected operational scan flow with re-validation detail; clarified `is_auto_execute` flag behavior.
+
+_Pruned to the 5-entry cap: the initial 2026-04-19 extraction note is dropped, and the phase-2 lifecycle gate (2026-07-17) is described in `2026-07-17-card-lifecycle-scan-behaviour.md`._

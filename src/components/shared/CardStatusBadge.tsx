@@ -12,14 +12,12 @@ import { Archive, CircleCheck, CircleSlash, Clock } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { LIFECYCLE_STATUS_LABEL } from "@/lib/cards/lifecycle-labels";
 import type { LifecycleStatus } from "@/lib/dal";
 
-const TEXT: Record<LifecycleStatus, string> = {
-  active: "Activo",
-  inactive: "Inactivo",
-  expired: "Expirado",
-  archived: "Archivado",
-};
+// Shared with the `/history` Detail column, which spells out a lifecycle
+// transition — the two must not disagree about what a status is called.
+const TEXT = LIFECYCLE_STATUS_LABEL;
 
 const ICON: Record<LifecycleStatus, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
   active: CircleCheck,

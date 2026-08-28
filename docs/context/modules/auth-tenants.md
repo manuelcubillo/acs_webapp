@@ -13,7 +13,7 @@ Authentication (Better Auth), tenant management, multi-tenancy boundary, members
 - `src/lib/api/auth.ts` — `getCurrentTenant`, `requireAuth`, `requireRole`, `requireOperator`, `requireAdmin`, `requireMaster`, `getTenantFromHeader` (external API only).
 - `src/lib/dal/tenants.ts` — Tenant CRUD, scan mode, override setting.
 - `src/lib/auth/role-hierarchy.ts` — `ROLE_ORDER`, `canManage`, `canAssignRole` helpers (single source of truth for permission checks).
-- `src/lib/email/send.ts` — Shared Resend client + `sendInvitationEmail`.
+- `src/lib/email/send.ts` — Shared Resend client + `sendInvitationEmail`. All delivery goes through `deliverEmail`, which logs the message and its action link instead of sending when `RESEND_APIKEY` is empty — the case in every environment except Vercel. To follow an invitation or reset flow locally, read the link from the server console.
 - `src/lib/dal/members.ts` — Membership CRUD, role transitions, activate/deactivate/remove, profile update, last-master invariant. Filters `removedAt IS NULL` by default.
 - `src/lib/dal/invitations.ts` — `createInvitation`, `getInvitationByToken`, `listPendingInvitations`, `findPendingInvitation`, `revokeInvitation`, `acceptInvitation`.
 - `src/lib/actions/tenants.ts` — Tenant-level Server Actions. `updateTenantSettingsAction` (master-only) handles `scanMode` and `archiveRetentionDays` (Zod-validated 1–365).

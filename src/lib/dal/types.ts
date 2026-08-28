@@ -24,6 +24,12 @@ import type {
   cardDesigns,
   cardTypeDesigns,
 } from "@/lib/db/schema";
+// Type-only, and deliberately: `SnapshotFieldChange` is what the `/history`
+// Detail column renders, so it belongs on `ActionHistoryEntry`. The diff module
+// imports `FieldType` from here in return — a cycle that exists only in the
+// type system and is erased at compile time.
+import type { SnapshotFieldChange } from "@/lib/snapshots/diff";
+import type { SnapshotPayloadMap } from "@/lib/snapshots/resolve";
 
 // ─── Drizzle-derived row types ──────────────────────────────────────────────
 
@@ -321,6 +327,18 @@ export interface ActionExecutionResult {
   targetFieldLabel: string;
 }
 
+/**
+ * `ActionExecutionResult` as a Server Action returns it.
+ *
+ * `snapshots` carries the payload of the snapshot `log.card_snapshot_id` points
+ * at, so the client can build the feed row with `projectSnapshotFields` — the
+ * same function `getActivityFeed` uses. Populated at the Server Action
+ * boundary, not by the DAL: that is also where photo object keys are stripped.
+ */
+export type ActionExecutionResultWithSnapshots = ActionExecutionResult & {
+  snapshots: SnapshotPayloadMap;
+};
+
 // ─── Action inputs ──────────────────────────────────────────────────────────
 
 export interface ExecuteActionInput {
@@ -396,6 +414,27 @@ export interface ScanWithAutoActionsResult {
    * echoes back the id it was given.
    */
   scanLogId: string | null;
+  /**
+   * `card_snapshots.id` the scan row points at — the card's state as the
+   * operator's scan OBSERVED it, before any auto-action ran.
+   *
+   * The client feed builder must use this one for the scan row, never
+   * `card.fields`: `card` is the FINAL state, after the auto-actions. Building
+   * the scan row from it would show a balance of 9 where the server, on the
+   * next Refrescar, shows the 10 that was actually scanned.
+   *
+   * Null only when the row predates snapshots, which cannot happen for a row
+   * this call just wrote, or on the resume path, which writes no scan row.
+   */
+  scanSnapshotId: string | null;
+  /**
+   * snapshotId → payload, for every snapshot the rows this call wrote point at:
+   * the scan row's plus one per executed action (`result.log.cardSnapshotId`).
+   *
+   * Deduplicated, and the same shape the server read path produces, so both
+   * feed builders consume one structure. Photo values are stripped.
+   */
+  snapshots: SnapshotPayloadMap;
   /** Initial scan validation result at scan time, before any auto-actions ran. */
   scanResult: import("@/lib/validation/scan-validator").ScanValidationResult;
   /** Results of each auto-execute action that was attempted. */
@@ -789,7 +828,12 @@ export interface FieldFilter {
 export interface ActionHistoryFilters {
   dateFrom?: Date;
   dateTo?: Date;
-  logTypes?: ('scan' | 'action')[];
+  /**
+   * Log types to include. `undefined` means no constraint; an EMPTY array means
+   * "nothing matches" (the user deselected every type) and is honoured as such
+   * — see `buildWhere`.
+   */
+  logTypes?: LogType[];
   cardTypeIds?: string[];
   actionDefinitionIds?: string[];
   executedBy?: string;
@@ -803,11 +847,50 @@ export interface ActionHistoryFilters {
 
 export interface ActionHistoryEntry {
   id: string;
-  logType: 'scan' | 'action';
+  /**
+   * Widened past `scan | action` by A2: `/history` is the audit surface, so it
+   * shows `card_edit` and `lifecycle` rows too. The dashboard FEED still shows
+   * only scans and actions — see `getActivityFeed`'s whitelist.
+   */
+  logType: LogType;
   cardId: string;
+  /**
+   * The card's code TODAY. Everything addressable is built from this — the
+   * detail link, the photo route — so it must stay live even when the card was
+   * renamed after this row was written. For display, prefer `cardCodeAtEvent`.
+   */
   cardCode: string;
   cardTypeId: string;
+  /** The card type's name TODAY. For display, prefer `cardTypeNameAtEvent`. */
   cardTypeName: string;
+  /**
+   * The card's code AS OF this event, from the frozen snapshot. Null for a row
+   * written before migration 0022, which has no snapshot to read.
+   */
+  cardCodeAtEvent: string | null;
+  /** The card type's name AS OF this event. Null for a pre-0022 row. */
+  cardTypeNameAtEvent: string | null;
+  /**
+   * Whether this row resolved a snapshot. False for pre-0022 rows, whose
+   * summary values come from the live join and whose Detail column falls back
+   * to `metadata.before_value` / `after_value`. There is no backfill.
+   */
+  hasSnapshot: boolean;
+  /** Whether this row's event actually changed the card (`snapshot_created`). */
+  snapshotCreated: boolean;
+  /**
+   * Field-level changes this event produced, with the newest labels.
+   *
+   * Ordered for READING — identity first, then by label — not in payload order,
+   * which is `fieldDefinitionId` order because the content hash has to be
+   * reproducible. See `orderChangesForDisplay`.
+   *
+   * Empty unless the row both resolved a snapshot AND created it. System fields
+   * are INCLUDED: filtering them is a presentation decision each renderer makes
+   * with `excludeSystemFields`. `photo` changes carry a boolean presence flag,
+   * never the object key.
+   */
+  snapshotChanges: SnapshotFieldChange[];
   actionDefinitionId: string | null;
   actionName: string | null;
   actionColor: string | null;

@@ -35,6 +35,15 @@ const TEXT = {
 interface ActivityFeedEntryRowProps {
   entry: ActivityFeedEntry;
   /**
+   * Badge text for an `action` row that stands on its own.
+   *
+   * Resolved by `ActivityFeed` with the same derivation it applies to the
+   * badges a scan absorbs, so a presence row reads "Entrada" / "Salida"
+   * whether the toggle came from a scan or from the operator's own click.
+   * Falls back to `entry.actionName` when not supplied.
+   */
+  actionLabel?: string;
+  /**
    * Labels of the auto-actions a scan absorbed, in execution order.
    *
    * Rendered as extra badges beside "Escaneado". Supplied by `ActivityFeed`
@@ -61,10 +70,12 @@ function formatFieldValue(value: unknown, fieldType: string): string {
 
 export default function ActivityFeedEntryRow({
   entry,
+  actionLabel,
   actionBadges,
   repeatCount,
 }: ActivityFeedEntryRowProps) {
   const isScan = entry.logType === "scan";
+  const ownActionLabel = actionLabel ?? entry.actionName;
 
   const timeAgo = formatDistanceToNow(new Date(entry.executedAt), {
     addSuffix: true,
@@ -118,9 +129,9 @@ export default function ActivityFeedEntryRow({
           <Badge variant="outline" className="bg-card text-[10px] text-muted-foreground">
             {entry.cardTypeName}
           </Badge>
-          {!isScan && entry.actionName && (
+          {!isScan && ownActionLabel && (
             <Badge className="bg-accent text-[10px] font-semibold text-accent-foreground">
-              {entry.actionName}
+              {ownActionLabel}
             </Badge>
           )}
           {entry.operatorOverride && (

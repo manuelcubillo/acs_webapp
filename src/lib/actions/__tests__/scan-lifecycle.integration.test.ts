@@ -24,17 +24,6 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
-import { config } from "dotenv";
-
-// Load env before any import that touches DATABASE_URL (db is a lazy proxy, so
-// this runs in time for the first query inside the tests).
-config({ path: ".env.test.local" });
-config({ path: ".env.local" });
-
-if (process.env.TEST_DATABASE_URL) {
-  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
-  process.env.DB_DRIVER = "local";
-}
 
 // `server-only` is a Next.js build guard with no standalone package; stub it so
 // the DAL's photo-url helpers (transitively imported) load under the runner.

@@ -36,6 +36,7 @@ import {
   getDashboardSettings,
 } from "@/lib/dal";
 import { SCAN_LOG_ID_METADATA_KEY } from "@/lib/dal/metadata-keys";
+import { loadClientSnapshots } from "@/lib/snapshots";
 import type {
   CardWithFields,
   PaginatedResult,
@@ -206,8 +207,23 @@ export async function executeScanWithAutoActionsAction(
       metadata: { method: "operational_scan", cardCode: code },
     });
     const scanLogId = scanLog.id;
+    /** The state the operator's scan OBSERVED — frozen before any action ran. */
+    const scanSnapshotId = scanLog.cardSnapshotId;
     /** Correlation stamped on every action this scan causes. */
     const scanCorrelation = { [SCAN_LOG_ID_METADATA_KEY]: scanLogId };
+
+    /**
+     * The payloads the client needs to build these rows itself.
+     *
+     * One query, and the SAME resolution `getActivityFeed` uses, so the rows the
+     * client appends now and the rows a Refrescar fetches later are projected by
+     * one function from one shape. Photo object keys are stripped on the way.
+     */
+    const collectSnapshots = (executed: AutoActionResult[] = []) =>
+      loadClientSnapshots(tenantId, [
+        { cardSnapshotId: scanSnapshotId },
+        ...executed.map((a) => ({ cardSnapshotId: a.result?.log.cardSnapshotId ?? null })),
+      ]);
 
     // 4. Fetch dashboard settings to check override flag
     const settings = await getDashboardSettings(tenantId);
@@ -234,6 +250,10 @@ export async function executeScanWithAutoActionsAction(
         pauseValidationErrors: null,
         lifecycleGate,
         scanLogId,
+
+        scanSnapshotId,
+
+        snapshots: await collectSnapshots()  /* no action ran */,
       };
     }
 
@@ -269,6 +289,10 @@ export async function executeScanWithAutoActionsAction(
           pauseValidationErrors: getErrorLevelChecks(initialScanResult),
           lifecycleGate,
           scanLogId,
+
+          scanSnapshotId,
+
+          snapshots: await collectSnapshots()  /* no action ran */,
         };
       }
       // BLOCK — no modal, buttons disabled
@@ -286,6 +310,10 @@ export async function executeScanWithAutoActionsAction(
         pauseValidationErrors: null,
         lifecycleGate,
         scanLogId,
+
+        scanSnapshotId,
+
+        snapshots: await collectSnapshots()  /* no action ran */,
       };
     }
 
@@ -342,6 +370,10 @@ export async function executeScanWithAutoActionsAction(
               pauseValidationErrors: getErrorLevelChecks(revalidation),
               lifecycleGate,
               scanLogId,
+
+              scanSnapshotId,
+
+              snapshots: await collectSnapshots(autoActions),
             };
           }
           // STOP permanently — no override
@@ -376,6 +408,10 @@ export async function executeScanWithAutoActionsAction(
       pauseValidationErrors: null,
       lifecycleGate,
       scanLogId,
+
+      scanSnapshotId,
+
+      snapshots: await collectSnapshots(autoActions),
     };
   });
 
@@ -492,6 +528,20 @@ export async function resumeAutoActionsAction(
               pauseValidationErrors: getErrorLevelChecks(revalidation),
               lifecycleGate,
               scanLogId: input.scanLogId ?? null,
+
+              // No scan row is written here, so there is no scan snapshot to
+
+              // report. Each resumed action row carries its own, in `snapshots`.
+
+              scanSnapshotId: null,
+
+              snapshots: await loadClientSnapshots(
+
+                tenantId,
+
+                autoActions.map((a) => ({ cardSnapshotId: a.result?.log.cardSnapshotId ?? null })),
+
+              ),
             };
           }
           // No override allowed anymore — stop permanently
@@ -526,6 +576,20 @@ export async function resumeAutoActionsAction(
       pauseValidationErrors: null,
       lifecycleGate,
       scanLogId: input.scanLogId ?? null,
+
+      // No scan row is written here, so there is no scan snapshot to
+
+      // report. Each resumed action row carries its own, in `snapshots`.
+
+      scanSnapshotId: null,
+
+      snapshots: await loadClientSnapshots(
+
+        tenantId,
+
+        autoActions.map((a) => ({ cardSnapshotId: a.result?.log.cardSnapshotId ?? null })),
+
+      ),
     };
   });
 
@@ -650,9 +714,11 @@ export async function updateCardAction(
   input: unknown,
 ): Promise<ActionResult<CardWithFields>> {
   return actionHandler(async () => {
-    const { tenantId } = await requireAdmin();
+    // `userId` is threaded through so the `card_edit` audit row records WHO
+    // edited the card. The DAL never reads it from a global.
+    const { tenantId, userId } = await requireAdmin();
     const data = UpdateCardSchema.parse(input);
-    return updateCard(code, tenantId, data.values);
+    return updateCard(code, tenantId, data.values, userId);
   });
 }
 
@@ -666,10 +732,11 @@ export async function updateCardCodeAction(
   input: unknown,
 ): Promise<ActionResult<CardWithFields>> {
   return actionHandler(async () => {
-    const { tenantId } = await requireAdmin();
+    const { tenantId, userId } = await requireAdmin();
     const { newCode } = UpdateCardCodeSchema.parse(input);
     // updateCardCode returns the plain Card row; fetch enriched result after.
-    await updateCardCode(id, tenantId, newCode);
+    // `userId` is threaded so the `card_edit` row records WHO renamed the card.
+    await updateCardCode(id, tenantId, newCode, userId);
     return getCardById(id, tenantId);
   });
 }

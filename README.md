@@ -2,17 +2,17 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+docker compose --profile db --profile storage up -d   # Postgres + MinIO
+pnpm install
+pnpm db:setup                                          # creates acs_dev + acs_test
 pnpm dev
-# or
-bun dev
 ```
+
+You also need `.env.local` and `.env.test.local`, which hold the secrets and are
+not in the repository. **[docs/ENVIRONMENTS.md](docs/ENVIRONMENTS.md)** has the
+exact contents, plus the table of which command connects to which database —
+read it before running anything that touches production.
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 

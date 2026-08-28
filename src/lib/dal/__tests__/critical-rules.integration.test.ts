@@ -1,8 +1,9 @@
 /**
  * Integration tests for critical DAL business rules.
  *
- * These tests run against the real Neon database (using .env.local)
- * to validate rules that depend on actual DB state:
+ * These tests run against the dedicated `acs_test` Postgres (wired by
+ * `src/test/setup-integration.ts`) to validate rules that depend on actual
+ * DB state:
  *
  * 1. Cannot change field_type when field values exist
  * 2. Required fields must have values when creating a card
@@ -15,10 +16,6 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { config } from "dotenv";
-
-// Load env before any imports that use DATABASE_URL.
-config({ path: ".env.local" });
 
 import { eq, and, like } from "drizzle-orm";
 import { db } from "@/lib/db";

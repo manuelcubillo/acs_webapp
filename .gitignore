@@ -30,9 +30,17 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files
+# Se versionan solo los que NO llevan secretos:
+#   .env          → defaults de la pila local
+#   .env.development → URLs de localhost (Next solo lo carga en `next dev`)
+#   .env.example  → plantilla y documentación
+# Todo lo demás (.env.local, .env.test.local, .env.docker, .env.prod,
+# .env.neon-branch) lleva secretos y NUNCA se sube. Ver docs/ENVIRONMENTS.md.
 .env*
 !.env.example
+!.env.development
+!.env
 
 # vercel
 .vercel
@@ -40,7 +48,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-.env.test.local
 
 # legacy db migration
 scripts/legacyDBMigration/*

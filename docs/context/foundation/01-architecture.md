@@ -1,6 +1,6 @@
 # 01 · Architecture
 
-**Last updated**: 2026-08-25 · **Last sync**: `action_logs.metadata` gained a documented correlation contract (`scanLogId`); previously presence control — `action_type` gained `toggle`, `field_definitions`/`action_definitions` gained `is_system`, `action_definitions` gained `is_operator_visible`, `card_types` gained `presence_field_definition_id`, and `field_values.updated_at` became trigger-maintained (migrations 0020–0021)
+**Last updated**: 2026-08-28 · **Last sync**: the snapshot READ path — `/history` and the feed render frozen state, `card_edit` and `lifecycle` rows are surfaced in `/history`; before that the new `card_snapshots` table + the pointer columns on `cards` / `action_logs`, and `log_type` gained `card_edit` (migration 0022); previously `action_logs.metadata` gained a documented correlation contract (`scanLogId`), and before that presence control — `action_type` gained `toggle`, `field_definitions`/`action_definitions` gained `is_system`, `action_definitions` gained `is_operator_visible`, `card_types` gained `presence_field_definition_id`, and `field_values.updated_at` became trigger-maintained (migrations 0020–0021)
 
 ## 1. Data model — hybrid SQL + dynamic fields
 
@@ -15,10 +15,11 @@ Fixed columns for system fields (`id`, `tenant_id`, `status`, timestamps) plus d
 | `member_invitations`          | Pending email invitations. `token` unique; `expires_at` = 7 days. Status: pending / accepted / revoked / expired. |
 | `card_types`                  | Badge templates per tenant. Name, description, `status` (`lifecycle_status`) + trash metadata, `presence_field_definition_id` (nullable FK → `field_definitions`, `SET NULL`) designating the presence boolean. |
 | `field_definitions`           | Fields attached to a card type. `field_type`, `is_required`, `position`, `validation_rules` jsonb, `is_system`. |
-| `cards`                       | Card instances. `code` is client-facing, unique per `(tenant_id, code)`. `status` (`lifecycle_status`) + trash metadata incl. `archived_via_type_id`. |
+| `cards`                       | Card instances. `code` is client-facing, unique per `(tenant_id, code)`. `status` (`lifecycle_status`) + trash metadata incl. `archived_via_type_id`. `current_snapshot_id` names the frozen state in force (nullable, `SET NULL`). |
 | `field_values`                | Values per card. Type-specific columns: `value_text`, `_number`, `_boolean`, `_date`, `_json`. `updated_at` is maintained by the `field_values_touch` **trigger**, not by application code. |
+| `card_snapshots`              | **Immutable** frozen copy of one card's complete field state, deduplicated by `content_hash`. `payload` jsonb, `previous_snapshot_id` chains them per card. `card_id` `NOT NULL` + `CASCADE` — purging a card takes its snapshots. See §9c. |
 | `action_definitions`          | Actions declared per card type. `action_type`, `target_field_definition_id`, `config` jsonb, `is_auto_execute`, `is_operator_visible`, `is_system`. |
-| `action_logs`                 | Unified log of scans, actions **and** card lifecycle transitions. `log_type: 'scan' \| 'action' \| 'lifecycle'`. `tenant_id` denormalized. |
+| `action_logs`                 | Unified log of scans, actions, card lifecycle transitions **and** manual card edits. `log_type: 'scan' \| 'action' \| 'lifecycle' \| 'card_edit'`. `tenant_id` denormalized. `card_snapshot_id` (`SET NULL`) + `snapshot_created` say which frozen state the row observed and whether it produced it. |
 | `scan_validations`            | Rules evaluated at scan time. Per-field, with severity (`error` \| `warning`).                      |
 | `dashboard_settings`          | Per-tenant dashboard configuration: feed limits, entry visibility, `allow_override_on_error`.       |
 | `card_type_summary_fields`    | Per card type: which fields surface in the **activity feed** row. Photo fields excluded at read time. |
@@ -35,7 +36,9 @@ Fixed columns for system fields (`id`, `tenant_id`, `status`, timestamps) plus d
 - `lifecycle_status`: `active | inactive | archived | expired` — shared by `cards` and `card_types`. Replaced `card_status` and `card_types.is_active` (migration 0017).
 - `tenant_role`: `operator | admin | master`
 - `scan_mode`: `camera | external_reader | both`
-- `log_type`: `scan | action | lifecycle` — `lifecycle` rows are audit-only and are filtered out of the feed, `/history` and tenant action strategies.
+- `log_type`: `scan | action | lifecycle | card_edit`
+  - `lifecycle` — audit-only, filtered out of the feed and of tenant action strategies. ⚠️ **Not** filtered out of `/history` today, despite what `filter-params.ts` claims — see `modules/history.md` → Open TODOs.
+  - `card_edit` — an administrator saved the card edit form AND it changed a value. `action_definition_id` is null; the change is carried by `card_snapshot_id`, not by metadata. Excluded from the feed **permanently** and from `/history` **temporarily** (until the A2 read-path change).
 
 ## 1b. Card / CardType lifecycle
 
@@ -168,9 +171,90 @@ identified, and it is also true of every row written before 2026-08-25. There is
 no backfill. `groupFeedRows` consumes it at render. See ADR
 `2026-08-25-feed-grouping-and-scan-correlation.md`.
 
+## 9c. Card snapshots — why an audit row stops mutating
+
+`action_logs` rows resolved their card's field values by joining `field_values`
+at read time, so `/history` and the feed displayed **today's** values — and
+today's labels, card type name and card code — for an event from March. An audit
+log whose content changes retroactively is not one, and this system governs
+physical doors.
+
+A **`card_snapshots`** row is an immutable, complete copy of one card's field
+state. `cards.current_snapshot_id` names the state in force;
+`action_logs.card_snapshot_id` names the state a row observed.
+
+**Deduplicated by content.** `ensureCardSnapshot` (`src/lib/snapshots/`, one
+data-modifying CTE, same pattern as `src/lib/server/lifecycle/`) inserts only
+when the card's `content_hash` differs from the one currently in force —
+otherwise the log row points at the existing snapshot. A card scanned 500 times
+and edited twice holds **3** snapshots, not 502. `snapshot_created` records
+which of the two happened, so a reader can tell "this row changed something"
+from "this row merely observed".
+
+The comparison is against the CURRENT snapshot only, never the whole history: a
+card returning to an earlier state gets a new row, because `previous_snapshot_id`
+has to describe what actually preceded this state.
+
+**The payload** (`src/lib/snapshots/payload.ts`, pure and unit-tested) carries
+the code, card type id + name, and EVERY field definition of the card type —
+system and soft-deleted ones included — each with its `name`, `label`, type and
+value frozen as they stood. A field with no value row appears with `value: null`,
+never omitted, so "emptied" stays distinguishable from "never set". Fields are
+sorted by `fieldDefinitionId` and keys emitted in a fixed order: the sha256 over
+that JSON is the deduplication key, so both are contract, not formatting. Photos
+freeze the storage **object key**, never a URL.
+
+**Five write paths, one loader.** `createCard` (V0 at birth, no log row),
+`updateCard`, `updateCardCode` (the code is in the payload, so a rename versions
+the card), `executeAction` (fresh read AFTER the value write) and `logScanEntry`
+(BEFORE auto-actions run, so the snapshot is what the operator's scan observed)
+all go through `captureCardSnapshot`. No backfill: `card_snapshot_id IS NULL`
+means "written before migration 0022", and a pre-existing card bootstraps lazily
+on its first scan or edit.
+
+**Reading a snapshot.** Two functions, shared by every surface that renders a log
+row:
+
+- `loadSnapshotsForLogRows(tenantId, rows)` — ONE query per page, keyed on the
+  page's DISTINCT `card_snapshot_id`s, each joined to its predecessor for the
+  diff. Never a JOIN into the log query: a payload is the card's whole field
+  state and would repeat once per row, so 500 scans of one card would carry 500
+  identical copies through a 10,000-row export.
+- `projectSnapshotFields(payload, config)` — the CURRENT configuration decides
+  which fields a surface shows; the payload supplies the values and the labels.
+  A summary field added today therefore populates for a row from last year.
+
+Pure, so it is importable from a client component — which matters because the
+activity feed is built twice, on the server and in the browser, and both call it.
+`diffSnapshots(previous, current)` produces the `/history` Detail column;
+`previous === null` yields nothing, because a V0 is a state rather than a
+transition.
+
+Every surface falls back to the live `field_values` join for a row with no
+snapshot. **That path must not be deleted** — it is the only thing serving rows
+written before migration 0022, and there is no backfill.
+
+ADRs `2026-08-28-card-snapshots-write-path.md` (write) and
+`2026-08-28-card-snapshots-read-path.md` (read).
+
 ## 10. History / audit log
 
-`/history` is a full audit view of `action_logs` for the tenant. It supports date-range, log-type, card-type, action-definition, user, card-code, and field-level filters (14 operators). Results are paginated (page size 50) and exportable as CSV (capped at 10,000 rows). Accessible to OPERATOR+. See `modules/history.md`.
+`/history` is a full audit view of `action_logs` for the tenant — **all four log
+types**, including manual edits and lifecycle transitions. It supports
+date-range, log-type, card-type, action-definition, user, card-code, and
+field-level filters (14 operators). Results are paginated (page size 50) and
+exportable as CSV (capped at 10,000 rows). Accessible to OPERATOR+.
+
+Each row reports the values, labels, card code and card type name **of its own
+event**, from the snapshot it points at. ⚠️ The field-level **filters** remain
+scoped to CURRENT values, permanently: a row can match `saldo = 0` and display
+`saldo: 3`. This is settled — no GIN index on the payload, no snapshot-based
+filtering, no toggle — and the filter panel states it in one line so the row does
+not read as a bug.
+
+The dashboard FEED, by contrast, shows only `scan` and `action`. It is an
+operational surface; an administrator correcting a phone number is not a door
+event. See `modules/history.md` and `modules/dashboard.md`.
 
 ## 10b. Presence — a state read, not a log query
 

@@ -35,7 +35,7 @@ Does **not** own field definitions (see `fields`) or card type configuration (se
 - `src/components/card-designs/CardDesignPreviewButton.tsx` — "Ver diseño" button on card detail; opens modal with no extra fetch.
 - `src/components/card-designs/CardDesignPreviewModal.tsx` — Preview + "Descargar PNG" modal; renders on mount, closes on Escape/backdrop. Reused by the in-editor preview using `buildMockPreviewData`. The on-screen `<img>` never uses the export size; only the download re-renders at it.
 - `src/components/card-types/CardTypeLinkedDesigns.tsx` — Linked designs section on card-type detail; supports link/unlink per kind slot.
-- `scripts/veredillasPersonalCardDesign.ts` — Re-runnable script that writes the "Carnet Personal Veredillas II" design (488×296 px transcription of the legacy printed card) and links it to that card type. Logo asset in `scripts/assets/veredillas-logo.png`. `pnpm design:veredillas-personal[:local-db]`.
+- `scripts/veredillasPersonalCardDesign.ts` — Re-runnable script that writes the "Carnet Personal Veredillas II" design (488×296 px transcription of the legacy printed card) and links it to that card type. Logo asset in `scripts/assets/veredillas-logo.png`. `pnpm design:veredillas-personal`.
 
 ## Data model
 

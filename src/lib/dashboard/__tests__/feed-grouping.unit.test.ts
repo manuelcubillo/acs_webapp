@@ -147,6 +147,27 @@ describe("groupFeedRows — rule 2: repeated manual actions", () => {
     ).toHaveLength(2);
   });
 
+  it("never merges an entry with an exit — two directions are two facts", () => {
+    // The rendered group takes the NEWEST row's label, so merging these would
+    // read "Salida ×2" for one entry and one exit.
+    const out = groupFeedRows([
+      row({ id: "p2", executedAt: at(0), isPresence: true, presenceAfterValue: false }),
+      row({ id: "p1", executedAt: at(1), isPresence: true, presenceAfterValue: true }),
+    ]);
+    expect(out).toHaveLength(2);
+    expect(out.every((g) => g.kind === "single")).toBe(true);
+  });
+
+  it("still merges non-presence rows, which carry no direction", () => {
+    const out = groupFeedRows([
+      row({ id: "c2", executedAt: at(0) }),
+      row({ id: "c1", executedAt: at(1) }),
+    ]);
+    expect(out).toHaveLength(1);
+    if (out[0].kind !== "repeat") throw new Error("expected repeat");
+    expect(out[0].count).toBe(2);
+  });
+
   it("a lone row is a single, never a ×1", () => {
     const out = groupFeedRows([row({ id: "c1" })]);
     expect(out[0].kind).toBe("single");

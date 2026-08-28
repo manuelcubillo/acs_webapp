@@ -5,8 +5,7 @@
  * Run with: pnpm db:seed
  */
 
-import { config } from "dotenv";
-config({ path: ".env.local" });
+import "./load-env";
 
 import { db } from "../src/lib/db";
 import * as schema from "../src/lib/db/schema";

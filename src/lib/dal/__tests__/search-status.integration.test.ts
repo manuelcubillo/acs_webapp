@@ -13,16 +13,6 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { config } from "dotenv";
-
-// Load env before any import that touches DATABASE_URL (see lifecycle test).
-config({ path: ".env.test.local" });
-config({ path: ".env.local" });
-
-if (process.env.TEST_DATABASE_URL) {
-  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
-  process.env.DB_DRIVER = "local";
-}
 
 import { eq, like } from "drizzle-orm";
 import { db } from "@/lib/db";

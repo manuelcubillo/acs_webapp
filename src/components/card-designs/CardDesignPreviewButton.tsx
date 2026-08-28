@@ -15,7 +15,7 @@ import CardDesignPreviewModal from "./CardDesignPreviewModal";
 import { Button } from "@/components/ui/button";
 
 const LABELS = {
-  btn: "Ver diseño",
+  btn: "Ver carnet",
 } as const;
 
 interface Props {

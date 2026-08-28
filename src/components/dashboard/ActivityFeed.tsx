@@ -128,6 +128,15 @@ export default function ActivityFeed({
             <li key={group.key}>
               <ActivityFeedEntryRow
                 entry={group.entry}
+                // An action that no scan absorbed renders its own badge, so it
+                // needs the same derivation the absorbed ones get — otherwise a
+                // manual presence toggle reads "Presencia" while the identical
+                // automatic one reads "Entrada" / "Salida".
+                actionLabel={
+                  group.entry.logType === "action"
+                    ? badgeLabel(group.entry)
+                    : undefined
+                }
                 actionBadges={
                   group.kind === "scan" ? group.actions.map(badgeLabel) : undefined
                 }
@@ -142,11 +151,15 @@ export default function ActivityFeed({
 }
 
 /**
- * The badge text for one auto-action absorbed by a scan.
+ * The badge text for one action row — absorbed by a scan or standing alone.
  *
  * A presence row reads "Entrada" / "Salida" via the shared derivation; every
  * other action shows its own name. The row renderer stays dumb — it is handed
  * finished strings and never reasons about presence.
+ *
+ * Applied to BOTH kinds on purpose: an operator correcting presence by hand
+ * produces exactly the same fact as the scan-driven toggle, so it must read the
+ * same in the feed.
  */
 function badgeLabel(entry: ActivityFeedEntry): string {
   if (entry.isPresence && entry.presenceAfterValue !== null) {

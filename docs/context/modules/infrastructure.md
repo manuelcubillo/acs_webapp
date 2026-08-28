@@ -1,6 +1,6 @@
 # Module: infrastructure
 
-**Last updated**: 2026-08-24 · **Last feature**: migrations 0020–0021 (presence control) — the schema's first enum-value addition and first DB trigger
+**Last updated**: 2026-08-27 · **Last feature**: corrected the `docker-compose.yml` / self-hosted cron description — the purge is driven by an `ofelia` service, not a hypothetical crontab line
 
 ## Responsibility
 
@@ -8,11 +8,17 @@ Everything that keeps the app running: database connection, migrations, env vars
 
 ## Key files
 
-- `src/lib/db/index.ts` — Lazy DB Proxy: `drizzle(neon(DATABASE_URL))` initialized on first property access.
+- `src/lib/db/index.ts` — Lazy DB Proxy: `drizzle(neon(DATABASE_URL))` initialized on first property access. Calls `assertDatabaseTarget` before building the client.
+- `src/lib/db/guard.ts` — `assertDatabaseTarget(url, context)`. Refuses a `neon.tech` host from a non-production runtime unless `ALLOW_NEON_DB=1`. Also consumed by `drizzle.config.ts` and the DB scripts. ADR `2026-08-26-environment-topology.md`.
+- `src/test/setup-integration.ts` — `setupFiles` of the vitest `integration` project. Pins the run to `TEST_DATABASE_URL` and aborts if it is missing, remote, or the same database as `DATABASE_URL`. No integration test carries its own env bootstrap.
+- `scripts/load-env.ts` — Env cascade for standalone scripts (`.env.local` → `.env.development` → `.env`). Import it first; a dotenv-cli overlay still wins.
+- `scripts/db/setup.ts` — `pnpm db:setup`. Creates `acs_dev` + `acs_test` if absent and migrates both.
+- `scripts/db/backfill-journal.ts` — `pnpm db:journal:sync[:test|:prod]`. Records already-applied migrations in `drizzle.__drizzle_migrations` without running DDL. Refuses if the schema does not match what it would mark applied.
+- `scripts/pull-prod-db.sh` — `pnpm db:pull-prod`. Dumps production into local `acs_dev` (not `acs_test`), then reconciles the journal.
 - `src/lib/db/schema/index.ts` — Barrel export.
 - `src/lib/db/schema/auth.ts` — Better Auth tables.
 - `src/lib/db/schema/access-control.ts` — All app tables + enums. Also exports `CARDS_TENANT_CODE_UNIQUE`, the `(tenant_id, code)` constraint name, which `unique()` itself consumes so the literal cannot drift from the code that matches on it.
-- `src/lib/db/constants.ts` — DB values referenced by BOTH a migration and application code, so they cannot live in only one. Currently `SYSTEM_USER_ID` (the seeded sentinel `user` row) — never re-inline the literal.
+- `src/lib/db/constants.ts` — DB values referenced by BOTH a migration and application code, so they cannot live in only one. Currently `SYSTEM_USER_ID` + `SYSTEM_USER_NAME` (the seeded sentinel `user` row, named `Sistema`) — never re-inline either literal.
 - `src/lib/db/pg-errors.ts` — `isUniqueViolation(error, constraintName?)` + `PG_UNIQUE_VIOLATION`. See "Detecting a driver error".
 - `src/lib/db/schema/relations.ts` — Drizzle relations.
 - `drizzle/` — Generated migrations.
@@ -37,6 +43,7 @@ Everything that keeps the app running: database connection, migrations, env vars
 - `src/lib/server/lifecycle/purge.ts` — `hardDeleteArchivedCard` / `hardDeleteArchivedCardType` / `hardDeleteAllArchived` (phase-4 manual, per-tenant) and `purgeExpiredArchivedRecords` (phase-5 daily job, cross-tenant DELETE-with-join against each tenant's `archive_retention_days`).
 - `vercel.json` — Vercel Cron entry: `GET /api/cron/purge-archived` at `0 3 * * *` (daily, 03:00 UTC). Vercel injects the `Authorization: Bearer <CRON_SECRET>` header when `CRON_SECRET` is set in the project env.
 - `src/lib/storage/index.ts` — Factory: `getPhotoStorage()`; barrel.
+- `src/lib/email/send.ts` — `deliverEmail()` is the single delivery path. With `RESEND_APIKEY` empty (every environment but Vercel) it logs the message and its action link instead of sending, so a local run cannot mail real members from the production Resend account.
 - `src/lib/images/profiles.ts` — `CARD_PHOTO_PROFILE`, `MEMBER_AVATAR_PROFILE`, `TENANT_LOGO_PROFILE`, `CARD_DESIGN_IMAGE_PROFILE`. Tweaks here re-tune storage for that kind.
 - `src/lib/images/optimize.ts` — Browser-side resize + recompress pipeline (canvas, retry-on-too-large). Optional source-pixel `cropRect` overrides the profile centre-crop — fed by the interactive cropper.
 - `src/lib/actions/uploads.ts` — `requestPhotoUploadUrlAction`, `confirmPhotoUploadAction`.
@@ -45,29 +52,16 @@ Everything that keeps the app running: database connection, migrations, env vars
 - `src/components/shared/ImageCropDialog.tsx` — `react-easy-crop` crop dialog (Free / 1:1 / 3:4 + zoom) → source-pixel `cropRect`.
 - `src/components/ui/slider.tsx` — shadcn `Slider` primitive (unified `radix-ui` import), used by the crop zoom control.
 - `infra/storage/` — `r2-cors.json`, `README.md`. MinIO CORS is server-wide via `MINIO_API_CORS_ALLOW_ORIGIN` (no per-bucket file — community edition doesn't implement `PutBucketCors`).
-- `docker-compose.yml` (`storage`/`all` profiles) — Local MinIO + bucket-init container.
-- Scripts in `package.json`: `pnpm dev | build | start | lint`, `pnpm db:generate | db:migrate | db:studio`, `pnpm db:seed`, `pnpm test | test:watch`.
+- `docker-compose.yml` — Four services across three profiles: `postgres` (`db`/`all`), `minio` + `minio-init` (`storage`/`all`), and `acs` + `ofelia` (`app`/`all`). **`ofelia`** (`mcuadros/ofelia`, `command: daemon --docker`, `TZ: UTC`, Docker socket mounted read-only) is the self-hosted cron that drives the purge job. ⚠️ In `--docker` mode Ofelia reads its jobs from **labels on the target container**, not from its own service block: the schedule and command live on the `acs` service as `ofelia.job-exec.purge-archived.schedule` / `.command`.
+- Scripts in `package.json`: `pnpm dev | dev:branch | dev:prod`, `build | start | lint`, `test | test:unit | test:integration | test:watch`, `db:setup`, `db:generate`, `db:migrate[:test|:all|:branch|:prod]`, `db:studio[:branch|:prod]`, `db:journal:sync[:test|:prod]`, `db:seed`, `db:pull-prod`.
 
 ## Environment variables
 
-```
-DATABASE_URL=postgresql://...          # Neon connection string
-BETTER_AUTH_SECRET=...                 # openssl rand -hex 32
-BETTER_AUTH_URL=http://localhost:3000
-NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000
-RESEND_APIKEY=re_...                   # Resend API key (transactional email)
-RESEND_FROM_EMAIL=noreply@yourdomain   # Must be a Resend-verified domain
-STORAGE_DRIVER=r2|minio                # Photo storage driver (R2 in prod, MinIO local/self-hosted)
-S3_ENDPOINT=...                        # R2 account-scoped URL, or http://localhost:9000 for MinIO
-S3_REGION=auto                         # R2 → "auto"; MinIO → any string (e.g. us-east-1)
-S3_BUCKET=...
-S3_ACCESS_KEY_ID=...
-S3_SECRET_ACCESS_KEY=...
-S3_FORCE_PATH_STYLE=false              # true for MinIO (path-style), false for R2 (virtual-host)
-CRON_SECRET=...                        # Shared secret for the daily purge endpoint. openssl rand -hex 32
-```
+**`docs/ENVIRONMENTS.md` is the reference** — which command reaches which database, what each file defines, and the per-variable "defined in" table. `.env.example` documents every variable inline. Do not re-derive either from this module.
 
-`CRON_SECRET` protects `GET /api/cron/purge-archived`. On Vercel, Cron Jobs inject the `Authorization: Bearer <CRON_SECRET>` header automatically when it is set in the project env; on Docker / self-hosted the external cron sends it. If unset, the endpoint refuses every request (fail closed). Documented in `.env.example` and `.env.docker`.
+The shape, in one paragraph: `.env` and `.env.development` are committed and hold non-secret local defaults; `.env.local`, `.env.test.local`, `.env.docker`, `.env.prod` and `.env.neon-branch` are gitignored and hold per-environment secrets. **Local is the default for every command**; remote targets are reached only through a `:prod` / `:branch` script, which injects `ALLOW_NEON_DB=1` — the flag `assertDatabaseTarget` requires and that appears in no env file. `BETTER_AUTH_SECRET` and `CRON_SECRET` are distinct per environment; `RESEND_APIKEY` is set only on Vercel. ADR `2026-08-26-environment-topology.md`.
+
+`CRON_SECRET` protects `GET /api/cron/purge-archived`. On Vercel, Cron Jobs inject the `Authorization: Bearer <CRON_SECRET>` header automatically when it is set in the project env; on Docker / self-hosted the external cron sends it. If unset, the endpoint refuses every request (fail closed). ⚠️ **It is not set in the Vercel project**, so the daily cron in `vercel.json` has been receiving a 401 since it was added and the retention purge has never run in production. See `docs/ENVIRONMENTS.md` § "Tareas pendientes".
 
 ## Runtime constraints
 
@@ -109,8 +103,20 @@ CRON_SECRET=...                        # Shared secret for the daily purge endpo
 1. Modify schema files in `src/lib/db/schema/`.
 2. `pnpm db:generate` → writes SQL to `drizzle/`.
 3. Review generated SQL.
-4. `pnpm db:migrate` to apply against `DATABASE_URL`.
-5. Commit schema + generated migration together.
+4. `pnpm db:migrate:all` → applies to `acs_dev` **and** `acs_test`.
+5. `pnpm db:migrate:branch` to rehearse against a copy of production data.
+6. `pnpm db:migrate:prod` once the rehearsal is clean.
+7. Commit schema + generated migration together.
+
+Each database keeps its own journal, so a migration must be applied to each one
+independently — that has not changed. What did change (2026-08-26) is that
+`drizzle-kit migrate` works again on all of them: their `__drizzle_migrations`
+tables were empty while their schemas were at 0021, so the migrator replayed
+from 0000 and died on `CREATE TABLE "account"`. `pnpm db:journal:sync` reconciled
+`acs_dev` and `acs_test`. **Production's journal is still empty** — run
+`pnpm db:journal:sync:prod` before the first `db:migrate:prod`, or it will
+replay from 0000 there too. The psql-DDL workaround used for migrations 0018–0021
+is no longer needed.
 
 **Data migrations**: drizzle-kit only diffs structure. If a column changes type or a
 column's data must be transformed (e.g. `is_active` → `status`), its generated SQL will
@@ -119,12 +125,24 @@ entry, which it produces even when you replace the SQL body. When the enum diff 
 "created or renamed?", it needs a real TTY (`expect`); `generate --custom` scaffolds a
 journal entry but clones the previous snapshot, so it is not a substitute.
 
-**Adding an enum value**: `ALTER TYPE … ADD VALUE` must be **alone in its migration
-file**. drizzle-kit runs each file in one transaction, and Postgres forbids *using*
-a new enum value in the transaction that added it (before PG 12 it forbade the
-`ALTER` in a transaction block at all). Anything that references the new value —
-a seed row, a CHECK, a backfill — goes in a later file. `0020_action_type_toggle.sql`
-is the reference: one statement, nothing appended.
+**Adding an enum value**: the constraint is that nothing may **use** the new value
+in the same migration file. drizzle-kit runs each file in one transaction, and
+Postgres forbids using a new enum value in the transaction that added it (before
+PG 12 it forbade the `ALTER` in a transaction block at all). So anything that
+references the value — a seed row, a CHECK, a backfill, a `WHERE log_type = …` —
+goes in a **later** file.
+
+- **Value + something that uses it** → two files. `0020_action_type_toggle.sql`
+  is the reference: one statement, nothing appended, with `0021` doing the work.
+- **Value + unrelated structural DDL** → one file is fine, and preferable, since
+  splitting means hand-authoring a journal entry and a snapshot between two
+  generated ones. `0022_card_snapshots.sql` is the reference: it adds
+  `'card_edit'` to `log_type` and creates `card_snapshots` in the same file, and
+  its header warns the next editor not to append a use.
+
+⚠️ Do not "tidy" a single-file case into a split without adding the journal +
+snapshot entries by hand — drizzle diffs against the LAST snapshot, so a missing
+one silently changes what the next `db:generate` produces.
 
 **Triggers and seed rows**: drizzle-kit cannot express either. Generate the
 structural DDL normally, then hand-edit the file, marking the hand-written
@@ -139,7 +157,8 @@ the file descriptively and update the journal `tag` to match.
 `drizzle/down/<tag>.down.sql`, outside the migrator's path, and are applied by hand with
 `psql -f`. They must also be removed from `drizzle/meta/_journal.json`. See
 `drizzle/down/0017_card_lifecycle_archiving.down.sql` for the pattern (including how to
-document lossy rollbacks).
+document lossy rollbacks) and `drizzle/down/0022_card_snapshots.down.sql` for the most
+recent one.
 
 ### Verifying a migration before it reaches Neon
 
@@ -173,12 +192,22 @@ scheduler — Vercel is stateless between invocations). See ADR
 
 - **Vercel** — `vercel.json` cron at `0 3 * * *`. Vercel injects
   `Authorization: Bearer <CRON_SECRET>` when `CRON_SECRET` is set.
-- **Docker / self-hosted** — a host or container cron hits the endpoint once a
-  day with the same header. Example crontab line:
+- **Docker / self-hosted** — the `ofelia` service in `docker-compose.yml`
+  (profiles `app` / `all`, `TZ: UTC`), running `daemon --docker` with the Docker
+  socket mounted read-only. In that mode Ofelia discovers its jobs from **labels
+  on the containers it watches**, so the schedule is NOT in the `ofelia` block —
+  it is on the `acs` service:
+  ```yaml
+  labels:
+    ofelia.enabled: "true"
+    ofelia.job-exec.purge-archived.schedule: "0 3 * * *"   # same time as vercel.json
+    ofelia.job-exec.purge-archived.command: >-
+      sh -c 'wget -qO- --header="Authorization: Bearer $$CRON_SECRET"
+      http://localhost:3000/api/cron/purge-archived'
   ```
-  0 3 * * * curl -fsS -X GET -H "Authorization: Bearer $CRON_SECRET" https://<host>/api/cron/purge-archived
-  ```
-  or a sidecar cron service on the Compose network targeting `http://acs:3000/...`.
+  `job-exec` runs the command *inside* the running `acs` container, which is why
+  the URL is `localhost:3000` and why `$$CRON_SECRET` (escaped for Compose) is
+  read from that container's own env — the secret never appears in the label.
 - **Local dev** — invoke by hand:
   `curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/purge-archived`.
 
@@ -221,6 +250,10 @@ that exact violation returns `false` and must be rethrown.
 
 ## Open TODOs
 
+- [ ] `CRON_SECRET` is absent from the Vercel project → the daily purge has never run in production. Adding it makes the first run physically delete every archived record past its tenant retention.
+- [ ] Production's `__drizzle_migrations` is still empty. Run `pnpm db:journal:sync:prod` before the next `db:migrate:prod`.
+- [ ] Migration `0022_card_snapshots.sql` is applied locally (dev + test) but **not to Neon**. It is additive and needs no backfill; it must go out with the code, since `createCard` / `updateCard` / `executeAction` / `logScanEntry` all write the new columns.
+- [ ] `S3_BUCKET` is blank in `.env.prod` (Vercel marks it Sensitive and will not read it back), so `pnpm dev:prod` shows no photos until it is filled in from the Cloudflare panel.
 - [ ] `TODO: API_AUTH` — external API authentication (`src/lib/api/auth.ts`).
 - [ ] Atomicity for `executeAction` (documented in `modules/actions.md`).
 - [ ] RSC payload carries a serialized node-postgres `Result` (`command`/`rowCount`/`_parsers`/`RowCtor`, rows included), which leaks a photo object key that `stripCardListPhotoKeys` cannot reach — it redacts mapped card data, not driver objects. Observed on `/cards` in dev on 2026-08-02, with the Next dev overlay active; **not verified against a production build**, so whether it is dev-only instrumentation is still open. Predates the 2026-08-02 photo work.
@@ -231,8 +264,8 @@ that exact violation returns `false` and must be rethrown.
 
 ## Recent changes
 
+- 2026-08-28 — Migration `0022_card_snapshots.sql`: new `card_snapshots` table, `cards.current_snapshot_id`, `action_logs.card_snapshot_id` + `snapshot_created`, and `'card_edit'` added to the `log_type` enum. Applied to both local databases (`db:migrate` + `db:migrate:test`); **not yet applied to Neon** — see the checklist. Rollback at `drizzle/down/0022_card_snapshots.down.sql` (lossy: it deletes every snapshot and every `card_edit` row). The "enum value must be ALONE in its file" rule above was restated as what it actually protects — no *use* of the value in the same file — because 0022 adds the value alongside unrelated structural DDL, which is safe and avoids hand-authoring a journal/snapshot pair. ADR `2026-08-28-card-snapshots-write-path.md`. The snapshot READ path (A2, same day) needed **no migration** — it is entirely query and rendering work over this schema — so reaching Neon remains the one outstanding item. ADR `2026-08-28-card-snapshots-read-path.md`.
+- 2026-08-26 — Environment topology reworked to local-by-default. One env file per target (`.env` + `.env.development` committed; `.env.local`, `.env.test.local`, `.env.docker`, `.env.prod`, `.env.neon-branch` gitignored), enforced by `assertDatabaseTarget` in the new `src/lib/db/guard.ts` + the `ALLOW_NEON_DB=1` flag that only the `:prod` / `:branch` scripts inject. Before this, `.env.local` held the **production** Neon URL, so `pnpm dev` / `db:migrate` / `db:studio` / `db:seed` all defaulted to production, and 4 of the 11 integration tests created and deleted rows in the live database (the other 7 guarded with a check that failed open). Integration tests now boot through `src/test/setup-integration.ts` under a dedicated vitest `integration` project and fail closed. `BETTER_AUTH_SECRET` / `CRON_SECRET` are now distinct per environment and `RESEND_APIKEY` lives only on Vercel, with `deliverEmail` logging instead of sending when it is empty. `__drizzle_migrations` reconciled on both local DBs, so `drizzle-kit migrate` works again. `.env.local-db` and `scripts/pull-neon-db.sh` deleted (superseded by the default target and `scripts/pull-prod-db.sh`); the `:local-db` script suffixes are gone. ADR `2026-08-26-environment-topology.md`; reference doc `docs/ENVIRONMENTS.md`.
 - 2026-08-24 — Presence control: migrations `0020_action_type_toggle.sql` (the schema's first `ALTER TYPE … ADD VALUE`, alone in its file for the transaction rule) and `0021_presence_control.sql` (structural DDL + three hand-written sections: the `is_operator_visible = NOT is_auto_execute` backfill, the `field_values_touch` trigger — the schema's **first trigger** — and the sentinel `user` seed). Rollback in `drizzle/down/0021_presence_control.down.sql`, documented as lossy (toggle actions and their logs cannot survive it; the enum value itself cannot be removed). New `src/lib/db/constants.ts` for values shared between a migration and application code. Verified on PG 15.18 (local) and against PG 15.19 (Neon): full replay on a fresh DB is clean and `drizzle-kit` reports no drift. ADR `2026-08-24-presence-control.md`.
 - 2026-08-06 — Migration `0019_lucky_gateway.sql` adds `output_width_cm` / `output_height_cm` / `output_lock_aspect` to `card_designs` (additive, no data migration; rollback in `drizzle/down/0019_card_design_export_size.down.sql`). First use of a `numeric` column in this schema: **both configured drivers return `numeric` as `string`**, so a DAL that exposes it as a number must map on every read path (`mapDesignRow` in `src/lib/dal/card-designs.ts` is the reference) and write `.toString()` to avoid float drift into a `numeric(6,2)`. Feature owned by `card-designs`; ADR `2026-08-06-card-design-export-size.md`.
 - 2026-08-06 — New `src/lib/db/pg-errors.ts`: `isUniqueViolation(error, constraintName?)`, the first helper that inspects a driver error. Added because card code generation needs the `(tenant_id, code)` index to arbitrate uniqueness — the no-interactive-transactions constraint makes a pre-check SELECT racy. Established that drizzle wraps driver errors in `DrizzleQueryError`, putting the SQLSTATE one `cause` down for both `neon-http` and `node-postgres` (both verified). `access-control.ts` now exports `CARDS_TENANT_CODE_UNIQUE` and feeds it to its own `unique()` call — no DDL change, the generated SQL is identical. ADR `2026-08-06-autogenerated-card-codes.md`.
-- 2026-08-02 — Deleted `signCardListPhotos` from `src/lib/dal/photo-urls.ts`: `stripCardListPhotoKeys` had taken over all three card-list producers the day before, leaving it with zero callers. `signCardPhotos` / `buildPhotoReadUrlMap` are unchanged and still the path for surfaces that sign server-side. Dead-code removal, no behaviour change.
-- 2026-08-02 — `cardPhotoRoute` now takes `{ fieldDefinitionId?, download? }` and owns the route's query construction (`URLSearchParams`), replacing hand-built strings in `PhotoRenderer`. New `stripCardListPhotoKeys` in `src/lib/dal/photo-urls.ts` replaces `signCardListPhotos` on the three card-list producers: list surfaces address photos by route, so keys are redacted (`value` **and** `raw.value_text`) rather than signed. Removes ~one signature per photo per list render; adds one hop + one `getCardByCode` per uncached image. ADR `2026-08-02-card-list-photos-stable-route.md`.

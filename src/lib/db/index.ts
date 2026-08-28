@@ -4,6 +4,7 @@ import type { NeonHttpDatabase } from "drizzle-orm/neon-http";
 import { Pool } from "pg";
 import { drizzle as drizzlePg } from "drizzle-orm/node-postgres";
 import * as schema from "./schema";
+import { assertDatabaseTarget } from "./guard";
 
 type Database = NeonHttpDatabase<typeof schema>;
 
@@ -19,13 +20,16 @@ let _db: Database | null = null;
 // rather than widening every call site to a union.
 function buildDb(): Database {
   const driver = (process.env.DB_DRIVER ?? "neon").toLowerCase();
+  const url = process.env.DATABASE_URL;
+  // Refuses a remote target from a non-production runtime. See ./guard.ts.
+  assertDatabaseTarget(url, "src/lib/db");
   switch (driver) {
     case "local":
-      return drizzlePg(new Pool({ connectionString: process.env.DATABASE_URL! }), {
+      return drizzlePg(new Pool({ connectionString: url }), {
         schema,
       }) as unknown as Database;
     case "neon":
-      return drizzleNeon(neon(process.env.DATABASE_URL!), { schema });
+      return drizzleNeon(neon(url), { schema });
     default:
       throw new Error(`Invalid DB_DRIVER "${driver}". Expected "neon" or "local".`);
   }

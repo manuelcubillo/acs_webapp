@@ -22,6 +22,7 @@ import {
 } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
+  actionLogs,
   cards,
   cardTypes,
   fieldValues,
@@ -39,6 +40,7 @@ import { notArchived, onlyArchived } from "./scopes";
 import { getFieldDefinitionsByCardType } from "./field-definitions";
 import { mapValueToColumn, extractValue } from "./field-values";
 import { validateCard as runEngineValidation } from "@/lib/validation";
+import { captureCardSnapshot } from "@/lib/snapshots";
 import type {
   Card,
   CardWithFields,
@@ -284,9 +286,15 @@ export async function createCard(
   // Insert field values.
   await insertFieldValues(card.id, values, defs);
 
+  // Freeze the card's state at birth, so its very first log row already has a
+  // V0 to point at rather than lazily bootstrapping one on the first scan.
+  // Creation writes NO audit row — card creation auditing is a separate
+  // concern and out of scope here.
+  const snapshot = await captureCardSnapshot(tenantId, card.id);
+
   // Return enriched result.
   const fields = await enrichFieldValues(card.id, defs);
-  return { ...card, fields };
+  return { ...card, currentSnapshotId: snapshot.snapshotId, fields };
 }
 
 /**
@@ -458,9 +466,32 @@ export async function getCardById(
  * Uses upsert logic: updates existing field values, inserts new ones
  * (e.g. for fields added after card creation).
  *
- * @param code     - Client-facing card code.
- * @param tenantId - Tenant UUID.
- * @param values   - Field values keyed by field definition ID.
+ * ## Auditing
+ *
+ * A save that actually changed something writes a `log_type = 'card_edit'` row
+ * pointing at the new snapshot. Before this existed, a manual edit left no
+ * trace at all: there was no record of who changed a card field, or when.
+ *
+ * ⚠️ The gate is the CONTENT HASH, not "an UPDATE ran". `useCardForm` seeds its
+ * state from the rendered fields and submits that map WHOLESALE, so an ordinary
+ * save re-writes every value including the untouched ones — every one of those
+ * upserts reports a row affected. Gating on that would fill the history with
+ * empty edit rows. A save that changed no value is a non-event and writes
+ * nothing.
+ *
+ * ## Atomicity
+ *
+ * The snapshot and its audit row are two statements (neon-http has no
+ * interactive transactions), so a failure between them leaves the snapshot
+ * without its `card_edit` row. Same failure mode `executeAction` already
+ * carries, and the same trade-off.
+ *
+ * @param code       - Client-facing card code.
+ * @param tenantId   - Tenant UUID.
+ * @param values     - Field values keyed by field definition ID.
+ * @param executedBy - Auth user ID of the editor, for the audit row. Always
+ *                     from the session; null only for non-interactive callers
+ *                     (scripts, tests), which then log an actorless edit.
  * @returns The updated card with enriched field values.
  * @throws {NotFoundError} If no card matches.
  * @throws {ValidationError} On field validation failures.
@@ -469,6 +500,7 @@ export async function updateCard(
   code: string,
   tenantId: string,
   values: FieldValueMap,
+  executedBy?: string | null,
 ): Promise<CardWithFields> {
   const [card] = await db
     .select()
@@ -509,17 +541,49 @@ export async function updateCard(
     .set({ updatedAt: new Date() })
     .where(eq(cards.id, card.id));
 
+  // Freeze the post-edit state. `created` is true only if the content actually
+  // differs from the snapshot in force — see the gate note in the docblock.
+  const snapshot = await captureCardSnapshot(tenantId, card.id);
+
+  if (snapshot.created) {
+    await db.insert(actionLogs).values({
+      tenantId,
+      cardId: card.id,
+      // No action definition: an edit is not an action execution.
+      actionDefinitionId: null,
+      logType: "card_edit",
+      executedBy: executedBy ?? null,
+      cardSnapshotId: snapshot.snapshotId,
+      // Always true here — the row exists precisely because the state changed.
+      snapshotCreated: true,
+    });
+  }
+
   // Return refreshed data.
   const fields = await enrichFieldValues(card.id, defs);
-  return { ...card, updatedAt: new Date(), fields };
+  return {
+    ...card,
+    updatedAt: new Date(),
+    currentSnapshotId: snapshot.snapshotId,
+    fields,
+  };
 }
 
 /**
  * Change a card's client-facing code.
  *
- * @param id       - Card internal UUID.
- * @param tenantId - Tenant UUID.
- * @param newCode  - The new code to assign.
+ * The code is part of the snapshot payload, so a rename versions the card: it
+ * captures a snapshot and logs a `card_edit` row exactly as `updateCard` does.
+ * Without this a rename would fold silently into whatever event happened to
+ * version the card next, which would attribute the rename to that event.
+ *
+ * Same content-hash gate as `updateCard`: no snapshot, no log row. Saving the
+ * code a card already holds therefore records nothing.
+ *
+ * @param id         - Card internal UUID.
+ * @param tenantId   - Tenant UUID.
+ * @param newCode    - The new code to assign.
+ * @param executedBy - Auth user id of the editor, for the `card_edit` row.
  * @returns The updated card row.
  * @throws {NotFoundError} If the card doesn't exist.
  * @throws {DuplicateCodeError} If newCode already exists in this tenant.
@@ -528,6 +592,7 @@ export async function updateCardCode(
   id: string,
   tenantId: string,
   newCode: string,
+  executedBy?: string | null,
 ): Promise<Card> {
   // Check new code is available.
   const [conflict] = await db
@@ -550,7 +615,27 @@ export async function updateCardCode(
     throw new NotFoundError("Card", id);
   }
 
-  return updated;
+  // Freeze the post-rename state and audit it. Two statements rather than one:
+  // the Neon HTTP driver has no interactive transactions, so a failure between
+  // them leaves the snapshot without its log row — the same accepted window
+  // `updateCard` and `executeAction` carry.
+  const snapshot = await captureCardSnapshot(tenantId, updated.id);
+
+  if (snapshot.created) {
+    await db.insert(actionLogs).values({
+      tenantId,
+      cardId: updated.id,
+      // No action definition: a rename is not an action execution.
+      actionDefinitionId: null,
+      logType: "card_edit",
+      executedBy: executedBy ?? null,
+      cardSnapshotId: snapshot.snapshotId,
+      // Always true here — the row exists precisely because the code changed.
+      snapshotCreated: true,
+    });
+  }
+
+  return { ...updated, currentSnapshotId: snapshot.snapshotId };
 }
 
 /**
