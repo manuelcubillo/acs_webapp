@@ -8,6 +8,12 @@
  *   INVITATIONS      — full invitations. One covers a whole day.
  *   HALF_INVITATION  — half-invitation credits. One covers a single time slot.
  *
+ * A third field, boolean, selects the accounting model per card:
+ *
+ *   PURCHASE_MODE    — "compra invitaciones". When true the holder BUYS their
+ *                      invitations outright instead of drawing on a slot-based
+ *                      allotment, and nothing is ever returned to them.
+ *
  * A *time slot* is derived from the execution timestamp in the tenant's civil
  * timezone (never from the raw UTC instant):
  *
@@ -34,12 +40,30 @@
  *   per full invitation consumed, per slot, per day. An exit in a different slot
  *   than its entry never refunds — the guest occupied both slots.
  *
+ * R4 · PURCHASE_MODE — evaluated per card, on both handled actions:
+ *   1. GUEST_ENTRY keeps R1's preference — a half credit is still spent first,
+ *      because a credit the holder already owns is still theirs to spend — but
+ *      an entry that consumes a full invitation is marked `purchase_spent`
+ *      rather than `full_spent`.
+ *   2. GUEST_EXIT never refunds. R2 is skipped WHOLESALE: no slot arithmetic,
+ *      no history read, no balance change.
+ *
+ *   R4.1's distinct marker is what makes R4.2 robust rather than merely correct
+ *   today. R2 counts only `full_spent` as refundable, so an entry settled under
+ *   purchase mode stays unrefundable even if the flag is flipped off later the
+ *   same day in the same slot — which a shared `full_spent` marker would not
+ *   survive.
+ *
+ *   Numbered R4 and not R3 because R3 is already spoken for: it names the
+ *   insufficient-balance gate in ADR `2026-08-27-invitation-accounting.md`,
+ *   which is not built yet. See the interim note on `decideEntry`.
+ *
  * Every other action on this tenant falls through to the standard behaviour
  * (`handleStandardAction`), byte-identical to `StandardActionStrategy`. So does
  * a handled action whose target field has been repointed away from INVITATIONS
  * — see the guard in `handleAction`.
  *
- * Both handled actions TARGET the INVITATIONS field, but three of the four
+ * Both handled actions TARGET the INVITATIONS field, but three of the five
  * settlements do not CHANGE it — they move HALF_INVITATION, or nothing. See
  * `applyDecision`.
  *
@@ -84,6 +108,8 @@ import { computeNewValue } from "./compute-new-value";
 const INVITATION_CONFIG = {
   invitationsFieldId: "d48eec1b-2de1-4342-9e23-43da269db1f8",
   halfInvitationFieldId: "4fbac0d2-6820-4921-b1f7-5be35b2abab7",
+  /** Boolean field "compra invitaciones" — selects the R4 accounting model. */
+  purchaseModeFieldId: "df83af19-6046-4e28-9622-f5aed0b44db8",
   guestEntryActionId: "dd2461c6-fadd-4f98-91e0-571184747e9c",
   guestExitActionId: "5cd7a02f-f9a1-4a85-9406-a1022897a3c9",
 } as const;
@@ -113,9 +139,14 @@ const SETTLEMENT_METADATA_KEY = "invitationSettlement";
 
 /** Diagnostic keys written alongside the marker (never read back by the rules;
  *  they exist so an auditor can see which day/slot a row was settled against
- *  without recomputing the timezone conversion). */
+ *  without recomputing the timezone conversion).
+ *
+ *  `invitationMode` records which accounting model settled the row. It carries
+ *  real information the marker cannot: an R4 exit settles as `none`, which is
+ *  otherwise indistinguishable from a slot-mode exit that hit its refund cap. */
 const SLOT_METADATA_KEY = "invitationSlot";
 const DATE_METADATA_KEY = "invitationDate";
+const MODE_METADATA_KEY = "invitationMode";
 
 /**
  * History paging. `getCardActionHistory` returns newest-first, so the scan stops
@@ -135,16 +166,24 @@ export type InvitationSlot = "MORNING" | "AFTERNOON";
  * What an execution did to the balance. Written to the log on every entry/exit
  * and read back to evaluate the R2 refund cap.
  *
- *   full_spent    — GUEST_ENTRY consumed one INVITATIONS unit (refundable).
- *   half_spent    — GUEST_ENTRY consumed one HALF_INVITATION (not refundable).
- *   half_refunded — GUEST_EXIT granted one HALF_INVITATION.
- *   none          — GUEST_EXIT that did not refund (cap already reached).
+ *   full_spent     — GUEST_ENTRY consumed one INVITATIONS unit (refundable).
+ *   purchase_spent — GUEST_ENTRY consumed one INVITATIONS unit under purchase
+ *                    mode, R4.1 (never refundable).
+ *   half_spent     — GUEST_ENTRY consumed one HALF_INVITATION (not refundable).
+ *   half_refunded  — GUEST_EXIT granted one HALF_INVITATION.
+ *   none           — GUEST_EXIT that did not refund: the cap was already
+ *                    reached, or purchase mode disabled refunds entirely.
  */
 export type InvitationSettlement =
   | "full_spent"
+  | "purchase_spent"
   | "half_spent"
   | "half_refunded"
   | "none";
+
+/** Which accounting model settled an execution. Diagnostic only — written to
+ *  the log under {@link MODE_METADATA_KEY}, never read back by the rules. */
+export type InvitationMode = "purchase" | "slot";
 
 /** A calendar day + slot in the tenant's timezone. */
 export interface LocalMoment {
@@ -162,7 +201,11 @@ export interface InvitationBalances {
 
 /** How many refundable entries and granted refunds exist in the current slot. */
 export interface SlotCounters {
-  /** GUEST_ENTRY executions in this slot that consumed a full invitation. */
+  /**
+   * GUEST_ENTRY executions in this slot that consumed a full invitation under
+   * slot accounting. `purchase_spent` entries are deliberately NOT counted:
+   * R4.1 makes them permanently unrefundable.
+   */
   spent: number;
   /** GUEST_EXIT executions in this slot that already granted a half. */
   refunded: number;
@@ -247,10 +290,28 @@ export function toBalance(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+/**
+ * Coerce a stored field value to a boolean flag.
+ *
+ * Strict on purpose: only a real `true` turns purchase mode on. `readField`
+ * yields null both for a boolean field that was never set on this card and for
+ * an id that resolves to no field definition at all, and both of those must
+ * mean OFF — so a flag that is absent, cleared or misconfigured leaves R1/R2
+ * behaviour exactly as it was. Same inert-until-configured default as the rest
+ * of the strategy.
+ *
+ * @param value - Raw value from `readField`.
+ * @returns True only when the stored value is boolean `true`.
+ */
+export function toFlag(value: unknown): boolean {
+  return value === true;
+}
+
 /** Type guard for the settlement marker read back out of jsonb. */
 function isSettlement(value: unknown): value is InvitationSettlement {
   return (
     value === "full_spent" ||
+    value === "purchase_spent" ||
     value === "half_spent" ||
     value === "half_refunded" ||
     value === "none"
@@ -319,10 +380,19 @@ export function countSettlements(
  * a separate, approved change. Until then the negative value is the visible
  * signal that the tenant is owed credits.
  *
- * @param balances - Current counters.
+ * R4.1 — purchase mode does not change WHAT an entry spends, only how it is
+ * MARKED. A half credit the holder already owns is still spent first; only the
+ * full-invitation branch settles as `purchase_spent`, which is what keeps it
+ * out of R2's refundable count for good.
+ *
+ * @param balances     - Current counters.
+ * @param purchaseMode - The card's R4 flag.
  * @returns The settlement and the resulting balances.
  */
-export function decideEntry(balances: InvitationBalances): SettlementDecision {
+export function decideEntry(
+  balances: InvitationBalances,
+  purchaseMode = false,
+): SettlementDecision {
   if (balances.halfInvitations > 0) {
     return {
       settlement: "half_spent",
@@ -334,7 +404,7 @@ export function decideEntry(balances: InvitationBalances): SettlementDecision {
   }
 
   return {
-    settlement: "full_spent",
+    settlement: purchaseMode ? "purchase_spent" : "full_spent",
     next: {
       invitations: balances.invitations - ENTRY_COST,
       halfInvitations: balances.halfInvitations,
@@ -349,15 +419,21 @@ export function decideEntry(balances: InvitationBalances): SettlementDecision {
  * same slot on the same day. An exit whose entry was paid with a half credit
  * (or that happened in the other slot) finds `spent` at 0 and refunds nothing.
  *
+ * R4.2 rides the same function: `counters === null` means slot accounting does
+ * not apply to this card, and nothing is ever returned. Null rather than zeroed
+ * counters because the two are not the same claim — `{ spent: 0, refunded: 0 }`
+ * asserts a history read that, under purchase mode, never happened.
+ *
  * @param balances - Current counters.
- * @param counters - Same-slot entry/refund counts from the log.
+ * @param counters - Same-slot entry/refund counts from the log, or null when
+ *                   purchase mode (R4.2) disables slot accounting for this card.
  * @returns The settlement and the resulting balances.
  */
 export function decideExit(
   balances: InvitationBalances,
-  counters: SlotCounters,
+  counters: SlotCounters | null,
 ): SettlementDecision {
-  if (counters.refunded < counters.spent) {
+  if (counters !== null && counters.refunded < counters.spent) {
     return {
       settlement: "half_refunded",
       next: {
@@ -397,6 +473,18 @@ async function readBalances(
     readBalanceField(ctx, INVITATION_CONFIG.halfInvitationFieldId),
   ]);
   return { invitations, halfInvitations };
+}
+
+/**
+ * Read the card's R4 purchase-mode flag.
+ *
+ * Not routed through `readBalanceField`: that helper's `ctx.currentValue`
+ * short-circuit is only valid for the action's TARGET field, and this flag is
+ * never the target of either handled action — the repointed-target guard in
+ * `handleAction` guarantees the target is INVITATIONS.
+ */
+function readPurchaseMode(ctx: ActionStrategyContext): Promise<boolean> {
+  return ctx.readField(INVITATION_CONFIG.purchaseModeFieldId).then(toFlag);
 }
 
 /**
@@ -453,7 +541,7 @@ async function collectSameDayExecutions(
  * guard in `handleAction`), so `newValue` is always the new INVITATIONS balance
  * and HALF_INVITATION is always the auxiliary write.
  *
- * TARGETING IS NOT MUTATING. Three of the four settlements leave INVITATIONS
+ * TARGETING IS NOT MUTATING. Three of the five settlements leave INVITATIONS
  * exactly as it was and move HALF_INVITATION — or nothing — instead:
  *
  *   half_spent    — R1.1: the half credit paid; INVITATIONS unchanged.
@@ -481,6 +569,7 @@ async function applyDecision(
   decision: SettlementDecision,
   before: InvitationBalances,
   moment: LocalMoment,
+  purchaseMode: boolean,
 ): Promise<ActionStrategyResult> {
   const { next } = decision;
 
@@ -498,6 +587,9 @@ async function applyDecision(
       [SETTLEMENT_METADATA_KEY]: decision.settlement,
       [SLOT_METADATA_KEY]: moment.slot,
       [DATE_METADATA_KEY]: moment.date,
+      [MODE_METADATA_KEY]: (purchaseMode
+        ? "purchase"
+        : "slot") satisfies InvitationMode,
     },
   };
 }
@@ -506,27 +598,47 @@ async function applyDecision(
 
 /**
  * R1 — GUEST_ENTRY: spend a half credit if there is one, otherwise a full
- * invitation.
+ * invitation. R4.1 only decides how the latter is marked.
  */
 async function handleGuestEntry(
   ctx: ActionStrategyContext,
   moment: LocalMoment,
 ): Promise<ActionStrategyResult> {
-  const balances = await readBalances(ctx);
-  const decision = decideEntry(balances);
-  return applyDecision(ctx, decision, balances, moment);
+  // One wave: the flag read rides alongside the balance reads rather than
+  // adding a round trip in front of them.
+  const [balances, purchaseMode] = await Promise.all([
+    readBalances(ctx),
+    readPurchaseMode(ctx),
+  ]);
+
+  const decision = decideEntry(balances, purchaseMode);
+  return applyDecision(ctx, decision, balances, moment, purchaseMode);
 }
 
 /**
  * R2 — GUEST_EXIT: refund one half-invitation while this slot still has
- * unrefunded full-invitation entries.
+ * unrefunded full-invitation entries. R4.2 short-circuits the whole rule.
+ *
+ * The flag is read in its own wave, ahead of the history, precisely so that a
+ * purchase-mode card never pays for the two same-day history reads it has no
+ * use for. That is the literal meaning of "no time logic" for these cards, not
+ * an optimisation layered on top of it.
  */
 async function handleGuestExit(
   ctx: ActionStrategyContext,
   moment: LocalMoment,
 ): Promise<ActionStrategyResult> {
-  const [balances, entryRecords, exitRecords] = await Promise.all([
+  const [balances, purchaseMode] = await Promise.all([
     readBalances(ctx),
+    readPurchaseMode(ctx),
+  ]);
+
+  if (purchaseMode) {
+    const decision = decideExit(balances, null);
+    return applyDecision(ctx, decision, balances, moment, true);
+  }
+
+  const [entryRecords, exitRecords] = await Promise.all([
     collectSameDayExecutions(ctx, INVITATION_CONFIG.guestEntryActionId, moment),
     collectSameDayExecutions(ctx, INVITATION_CONFIG.guestExitActionId, moment),
   ]);
@@ -537,7 +649,7 @@ async function handleGuestExit(
   };
 
   const decision = decideExit(balances, counters);
-  return applyDecision(ctx, decision, balances, moment);
+  return applyDecision(ctx, decision, balances, moment, false);
 }
 
 /**

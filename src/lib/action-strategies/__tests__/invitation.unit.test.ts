@@ -31,6 +31,7 @@ import {
   resolveLocalMoment,
   resolveSlot,
   toBalance,
+  toFlag,
 } from "../invitation-strategy";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -38,6 +39,7 @@ import {
 /** Must mirror INVITATION_CONFIG in the strategy (it is intentionally private). */
 const INVITATIONS_FIELD = "d48eec1b-2de1-4342-9e23-43da269db1f8";
 const HALF_FIELD = "4fbac0d2-6820-4921-b1f7-5be35b2abab7";
+const PURCHASE_FIELD = "df83af19-6046-4e28-9622-f5aed0b44db8";
 const ENTRY_ACTION = "dd2461c6-fadd-4f98-91e0-571184747e9c";
 const EXIT_ACTION = "5cd7a02f-f9a1-4a85-9406-a1022897a3c9";
 
@@ -79,6 +81,13 @@ interface FakeContextOptions {
   config?: Record<string, unknown> | null;
   invitations?: number | null;
   halfInvitations?: number | null;
+  /**
+   * The "compra invitaciones" flag. `null` is the DEFAULT and is not a
+   * placeholder: a card whose boolean field was never set has no `field_values`
+   * row, so `readField` really does yield null there — which is exactly why
+   * every pre-R4 test in this file keeps passing untouched.
+   */
+  purchaseMode?: boolean | null;
   /** Prior log rows, keyed by the action definition they belong to. */
   history?: ActionHistoryRecord[];
 }
@@ -86,6 +95,8 @@ interface FakeContextOptions {
 interface FakeContext {
   ctx: ActionStrategyContext;
   writes: Array<{ fieldId: string; value: unknown }>;
+  /** Every `getCardActionHistory` call, so a test can assert none happened. */
+  historyCalls: GetCardActionHistoryOptions[];
 }
 
 /**
@@ -100,10 +111,12 @@ function fakeContext(options: FakeContextOptions): FakeContext {
     config = { amount: 1 },
     invitations = 0,
     halfInvitations = 0,
+    purchaseMode = null,
     history = [],
   } = options;
 
   const writes: Array<{ fieldId: string; value: unknown }> = [];
+  const historyCalls: GetCardActionHistoryOptions[] = [];
 
   const ctx: ActionStrategyContext = {
     tenantId: "tenant-1",
@@ -122,16 +135,19 @@ function fakeContext(options: FakeContextOptions): FakeContext {
     // executeAction passes the TARGET field's current value.
     currentValue: targetFieldId === INVITATIONS_FIELD ? invitations : 0,
     executedBy: "user-1",
-    getCardActionHistory: async (opts: GetCardActionHistoryOptions = {}) =>
-      history.filter(
+    getCardActionHistory: async (opts: GetCardActionHistoryOptions = {}) => {
+      historyCalls.push(opts);
+      return history.filter(
         (r) =>
           (!opts.actionDefinitionId ||
             r.actionDefinitionId === opts.actionDefinitionId) &&
           (!opts.logType || r.logType === opts.logType),
-      ),
+      );
+    },
     readField: async (fieldDefinitionId: string) => {
       if (fieldDefinitionId === INVITATIONS_FIELD) return invitations;
       if (fieldDefinitionId === HALF_FIELD) return halfInvitations;
+      if (fieldDefinitionId === PURCHASE_FIELD) return purchaseMode;
       return null;
     },
     setFieldValue: async (fieldDefinitionId: string, value: unknown) => {
@@ -139,7 +155,7 @@ function fakeContext(options: FakeContextOptions): FakeContext {
     },
   };
 
-  return { ctx, writes };
+  return { ctx, writes, historyCalls };
 }
 
 afterEach(() => {
@@ -206,6 +222,28 @@ describe("toBalance", () => {
   });
 });
 
+describe("toFlag", () => {
+  it("turns purchase mode on only for a real boolean true", () => {
+    expect(toFlag(true)).toBe(true);
+    expect(toFlag(false)).toBe(false);
+  });
+
+  it("reads an unset or unresolvable field as OFF, preserving R1/R2", () => {
+    // Both of `readField`'s null paths — no `field_values` row, and an id that
+    // matches no field definition — arrive here as null.
+    expect(toFlag(null)).toBe(false);
+    expect(toFlag(undefined)).toBe(false);
+  });
+
+  it("does not accept a truthy non-boolean", () => {
+    // A boolean field cannot hold these, but this flag decides whether credits
+    // ever come back, so the coercion refuses to guess.
+    expect(toFlag("true")).toBe(false);
+    expect(toFlag(1)).toBe(false);
+    expect(toFlag({})).toBe(false);
+  });
+});
+
 // ─── R1 ──────────────────────────────────────────────────────────────────────
 
 describe("decideEntry — R1", () => {
@@ -232,6 +270,60 @@ describe("decideEntry — R1", () => {
       next: { invitations: -1, halfInvitations: 0 },
     });
     expect(decideEntry({ invitations: -3, halfInvitations: 0 }).next.invitations).toBe(-4);
+  });
+});
+
+// ─── R4 · purchase mode, pure rules ──────────────────────────────────────────
+
+describe("decideEntry — R4.1 purchase mode", () => {
+  it("marks a full-invitation entry `purchase_spent`, not `full_spent`", () => {
+    expect(decideEntry({ invitations: 4, halfInvitations: 0 }, true)).toEqual({
+      settlement: "purchase_spent",
+      next: { invitations: 3, halfInvitations: 0 },
+    });
+  });
+
+  it("still spends a half credit first — R4 changes the marker, not the cost", () => {
+    expect(decideEntry({ invitations: 4, halfInvitations: 2 }, true)).toEqual({
+      settlement: "half_spent",
+      next: { invitations: 4, halfInvitations: 1 },
+    });
+  });
+
+  it("defaults to slot accounting when the flag is omitted", () => {
+    expect(decideEntry({ invitations: 4, halfInvitations: 0 }).settlement).toBe(
+      "full_spent",
+    );
+  });
+});
+
+describe("decideExit — R4.2 purchase mode", () => {
+  it("never refunds: null counters leave both balances identical", () => {
+    const balances = { invitations: 4, halfInvitations: 2 };
+    expect(decideExit(balances, null)).toEqual({
+      settlement: "none",
+      next: balances,
+    });
+  });
+
+  it("refunds nothing where slot accounting would have refunded", () => {
+    const balances = { invitations: 4, halfInvitations: 0 };
+    expect(decideExit(balances, null).settlement).toBe("none");
+    // Same balances, same call, slot accounting on — the contrast is the point.
+    expect(decideExit(balances, { spent: 1, refunded: 0 }).settlement).toBe(
+      "half_refunded",
+    );
+  });
+});
+
+describe("countSettlements — R4 rows sit outside the refundable count", () => {
+  it("does not count `purchase_spent` as a refundable entry", () => {
+    const rows = [
+      logRow(MORNING_INSTANT, "purchase_spent"),
+      logRow(MORNING_INSTANT, "purchase_spent"),
+      logRow(MORNING_INSTANT, "full_spent"),
+    ];
+    expect(countSettlements(rows, "full_spent", MORNING)).toBe(1);
   });
 });
 
@@ -271,8 +363,14 @@ describe("decideExit — R2", () => {
 // ─── Settlement markers ──────────────────────────────────────────────────────
 
 describe("readSettlement", () => {
-  it("reads back each of the four markers", () => {
-    for (const s of ["full_spent", "half_spent", "half_refunded", "none"] as const) {
+  it("reads back each of the five markers", () => {
+    for (const s of [
+      "full_spent",
+      "purchase_spent",
+      "half_spent",
+      "half_refunded",
+      "none",
+    ] as const) {
       expect(readSettlement(logRow(MORNING_INSTANT, s))).toBe(s);
     }
   });
@@ -469,8 +567,145 @@ describe("handleAction — GUEST_EXIT", () => {
   });
 });
 
+describe("handleAction — R4 purchase mode", () => {
+  it("R4.1 decrements INVITATIONS and marks the row `purchase_spent`", async () => {
+    const { ctx, writes } = fakeContext({
+      actionId: ENTRY_ACTION,
+      invitations: 5,
+      halfInvitations: 0,
+      purchaseMode: true,
+    });
+
+    const result = await InvitationActionStrategy.handleAction(ctx);
+
+    expect(result.newValue).toBe(4);
+    expect(writes).toEqual([]);
+    expect(result.metadata?.invitationSettlement).toBe("purchase_spent");
+    expect(result.metadata?.invitationMode).toBe("purchase");
+  });
+
+  it("R4.1 still spends an owned half credit before a full invitation", async () => {
+    // The flag changes what an exit does, not what a credit the holder already
+    // owns is worth. INVITATIONS must not move here.
+    const { ctx, writes } = fakeContext({
+      actionId: ENTRY_ACTION,
+      invitations: 5,
+      halfInvitations: 3,
+      purchaseMode: true,
+    });
+
+    const result = await InvitationActionStrategy.handleAction(ctx);
+
+    expect(result.newValue).toBe(5);
+    expect(writes).toEqual([{ fieldId: HALF_FIELD, value: 2 }]);
+    expect(result.metadata?.invitationSettlement).toBe("half_spent");
+  });
+
+  it("R4.2 refunds nothing on exit and never reads the history", async () => {
+    // Asserting the absent read, not just the absent refund: "no time logic"
+    // is the requirement, and an exit that computed a slot and then discarded
+    // the answer would pass an outcome-only assertion.
+    vi.setSystemTime(MORNING_INSTANT);
+    const { ctx, writes, historyCalls } = fakeContext({
+      actionId: EXIT_ACTION,
+      invitations: 5,
+      halfInvitations: 0,
+      purchaseMode: true,
+      history: [logRow(MORNING_INSTANT, "full_spent", ENTRY_ACTION)],
+    });
+
+    const result = await InvitationActionStrategy.handleAction(ctx);
+
+    expect(result.newValue).toBe(5);
+    expect(writes).toEqual([]);
+    expect(historyCalls).toEqual([]);
+    expect(result.metadata?.invitationSettlement).toBe("none");
+    expect(result.metadata?.invitationMode).toBe("purchase");
+  });
+
+  it("R4.2 refunds nothing however many times the exit is run", async () => {
+    vi.setSystemTime(MORNING_INSTANT);
+    for (const halfInvitations of [0, 1, 9]) {
+      const { ctx, writes } = fakeContext({
+        actionId: EXIT_ACTION,
+        invitations: 5,
+        halfInvitations,
+        purchaseMode: true,
+      });
+
+      const result = await InvitationActionStrategy.handleAction(ctx);
+
+      expect(result.newValue).toBe(5);
+      expect(writes).toEqual([]);
+    }
+  });
+
+  it("does not refund against a purchase entry after the flag is turned OFF", async () => {
+    // The regression the distinct marker exists for: entries settled under R4
+    // in the morning, flag cleared, exit in the same slot. A shared
+    // `full_spent` marker would hand out a credit that was never sold.
+    vi.setSystemTime(MORNING_INSTANT);
+    const { ctx, writes } = fakeContext({
+      actionId: EXIT_ACTION,
+      invitations: 5,
+      halfInvitations: 0,
+      purchaseMode: false,
+      history: [
+        logRow(MORNING_INSTANT, "purchase_spent", ENTRY_ACTION),
+        logRow(MORNING_INSTANT, "purchase_spent", ENTRY_ACTION),
+      ],
+    });
+
+    const result = await InvitationActionStrategy.handleAction(ctx);
+
+    expect(result.newValue).toBe(5);
+    expect(writes).toEqual([]);
+    expect(result.metadata?.invitationSettlement).toBe("none");
+  });
+
+  it("an absent flag behaves exactly as before R4 shipped", async () => {
+    // `purchaseMode` defaults to null — the value a card with no
+    // `field_values` row for the boolean actually reads back.
+    vi.setSystemTime(MORNING_INSTANT);
+    const { ctx: entryCtx } = fakeContext({
+      actionId: ENTRY_ACTION,
+      invitations: 5,
+      halfInvitations: 0,
+    });
+    const { ctx: exitCtx, writes: exitWrites } = fakeContext({
+      actionId: EXIT_ACTION,
+      invitations: 5,
+      halfInvitations: 0,
+      history: [logRow(MORNING_INSTANT, "full_spent", ENTRY_ACTION)],
+    });
+
+    const entry = await InvitationActionStrategy.handleAction(entryCtx);
+    const exit = await InvitationActionStrategy.handleAction(exitCtx);
+
+    expect(entry.newValue).toBe(4);
+    expect(entry.metadata?.invitationSettlement).toBe("full_spent");
+    expect(entry.metadata?.invitationMode).toBe("slot");
+    expect(exit.metadata?.invitationSettlement).toBe("half_refunded");
+    expect(exitWrites).toEqual([{ fieldId: HALF_FIELD, value: 1 }]);
+  });
+
+  it("is off for a card whose flag is explicitly false", async () => {
+    const { ctx } = fakeContext({
+      actionId: ENTRY_ACTION,
+      invitations: 5,
+      halfInvitations: 0,
+      purchaseMode: false,
+    });
+
+    const result = await InvitationActionStrategy.handleAction(ctx);
+
+    expect(result.metadata?.invitationSettlement).toBe("full_spent");
+    expect(result.metadata?.invitationMode).toBe("slot");
+  });
+});
+
 describe("handleAction — diagnostic metadata", () => {
-  it("stamps the slot and local date alongside the settlement marker", async () => {
+  it("stamps the slot, local date and mode alongside the settlement marker", async () => {
     vi.setSystemTime(AFTERNOON_INSTANT);
     const { ctx } = fakeContext({
       actionId: ENTRY_ACTION,
@@ -484,6 +719,7 @@ describe("handleAction — diagnostic metadata", () => {
       invitationSettlement: "full_spent",
       invitationSlot: "AFTERNOON",
       invitationDate: "2026-08-27",
+      invitationMode: "slot",
     });
   });
 });
