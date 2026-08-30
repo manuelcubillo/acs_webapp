@@ -11,6 +11,10 @@
  *   boolean: boolean_is_true | boolean_is_false
  *   number:  number_eq | number_gt | number_lt | number_gte | number_lte | number_between
  *   date:    date_before | date_after | date_equals
+ *
+ * Rule identifiers, labels and value shapes come from the shared catalogue in
+ * `@/lib/validation/scan-rules` — note that the two date comparisons are
+ * inclusive of the reference day despite their identifiers reading as strict.
  */
 
 import { useState } from "react";
@@ -28,6 +32,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import {
+  SCAN_RULE_META,
+  getScanRuleLabel,
+  getScanRulesForFieldType,
+  type ScanRuleValueShape,
+} from "@/lib/validation/scan-rules";
 import type {
   ScanValidationDraft,
   ScanValidationSeverity,
@@ -36,26 +46,6 @@ import type {
 } from "@/hooks/useCardTypeWizard";
 
 // ─── Rule definitions ──────────────────────────────────────────────────────────
-
-interface RuleMeta {
-  label: string;
-  fieldTypes: FieldType[];
-  valueShape: "none" | "number" | "number_range" | "date";
-}
-
-const RULE_META: Record<string, RuleMeta> = {
-  boolean_is_true:  { label: "es Sí (verdadero)",             fieldTypes: ["boolean"], valueShape: "none" },
-  boolean_is_false: { label: "es No (falso)",                  fieldTypes: ["boolean"], valueShape: "none" },
-  number_eq:        { label: "es igual a",                     fieldTypes: ["number"],  valueShape: "number" },
-  number_gt:        { label: "es mayor que",                   fieldTypes: ["number"],  valueShape: "number" },
-  number_lt:        { label: "es menor que",                   fieldTypes: ["number"],  valueShape: "number" },
-  number_gte:       { label: "es mayor o igual que",           fieldTypes: ["number"],  valueShape: "number" },
-  number_lte:       { label: "es menor o igual que",           fieldTypes: ["number"],  valueShape: "number" },
-  number_between:   { label: "está entre (mín y máx)",         fieldTypes: ["number"],  valueShape: "number_range" },
-  date_before:      { label: "es anterior a",                  fieldTypes: ["date"],    valueShape: "date" },
-  date_after:       { label: "es posterior a",                 fieldTypes: ["date"],    valueShape: "date" },
-  date_equals:      { label: "es igual a",                     fieldTypes: ["date"],    valueShape: "date" },
-};
 
 // Field types allowed in scan validations
 const SCANNABLE_FIELD_TYPES: FieldType[] = ["boolean", "number", "date"];
@@ -124,13 +114,7 @@ const TEXT = {
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
-function rulesForFieldType(fieldType: FieldType): string[] {
-  return Object.entries(RULE_META)
-    .filter(([, meta]) => meta.fieldTypes.includes(fieldType))
-    .map(([rule]) => rule);
-}
-
-function buildRuleValue(shape: RuleMeta["valueShape"], target: string, min: string, max: string, relativeToday: boolean): unknown {
+function buildRuleValue(shape: ScanRuleValueShape, target: string, min: string, max: string, relativeToday: boolean): unknown {
   if (shape === "none") return null;
   if (shape === "number") return { target: parseFloat(target) || 0 };
   if (shape === "number_range") return { min: parseFloat(min) || 0, max: parseFloat(max) || 0 };
@@ -175,8 +159,8 @@ export default function ScanValidationsStep({
 
   const scannableFields = fields.filter((f) => SCANNABLE_FIELD_TYPES.includes(f.fieldType));
   const selectedField = scannableFields.find((f) => f.tempId === fieldTempId);
-  const availableRules = selectedField ? rulesForFieldType(selectedField.fieldType) : [];
-  const ruleMeta = rule ? RULE_META[rule] : null;
+  const availableRules = selectedField ? getScanRulesForFieldType(selectedField.fieldType) : [];
+  const ruleMeta = rule ? SCAN_RULE_META[rule] : null;
   const valueShape = ruleMeta?.valueShape ?? "none";
 
   function handleFieldChange(tid: string) {
@@ -235,7 +219,7 @@ export default function ScanValidationsStep({
                   <div className="mt-0.5 text-xs text-muted-foreground">
                     {targetField?.label ?? sv.fieldTempId}
                     {" · "}
-                    {RULE_META[sv.rule]?.label ?? sv.rule}
+                    {getScanRuleLabel(sv.rule)}
                     {" · "}
                     <span className={cn("font-semibold", sm.text)}>{sm.label}</span>
                   </div>
@@ -301,7 +285,7 @@ export default function ScanValidationsStep({
                 <SelectContent>
                   {availableRules.map((r) => (
                     <SelectItem key={r} value={r}>
-                      {selectedField.label} {RULE_META[r].label}
+                      {selectedField.label} {getScanRuleLabel(r)}
                     </SelectItem>
                   ))}
                 </SelectContent>

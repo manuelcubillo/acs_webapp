@@ -51,3 +51,6 @@ next-env.d.ts
 
 # legacy db migration
 scripts/legacyDBMigration/*
+
+# Volcados de base de datos (scripts/push-prod-db.sh guarda aquí el respaldo de producción)
+/backups/

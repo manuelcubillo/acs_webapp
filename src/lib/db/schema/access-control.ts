@@ -682,6 +682,9 @@ export const actionDefinitions = pgTable(
  *   boolean: boolean_is_true | boolean_is_false
  *   number:  number_eq | number_gt | number_lt | number_gte | number_lte | number_between
  *   date:    date_before | date_after | date_equals
+ *
+ * date_before / date_after are inclusive of the reference day despite reading
+ * as strict — see src/lib/validation/scan-rules.ts.
  */
 export const scanValidations = pgTable(
   "scan_validations",
@@ -697,6 +700,7 @@ export const scanValidations = pgTable(
     /**
      * Rule identifier matching a key in SCAN_RULE_EVALUATORS.
      * Examples: "boolean_is_true", "number_gt", "date_after"
+     * The full catalogue lives in src/lib/validation/scan-rules.ts.
      */
     rule: text("rule").notNull(),
     /**

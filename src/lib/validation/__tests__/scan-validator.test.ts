@@ -18,10 +18,21 @@
  * column nulled (`updateCard` upserts nulls).
  *
  * `false` and `0` are NOT empty — they are values a rule must still evaluate.
+ *
+ * Also pins the calendar-day boundary of the date rules: `date_before` and
+ * `date_after` INCLUDE the reference day even though their identifiers read as
+ * strict (ADR `2026-08-29-inclusive-date-scan-validations.md`). Nothing else in
+ * the suite asserts the comparison itself, so a revert to `<` / `>` would
+ * otherwise go unnoticed.
  */
 
 import { describe, it, expect } from "vitest";
-import { validateScan, hasErrorLevelFailures } from "../scan-validator";
+import {
+  validateScan,
+  hasErrorLevelFailures,
+  SCAN_RULE_EVALUATORS,
+} from "../scan-validator";
+import { SCAN_RULE_META } from "../scan-rules";
 import type { EnrichedFieldValue, ScanValidationWithField } from "@/lib/dal/types";
 import type { FieldType } from "../types";
 
@@ -265,5 +276,99 @@ describe("validateScan — unchanged behaviour", () => {
 
   it("returns passed=true with no rules configured", () => {
     expect(validateScan([value(5)], []).passed).toBe(true);
+  });
+});
+
+// ─── Date rules — calendar-day boundary ──────────────────────────────────────
+
+/**
+ * The reference day is INCLUDED by both `date_before` and `date_after`. The
+ * identifiers read as strict for historical reasons (see `scan-rules.ts`), so
+ * these cases are the only thing pinning the actual semantics — without them a
+ * silent revert to `<` / `>` would pass the whole suite.
+ */
+describe("validateScan — date rules include the reference day", () => {
+  const TARGET = { target: "2026-01-01" };
+  const dateValue = (iso: string) => value(new Date(`${iso}T00:00:00`), "date");
+
+  const cases: Array<{ rule: string; day: string; passes: boolean }> = [
+    { rule: "date_before", day: "2025-12-31", passes: true  },
+    { rule: "date_before", day: "2026-01-01", passes: true  }, // the boundary
+    { rule: "date_before", day: "2026-01-02", passes: false },
+    { rule: "date_after",  day: "2025-12-31", passes: false },
+    { rule: "date_after",  day: "2026-01-01", passes: true  }, // the boundary
+    { rule: "date_after",  day: "2026-01-02", passes: true  },
+    { rule: "date_equals", day: "2025-12-31", passes: false },
+    { rule: "date_equals", day: "2026-01-01", passes: true  },
+    { rule: "date_equals", day: "2026-01-02", passes: false },
+  ];
+
+  it.each(cases)(
+    "$rule against 2026-01-01 on $day → passed=$passes",
+    ({ rule: name, day, passes }) => {
+      const result = validateScan(
+        [dateValue(day)],
+        [rule({ rule: name, value: TARGET, fieldType: "date" })],
+      );
+
+      expect(result.results[0].passed).toBe(passes);
+    },
+  );
+});
+
+describe("validateScan — date rules include today under { relative: \"today\" }", () => {
+  const TODAY = { relative: "today" };
+
+  /** A Date at local midnight, `offsetDays` away from today. */
+  function dayOffset(offsetDays: number): Date {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + offsetDays);
+    return d;
+  }
+
+  const cases: Array<{ rule: string; offset: number; passes: boolean }> = [
+    { rule: "date_before", offset: -1, passes: true  },
+    { rule: "date_before", offset:  0, passes: true  }, // the boundary
+    { rule: "date_before", offset:  1, passes: false },
+    { rule: "date_after",  offset: -1, passes: false },
+    { rule: "date_after",  offset:  0, passes: true  }, // the boundary
+    { rule: "date_after",  offset:  1, passes: true  },
+  ];
+
+  it.each(cases)(
+    "$rule against today with offset $offset → passed=$passes",
+    ({ rule: name, offset, passes }) => {
+      const result = validateScan(
+        [value(dayOffset(offset), "date")],
+        [rule({ rule: name, value: TODAY, fieldType: "date" })],
+      );
+
+      expect(result.results[0].passed).toBe(passes);
+    },
+  );
+
+  it("stops alerting on a card whose date is exactly today", () => {
+    // The alert fires when the rule does NOT pass, so an inclusive comparison
+    // means a carnet expiring today no longer raises an error-level failure.
+    const result = validateScan(
+      [value(dayOffset(0), "date")],
+      [rule({ rule: "date_after", value: TODAY, fieldType: "date" })],
+    );
+
+    expect(hasErrorLevelFailures(result)).toBe(false);
+  });
+});
+
+// ─── Catalogue / evaluator consistency ───────────────────────────────────────
+
+describe("scan rule catalogue", () => {
+  it("declares exactly the rules the engine can evaluate", () => {
+    // A rule offered by the UI with no evaluator would fail closed at scan
+    // time; an evaluator missing from the catalogue is unreachable and would
+    // also be rejected by the DAL's field-type guard.
+    expect(Object.keys(SCAN_RULE_META).sort()).toEqual(
+      Object.keys(SCAN_RULE_EVALUATORS).sort(),
+    );
   });
 });

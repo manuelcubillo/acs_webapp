@@ -2,6 +2,7 @@
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toDateInputValue } from "@/lib/fields/date-input-value";
 import { cn } from "@/lib/utils";
 
 interface DateInputProps {
@@ -23,8 +24,9 @@ export default function DateInput({
   error,
   disabled,
 }: DateInputProps) {
-  // Normalize value to YYYY-MM-DD string for the native date input.
-  const strValue = value ? String(value).slice(0, 10) : "";
+  // Normalize value to YYYY-MM-DD string for the native date input. A field
+  // with no stored value renders EMPTY: see `toDateInputValue`.
+  const strValue = toDateInputValue(value);
 
   return (
     <div className="flex flex-col gap-1.5">

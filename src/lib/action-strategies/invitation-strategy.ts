@@ -105,7 +105,7 @@ import { computeNewValue } from "./compute-new-value";
  *  can match them and every execution falls through to the standard path. That
  *  is the deliberate safe default — see the repointed-target guard in
  *  `handleAction` for the same reasoning applied to the target field. */
-const INVITATION_CONFIG = {
+export const INVITATION_CONFIG = {
   invitationsFieldId: "d48eec1b-2de1-4342-9e23-43da269db1f8",
   halfInvitationFieldId: "4fbac0d2-6820-4921-b1f7-5be35b2abab7",
   /** Boolean field "compra invitaciones" — selects the R4 accounting model. */
@@ -123,7 +123,7 @@ const INVITATION_CONFIG = {
  * Deliberately a single hardcoded constant: making it configurable is out of
  * scope, and keeping it in one place is what makes that change a one-liner.
  */
-const TENANT_TIME_ZONE = "Europe/Madrid";
+export const TENANT_TIME_ZONE = "Europe/Madrid";
 
 /** Local hour at which the AFTERNOON slot begins. Before it, MORNING. */
 const AFTERNOON_START_HOUR = 15;
@@ -135,7 +135,7 @@ const ENTRY_COST = 1;
 const REFUND_AMOUNT = 1;
 
 /** Key under which the settlement marker is stored in `action_logs.metadata`. */
-const SETTLEMENT_METADATA_KEY = "invitationSettlement";
+export const SETTLEMENT_METADATA_KEY = "invitationSettlement";
 
 /** Diagnostic keys written alongside the marker (never read back by the rules;
  *  they exist so an auditor can see which day/slot a row was settled against
@@ -144,9 +144,9 @@ const SETTLEMENT_METADATA_KEY = "invitationSettlement";
  *  `invitationMode` records which accounting model settled the row. It carries
  *  real information the marker cannot: an R4 exit settles as `none`, which is
  *  otherwise indistinguishable from a slot-mode exit that hit its refund cap. */
-const SLOT_METADATA_KEY = "invitationSlot";
-const DATE_METADATA_KEY = "invitationDate";
-const MODE_METADATA_KEY = "invitationMode";
+export const SLOT_METADATA_KEY = "invitationSlot";
+export const DATE_METADATA_KEY = "invitationDate";
+export const MODE_METADATA_KEY = "invitationMode";
 
 /**
  * History paging. `getCardActionHistory` returns newest-first, so the scan stops

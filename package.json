@@ -28,7 +28,10 @@
     "db:journal:sync:prod": "dotenv -e .env.prod -v ALLOW_NEON_DB=1 -- tsx scripts/db/backfill-journal.ts",
     "db:seed": "tsx scripts/seed.ts",
     "db:pull-prod": "bash scripts/pull-prod-db.sh",
+    "db:push-prod": "bash scripts/push-prod-db.sh",
+    "push:photos": "bash scripts/push-photos-to-r2.sh",
     "import:legacy": "tsx scripts/legacyDBMigration/import.ts",
+    "resync:legacy": "tsx scripts/legacyDBMigration/resync.ts",
     "design:veredillas-personal": "tsx scripts/veredillasPersonalCardDesign.ts",
     "backfill-photos:legacy": "tsx scripts/legacyDBMigration/backfillPhotos.ts"
   },

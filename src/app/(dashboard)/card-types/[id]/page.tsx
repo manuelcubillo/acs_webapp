@@ -38,6 +38,7 @@ import {
   CircleOff,
 } from "lucide-react";
 import type { ActionDefinitionWithField, ScanValidationWithField, FieldType } from "@/lib/dal";
+import { getScanRuleLabel } from "@/lib/validation/scan-rules";
 
 export const dynamic = "force-dynamic";
 
@@ -364,7 +365,7 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
                           {sv.errorMessage}
                         </div>
                         <div className="mt-0.5 text-[11px] text-muted-foreground">
-                          {(sv as ScanValidationWithField).fieldLabel} · {sv.rule}
+                          {(sv as ScanValidationWithField).fieldLabel} · {getScanRuleLabel(sv.rule)}
                         </div>
                       </div>
                       <Badge className={cn("shrink-0", badgeClasses)}>

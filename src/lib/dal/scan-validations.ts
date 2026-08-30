@@ -7,12 +7,13 @@
  * Supported rules per field type:
  *   boolean: boolean_is_true | boolean_is_false
  *   number:  number_eq | number_gt | number_lt | number_gte | number_lte | number_between
- *   date:    date_before | date_after | date_equals
+ *   date:    date_before | date_after | date_equals  (both comparisons inclusive)
  */
 
 import { eq, and, asc, count } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { scanValidations, fieldDefinitions } from "@/lib/db/schema";
+import { SCAN_RULE_META } from "@/lib/validation/scan-rules";
 import { NotFoundError, ValidationError } from "./errors";
 import type {
   ScanValidation,
@@ -24,19 +25,10 @@ import type {
 
 // ─── Rule → field type compatibility map ──────────────────────────────────────
 
-const RULE_FIELD_TYPE_MAP: Record<string, FieldType> = {
-  boolean_is_true:  "boolean",
-  boolean_is_false: "boolean",
-  number_eq:        "number",
-  number_gt:        "number",
-  number_lt:        "number",
-  number_gte:       "number",
-  number_lte:       "number",
-  number_between:   "number",
-  date_before:      "date",
-  date_after:       "date",
-  date_equals:      "date",
-};
+/** Derived from the shared catalogue so the two lists cannot desync. */
+const RULE_FIELD_TYPE_MAP: Record<string, FieldType> = Object.fromEntries(
+  Object.entries(SCAN_RULE_META).map(([rule, meta]) => [rule, meta.fieldType]),
+);
 
 /** Assert that the rule is compatible with the given field type. */
 function assertRuleCompatible(rule: string, fieldType: FieldType): void {

@@ -13,9 +13,14 @@
  *   number_gte        – field value >= target
  *   number_lte        – field value <= target
  *   number_between    – min ≤ field value ≤ max
- *   date_before       – field date < target (calendar day)
- *   date_after        – field date > target (calendar day)
+ *   date_before       – field date <= target (calendar day, inclusive)
+ *   date_after        – field date >= target (calendar day, inclusive)
  *   date_equals       – field date === target (calendar day)
+ *
+ * ⚠️ `date_before` / `date_after` are INCLUSIVE of the reference day despite
+ * reading as strict. The identifiers are kept because they are already stored
+ * in every environment and an unknown identifier fails closed below — see
+ * `scan-rules.ts` and ADR `2026-08-29-inclusive-date-scan-validations.md`.
  *
  * Rule value shapes (stored as JSONB):
  *   boolean_*       : null / any  (value not used)
@@ -132,7 +137,11 @@ function isEmptyValue(value: unknown): boolean {
 
 type RuleEvaluator = (currentValue: unknown, ruleValue: unknown) => boolean;
 
-const SCAN_RULE_EVALUATORS: Record<string, RuleEvaluator> = {
+/**
+ * Rule identifier → evaluator. Keys must match `SCAN_RULE_META` in
+ * `scan-rules.ts`; a test pins the two sets against each other.
+ */
+export const SCAN_RULE_EVALUATORS: Record<string, RuleEvaluator> = {
   // ── Boolean ──────────────────────────────────────────────────────────────────
   boolean_is_true:  (v) => v === true,
   boolean_is_false: (v) => v === false,
@@ -168,17 +177,20 @@ const SCAN_RULE_EVALUATORS: Record<string, RuleEvaluator> = {
   },
 
   // ── Date ─────────────────────────────────────────────────────────────────────
+  // Both comparisons include the reference day: the operands are already
+  // normalised to local midnight, so `<=` / `>=` is exact at calendar-day
+  // granularity. See the ⚠️ note in the header docblock.
   date_before: (v, rv) => {
     const current = toCalendarDay(v);
     const target  = resolveTargetDate(rv);
     if (!current || !target) return false;
-    return current.getTime() < target.getTime();
+    return current.getTime() <= target.getTime();
   },
   date_after: (v, rv) => {
     const current = toCalendarDay(v);
     const target  = resolveTargetDate(rv);
     if (!current || !target) return false;
-    return current.getTime() > target.getTime();
+    return current.getTime() >= target.getTime();
   },
   date_equals: (v, rv) => {
     const current = toCalendarDay(v);

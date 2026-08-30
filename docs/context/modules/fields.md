@@ -1,6 +1,6 @@
 # Module: fields
 
-**Last updated**: 2026-08-24 · **Last feature**: `is_system` on field definitions, with consumer-side exclusion helpers
+**Last updated**: 2026-08-29 · **Last feature**: date inputs normalize through `toDateInputValue`, so an unset date field renders empty
 
 ## Responsibility
 
@@ -12,6 +12,7 @@ Validation rules per field type are stored here (in `validation_rules` jsonb) bu
 
 - `src/lib/dal/field-definitions.ts` — CRUD + `getCommonFieldDefinitions(tenantId, cardTypeIds[])`.
 - `src/lib/fields/system.ts` — `excludeSystemFields` / `excludeSystemActions`. Applied **at each consumer**, never inside a DAL read (constraint #27). Grep either name to enumerate every surface that has declared its intent.
+- `src/lib/fields/date-input-value.ts` — `toDateInputValue`: any stored date shape (`Date`, ISO string, `YYYY-MM-DD`) → the `YYYY-MM-DD` a native date input accepts, everything else → `""`. Unit-tested. Consumed by `DateInput`.
 - `src/lib/dal/field-values.ts` — Read/write with `mapValueToColumn` / `extractValue`.
 - `src/lib/db/schema/access-control.ts` — `field_definitions`, `field_values` tables.
 - `src/components/card-types/fields/FieldEditor.tsx` — Slide-in panel, create/edit `FieldDefinitionDraft`.
@@ -144,8 +145,8 @@ Read them **only** via `getSelectOptions(validationRules)` from `@/lib/validatio
 
 ## Recent changes
 
+- 2026-08-29 — Card date inputs no longer show today's date for a field that has no value. `DateInput` normalized with `String(value).slice(0, 10)`, but `value_date` is a `timestamp`, so the form receives a `Date` whose `String()` form (`"Thu Aug 27"`) is NOT a valid `<input type="date">` value: the browser discards it, the input renders blank while React still believes it holds a value, and the native picker — treating the control as unassigned — opens on and commits **today** at the first interaction, which the wholesale save then persists. Normalization moved to `toDateInputValue`, which formats a `Date` with LOCAL calendar components (never `toISOString()`: stored dates are midnights and UTC would shift them a day back) and maps anything unparseable to `""`. Affects `/cards/new` and `/cards/[code]/edit` — the only two surfaces reaching `DateInput`. Bug fix, no ADR.
 - 2026-08-24 — `field_definitions` gained `is_system`, and `field_values.updated_at` became trigger-maintained. System fields are filtered out at the consumer by `excludeSystemFields` (`src/lib/fields/system.ts`) — applied to the card create/edit forms, the wizard's edit loader (before the tempId mapping), the card-type detail + list tiles, the dashboard-settings pickers, the card-list columns, the field-filter builders (via `getCommonFieldDefinitionsAction`), the design-editor bindings, and the card-detail value grid. Deliberately NOT applied to the DAL reads themselves, nor to `getAutoExecuteActions`. `EnrichedFieldValue`, `CommonFieldDefinition` and `FilterableFieldDefinition` now carry `isSystem`. ADR `2026-08-24-presence-control.md`.
 - 2026-08-15 — `is_required` now has a second consumer: at scan time a non-mandatory field with no value makes its scan validations skip rather than fail. No code changed in this module — the flag is joined onto the rule in `src/lib/dal/scan-validations.ts`, because a field blank since creation has no `field_values` row and never reaches `EnrichedFieldValue[]`. ADR `2026-08-15-scan-validation-empty-optional-fields.md`.
 - 2026-08-02 — Select options are now read through one shared helper, `getSelectOptions` in `@/lib/validation/rules`. `SelectInput` was looking up a rule named `allowedValues` (nothing writes that name), so the card form's select dropdown was always empty and a select field could not be assigned on create or edit. Corrected the storage table above: `select` lives in **`value_text`**, not `value_json` — the doc described a multi-select design that was never implemented. Bug fix, no ADR.
 - 2026-08-02 — `PhotoRenderer` lightbox became opt-out via a new `enlargeable` prop (default `true`), threaded through `DynamicFieldRenderer`. Both list views pass `false`: their row navigates to the card detail, and the photo's `onClick` was swallowing that click, so the thumbnail advertised "Ampliar foto" and then never enlarged. Static variant drops the handler, `cursor-pointer` and `aria-label`; the shared footprint moved to a `THUMBNAIL_CLASS` constant. Thumbnails also gained `loading="lazy"` + `decoding="async"` — a 50-row list was firing 50 photo-route round trips to paint ~4 visible rows. Side effect: **Descargar** is now card-detail-only. Bug fix, no ADR.
-- 2026-08-02 — `PhotoRenderer` gained a second addressing mode: with `cardCode` + `fieldDefinitionId` it builds its own `<img src>` from `cardPhotoRoute` (stable, per-request signature) instead of consuming a URL from `value`, which becomes a pure presence signal. Adopted by both card list views and, since it already passed both props, card detail. Fixes list thumbnails breaking on every client-side refetch and the 15-minute expiry. The download href now comes from the same helper. ADR `2026-08-02-card-list-photos-stable-route.md`.

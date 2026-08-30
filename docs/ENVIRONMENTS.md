@@ -63,6 +63,8 @@ local, así que no hay nada más que configurar.
 | Levantar contra la rama de Neon | `pnpm dev:branch` | rama `test` |
 | Levantar contra producción ⚠️ | `pnpm dev:prod` | **producción** |
 | Traerme los datos de producción a local | `pnpm db:pull-prod` | vuelca prod → `acs_dev` |
+| Llevar mis datos locales a producción ⚠️ | `pnpm db:push-prod` | **sobrescribe producción** |
+| Subir a R2 las fotos que le falten | `pnpm push:photos` | R2 de producción |
 | Datos de ejemplo | `pnpm db:seed` | `acs_dev` |
 
 ### Tests
@@ -92,6 +94,60 @@ que `DATABASE_URL` — ver `src/test/setup-integration.ts`.
 
 **El orden correcto:** `db:generate` → revisar el SQL → `db:migrate:all` →
 `db:migrate:branch` (ensayo con datos reales) → `db:migrate:prod`.
+
+---
+
+## Sustituir producción por local
+
+Lo normal es ir en la otra dirección (`db:pull-prod`). Esta es la dirección que
+no se puede deshacer volviendo a ejecutarla: lo que exista solo en producción
+—filas, usuarios, tenants enteros— desaparece.
+
+**El orden correcto, y no es opcional:**
+
+```bash
+pnpm push:photos                                   # 1. primero las fotos
+PUSH_ENV_FILE=.env.neon-branch pnpm db:push-prod   # 2. ensayo en una rama
+pnpm db:push-prod                                  # 3. producción
+```
+
+**1. Las fotos van primero.** Los object keys viajan literalmente dentro del
+volcado (son texto en `field_values.value_text`), así que una key cuyo objeto
+no haya llegado a R2 se convierte en una foto rota en el instante del cambio.
+`push:photos` calcula qué objetos referencia la BD local, mira cuáles le faltan
+a R2 y sube solo esos. Es **aditivo**: nunca borra del bucket, así que los
+objetos de filas que solo existían en producción sobreviven como huérfanos en
+vez de desaparecer. Cubre las fotos de carnet, la imagen de fondo incrustada en
+`card_designs.layout` (JSON, no una columna) y `tenants.logo_object_key`.
+
+En la práctica R2 y MinIO ya están casi sincronizados, así que el hueco suele
+ser de un puñado de ficheros: los subidos en local desde la última vez.
+
+**2. El ensayo.** Una rama de Neon es un clon copy-on-write de producción, así
+que el ensayo ejercita el mismo script contra los mismos datos y lo único en
+juego es una rama que luego borras. Comprueba después que los recuentos cuadran,
+que el esquema coincide y que `pnpm db:migrate:branch` no reaplica nada.
+
+**3. El cambio real.** `db:push-prod` pide teclear el nombre del destino
+(`production`), guarda un respaldo con fecha en `backups/` —que conserva, y que
+es la única copia de lo que había— y solo entonces hace `DROP SCHEMA` de
+`public` y `drizzle` y restaura el volcado local. Tira los esquemas enteros en
+vez de usar `pg_dump --clean` porque `--clean` solo borra lo que el propio
+volcado contiene: lo que producción tuviera de más sobreviviría y quedaría a la
+deriva.
+
+Se lleva por delante el esquema `drizzle`, lo cual es deliberado: producción
+hereda el journal de migraciones de local y `db:migrate:prod` vuelve a partir
+de la base correcta.
+
+⚠️ `backups/` está fuera de git y solo vive en tu máquina. Si el respaldo te
+importa, cópialo a otro sitio.
+
+**Lo que NO toca:** el bucket de R2 y las variables de Vercel.
+`BETTER_AUTH_SECRET` no cambia; las sesiones caen igualmente porque la tabla
+`session` se reemplaza, así que todo el mundo vuelve a entrar. Y ojo con las
+contraseñas: si alguien cambió la suya en producción, el volcado la revierte a
+la que tenga en local.
 
 ---
 
@@ -172,7 +228,12 @@ O desde https://console.neon.tech → Branches → *Create branch* → nombre `t
 padre `production`, *Current point in time*.
 
 Pega la cadena **pooled** en `DATABASE_URL` dentro de `.env.neon-branch` y ya
-funciona `pnpm dev:branch`.
+funciona `pnpm dev:branch`. Pega también la **directa** (el host sin `-pooler`)
+en `DATABASE_URL_UNPOOLED`: la necesitan `pg_dump` y `psql`, que no pueden
+atravesar el pooler, y sin ella no se puede ensayar `db:push-prod` en la rama.
+
+Una rama clona la base de datos, no el bucket. Para ver las fotos, copia en
+`.env.neon-branch` los cinco valores `S3_*` de `.env.prod`.
 
 Cuando la rama se quede vieja, se refresca en segundos:
 
@@ -184,16 +245,9 @@ npx neonctl@latest branches reset test --parent
 
 ## Tareas pendientes
 
-Tres cosas que no se pueden hacer desde aquí porque tocan producción:
+Dos cosas que no se pueden hacer desde aquí porque tocan producción:
 
-### 1. Rellenar `S3_BUCKET` en `.env.prod`
-
-En Vercel esa variable está marcada como *Sensitive*, y Vercel no permite volver
-a leer el valor de una variable sensible — solo sobrescribirlo. Copia el nombre
-del bucket desde el panel de Cloudflare R2. Sin él, `pnpm dev:prod` levanta pero
-las fotos no cargan.
-
-### 2. Activar el cron de purga en producción
+### 1. Activar el cron de purga en producción
 
 `CRON_SECRET` **no existe** en el proyecto de Vercel. El cron diario de
 `vercel.json` se ejecuta a las 03:00 UTC, llama a `/api/cron/purge-archived`, y
@@ -209,7 +263,7 @@ npx vercel env add CRON_SECRET production
 cuya retención (`archive_retention_days` por tenant) haya vencido. Comprueba
 antes qué hay en la papelera.
 
-### 3. Rotar `BETTER_AUTH_SECRET` de producción
+### 2. Rotar `BETTER_AUTH_SECRET` de producción
 
 Hoy producción usa el mismo secreto que había en `.env.local` y `.env.docker`.
 Nunca llegó a git, así que la exposición es baja, pero el valor circuló por
@@ -246,3 +300,14 @@ necesiten. Si es un secreto, a Vercel también.
 
 **Las fotos no cargan con `pnpm db:pull-prod`.** Correcto: el volcado copia la
 base de datos, no el bucket. Los object keys apuntan a R2 y local lee de MinIO.
+
+**¿Cómo se llama el bucket de R2?** `acs-img`. Ya está en `S3_BUCKET` dentro de
+`.env.prod`. Vercel marca esa variable como *Sensitive* y no deja volver a leer
+su valor, así que si algún día se pierde, se recupera listando los buckets con
+las credenciales de `.env.prod` (`aws --endpoint-url "$S3_ENDPOINT" s3 ls`) o
+desde el panel de Cloudflare.
+
+**¿Cuántos objetos debería tener R2?** Los que referencie la base de datos:
+`pnpm push:photos` lo dice sin subir nada si no falta ninguno. El bucket tiene
+además objetos huérfanos —re-ejecuciones del backfill del legacy, y restos de
+bases anteriores bajo prefijos de tenants que ya no existen— que no estorban.

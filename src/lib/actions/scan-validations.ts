@@ -39,6 +39,7 @@ const CreateScanValidationSchema = z.object({
    *  number_eq/gt/lt/gte/lte : { target: number }
    *  number_between          : { min: number, max: number }
    *  date_before/after/equals: { target: string } | { relative: "today" }
+   *  (date_before / date_after include the reference day)
    */
   value: z.unknown().optional(),
   errorMessage: z.string().min(1).max(500),

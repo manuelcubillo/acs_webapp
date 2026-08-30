@@ -23,6 +23,7 @@ import type {
   ActionType,
   ScanValidationSeverity,
 } from "@/hooks/useCardTypeWizard";
+import { getScanRuleLabel } from "@/lib/validation/scan-rules";
 
 const TEXT = {
   HEADING:      "Revisión final",
@@ -241,7 +242,7 @@ export default function ReviewStep({
                     </span>
                     {targetField && (
                       <div className="mt-0.5 text-xs text-muted-foreground">
-                        {targetField.label} · {sv.rule}
+                        {targetField.label} · {getScanRuleLabel(sv.rule)}
                       </div>
                     )}
                   </div>
