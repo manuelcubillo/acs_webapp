@@ -7,10 +7,10 @@
  * balance reads, auxiliary writes and metadata, which is where the rules meet
  * the edges.
  *
- * The cases pinned here are the ones that break SILENTLY: the timezone
- * boundary in both DST offsets, the settlements that deliberately leave the
- * TARGET field unchanged, unmarked legacy rows, and the promise that a
- * standard tenant is untouched.
+ * The cases pinned here are the ones that break SILENTLY: the local-day
+ * rollover in both DST offsets, the inclusive five-hour boundary, the
+ * settlements that deliberately leave the TARGET field unchanged, unmarked
+ * legacy rows, and the promise that a standard tenant is untouched.
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest";
@@ -23,39 +23,56 @@ import type {
 } from "../types";
 import { StandardActionStrategy } from "../standard-strategy";
 import {
+  INVITATION_CONFIG,
   InvitationActionStrategy,
+  buildRefundCounters,
   countSettlements,
   decideEntry,
   decideExit,
+  earliestExecutedAt,
   readSettlement,
-  resolveLocalMoment,
-  resolveSlot,
+  resolveLocalDate,
+  selectSettlements,
   toBalance,
   toFlag,
 } from "../invitation-strategy";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
-/** Must mirror INVITATION_CONFIG in the strategy (it is intentionally private). */
-const INVITATIONS_FIELD = "d48eec1b-2de1-4342-9e23-43da269db1f8";
-const HALF_FIELD = "4fbac0d2-6820-4921-b1f7-5be35b2abab7";
-const PURCHASE_FIELD = "df83af19-6046-4e28-9622-f5aed0b44db8";
-const ENTRY_ACTION = "dd2461c6-fadd-4f98-91e0-571184747e9c";
-const EXIT_ACTION = "5cd7a02f-f9a1-4a85-9406-a1022897a3c9";
+/** Read from the strategy rather than re-declared: a config change must break
+ *  these tests, not leave them green against ids nothing uses. */
+const {
+  invitationsFieldId: INVITATIONS_FIELD,
+  halfInvitationFieldId: HALF_FIELD,
+  purchaseModeFieldId: PURCHASE_FIELD,
+  guestEntryActionId: ENTRY_ACTION,
+  guestExitActionId: EXIT_ACTION,
+} = INVITATION_CONFIG;
 
-/** 2026-08-27 10:00 Madrid (CEST, UTC+2) — a MORNING instant. */
-const MORNING_INSTANT = new Date("2026-08-27T08:00:00Z");
-/** 2026-08-27 16:00 Madrid (CEST) — an AFTERNOON instant. */
-const AFTERNOON_INSTANT = new Date("2026-08-27T14:00:00Z");
+const HOUR_MS = 60 * 60 * 1000;
 
-const MORNING = { date: "2026-08-27", slot: "MORNING" } as const;
-const AFTERNOON = { date: "2026-08-27", slot: "AFTERNOON" } as const;
+/** 2026-08-27 16:00 Madrid (CEST, UTC+2) — the instant the exit tests settle
+ *  at. Late enough that five hours back is still the same local day, so the
+ *  window and the day gate can be exercised independently. */
+const NOW = new Date("2026-08-27T14:00:00Z");
+/** NOW's local day — the date every window is scoped to. */
+const TODAY = "2026-08-27";
+
+/** An instant `hours` before NOW. Fractions are allowed. */
+function hoursAgo(hours: number): Date {
+  return new Date(NOW.getTime() - hours * HOUR_MS);
+}
+
+/** The window `buildRefundCounters` derives from NOW, for direct helper tests. */
+const WINDOW = { date: TODAY, since: hoursAgo(5) } as const;
 
 /** Build a decoded log row carrying (or missing) a settlement marker. */
 function logRow(
   executedAt: Date,
   settlement: string | undefined,
-  actionDefinitionId = ENTRY_ACTION,
+  // Annotated because `INVITATION_CONFIG` is `as const`: without it the default
+  // narrows the parameter to the entry action's literal id.
+  actionDefinitionId: string = ENTRY_ACTION,
 ): ActionHistoryRecord {
   return {
     id: `log-${executedAt.toISOString()}-${settlement ?? "none"}`,
@@ -165,41 +182,29 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-// ─── Slot resolution ─────────────────────────────────────────────────────────
+// ─── Local day resolution ────────────────────────────────────────────────────
 
-describe("resolveLocalMoment — Europe/Madrid, never UTC", () => {
-  it("puts 14:59 local in MORNING and 15:00 local in AFTERNOON (CEST, UTC+2)", () => {
-    expect(resolveLocalMoment(new Date("2026-08-27T12:59:00Z")).slot).toBe("MORNING");
-    expect(resolveLocalMoment(new Date("2026-08-27T13:00:00Z")).slot).toBe("AFTERNOON");
+describe("resolveLocalDate — Europe/Madrid, never UTC", () => {
+  it("rolls the day at Madrid midnight in summer (CEST, UTC+2)", () => {
+    // 22:30Z is already 00:30 the next day in Madrid; 21:30Z is still 23:30.
+    expect(resolveLocalDate(new Date("2026-08-26T22:30:00Z"))).toBe("2026-08-27");
+    expect(resolveLocalDate(new Date("2026-08-26T21:30:00Z"))).toBe("2026-08-26");
   });
 
-  it("puts 14:59 local in MORNING and 15:00 local in AFTERNOON (CET, UTC+1)", () => {
-    // The same UTC instants would fall on the other side of the boundary in
-    // winter — this is the pair that catches a raw-UTC regression.
-    expect(resolveLocalMoment(new Date("2026-01-15T13:59:00Z")).slot).toBe("MORNING");
-    expect(resolveLocalMoment(new Date("2026-01-15T14:00:00Z")).slot).toBe("AFTERNOON");
-    expect(resolveLocalMoment(new Date("2026-01-15T13:00:00Z")).slot).toBe("MORNING");
+  it("rolls the day an hour later in winter (CET, UTC+1)", () => {
+    // The pair that catches a raw-UTC regression: 22:30Z crosses midnight in
+    // summer but not in winter.
+    expect(resolveLocalDate(new Date("2026-01-15T23:30:00Z"))).toBe("2026-01-16");
+    expect(resolveLocalDate(new Date("2026-01-15T22:30:00Z"))).toBe("2026-01-15");
   });
 
-  it("counts 00:30 Madrid as the local day, not the previous UTC day", () => {
-    // 2026-08-26T22:30Z is 2026-08-27 00:30 in Madrid.
-    expect(resolveLocalMoment(new Date("2026-08-26T22:30:00Z"))).toEqual({
-      date: "2026-08-27",
-      slot: "MORNING",
-    });
-  });
-
-  it("treats midnight as hour 0, not hour 24 (hourCycle h23)", () => {
-    // With `hour12: false` some locales render midnight as "24", which would
-    // push every midnight execution into the AFTERNOON slot.
-    expect(resolveSlot(0)).toBe("MORNING");
-    expect(resolveLocalMoment(new Date("2026-08-26T22:00:00Z")).slot).toBe("MORNING");
-  });
-
-  it("splits the day at 15:00 exactly", () => {
-    expect(resolveSlot(14)).toBe("MORNING");
-    expect(resolveSlot(15)).toBe("AFTERNOON");
-    expect(resolveSlot(23)).toBe("AFTERNOON");
+  it("zero-pads, so the paging loop can compare dates as strings", () => {
+    // `collectSameDayExecutions` stops on `rowDate < today`. Two-digit month
+    // and day are load-bearing there, not cosmetic.
+    expect(resolveLocalDate(new Date("2026-01-05T12:00:00Z"))).toBe("2026-01-05");
+    expect(resolveLocalDate(new Date("2026-01-05T12:00:00Z")) < "2026-01-06").toBe(
+      true,
+    );
   });
 });
 
@@ -290,7 +295,7 @@ describe("decideEntry — R4.1 purchase mode", () => {
     });
   });
 
-  it("defaults to slot accounting when the flag is omitted", () => {
+  it("defaults to duration accounting when the flag is omitted", () => {
     expect(decideEntry({ invitations: 4, halfInvitations: 0 }).settlement).toBe(
       "full_spent",
     );
@@ -306,10 +311,11 @@ describe("decideExit — R4.2 purchase mode", () => {
     });
   });
 
-  it("refunds nothing where slot accounting would have refunded", () => {
+  it("refunds nothing where duration accounting would have refunded", () => {
     const balances = { invitations: 4, halfInvitations: 0 };
     expect(decideExit(balances, null).settlement).toBe("none");
-    // Same balances, same call, slot accounting on — the contrast is the point.
+    // Same balances, same call, duration accounting on — the contrast is the
+    // point.
     expect(decideExit(balances, { spent: 1, refunded: 0 }).settlement).toBe(
       "half_refunded",
     );
@@ -319,18 +325,18 @@ describe("decideExit — R4.2 purchase mode", () => {
 describe("countSettlements — R4 rows sit outside the refundable count", () => {
   it("does not count `purchase_spent` as a refundable entry", () => {
     const rows = [
-      logRow(MORNING_INSTANT, "purchase_spent"),
-      logRow(MORNING_INSTANT, "purchase_spent"),
-      logRow(MORNING_INSTANT, "full_spent"),
+      logRow(hoursAgo(1), "purchase_spent"),
+      logRow(hoursAgo(1), "purchase_spent"),
+      logRow(hoursAgo(1), "full_spent"),
     ];
-    expect(countSettlements(rows, "full_spent", MORNING)).toBe(1);
+    expect(countSettlements(rows, "full_spent", WINDOW)).toBe(1);
   });
 });
 
 // ─── R2 ──────────────────────────────────────────────────────────────────────
 
 describe("decideExit — R2", () => {
-  it("R2.3 refunds a half credit while the slot is under its cap", () => {
+  it("R2.4 refunds a half credit while the window is under its cap", () => {
     expect(
       decideExit({ invitations: 4, halfInvitations: 0 }, { spent: 1, refunded: 0 }),
     ).toEqual({
@@ -339,7 +345,7 @@ describe("decideExit — R2", () => {
     });
   });
 
-  it("R2.4 refunds nothing once the cap is reached", () => {
+  it("R2.5 refunds nothing once the cap is reached", () => {
     expect(
       decideExit({ invitations: 4, halfInvitations: 1 }, { spent: 1, refunded: 1 }),
     ).toEqual({
@@ -348,7 +354,7 @@ describe("decideExit — R2", () => {
     });
   });
 
-  it("R2.4 never refunds an entry that was itself paid with a half credit", () => {
+  it("R2.5 never refunds an entry that was itself paid with a half credit", () => {
     // A half_spent entry contributes 0 to `spent`, so the exit finds nothing
     // to refund against.
     expect(
@@ -371,53 +377,142 @@ describe("readSettlement", () => {
       "half_refunded",
       "none",
     ] as const) {
-      expect(readSettlement(logRow(MORNING_INSTANT, s))).toBe(s);
+      expect(readSettlement(logRow(NOW, s))).toBe(s);
     }
   });
 
   it("treats a legacy row with no marker as unmarked", () => {
-    expect(readSettlement(logRow(MORNING_INSTANT, undefined))).toBeNull();
+    expect(readSettlement(logRow(NOW, undefined))).toBeNull();
   });
 
   it("treats an unrecognised marker as unmarked", () => {
-    expect(readSettlement(logRow(MORNING_INSTANT, "nonsense"))).toBeNull();
+    expect(readSettlement(logRow(NOW, "nonsense"))).toBeNull();
   });
 });
 
-describe("countSettlements — day + slot scoping", () => {
+describe("selectSettlements — day + window scoping", () => {
   const rows = [
-    logRow(new Date("2026-08-27T08:00:00Z"), "full_spent"), // 10:00 MORNING
-    logRow(new Date("2026-08-27T09:00:00Z"), "half_spent"), // 11:00 MORNING
-    logRow(new Date("2026-08-27T14:00:00Z"), "full_spent"), // 16:00 AFTERNOON
-    logRow(new Date("2026-08-26T08:00:00Z"), "full_spent"), // yesterday
-    logRow(new Date("2026-08-27T09:30:00Z"), undefined), // legacy, unmarked
+    logRow(hoursAgo(1), "full_spent"), // 15:00, inside the window
+    logRow(hoursAgo(2), "half_spent"), // 14:00, inside the window
+    logRow(hoursAgo(6), "full_spent"), // 10:00, same day but aged out
+    logRow(new Date("2026-08-26T14:00:00Z"), "full_spent"), // yesterday
+    logRow(hoursAgo(3), undefined), // legacy, unmarked
   ];
 
-  it("counts only the requested marker, within the requested slot and day", () => {
-    expect(countSettlements(rows, "full_spent", MORNING)).toBe(1);
-    expect(countSettlements(rows, "full_spent", AFTERNOON)).toBe(1);
-    expect(countSettlements(rows, "half_spent", MORNING)).toBe(1);
-    expect(countSettlements(rows, "half_spent", AFTERNOON)).toBe(0);
+  it("counts only the requested marker, inside the window and on the day", () => {
+    expect(countSettlements(rows, "full_spent", WINDOW)).toBe(1);
+    expect(countSettlements(rows, "half_spent", WINDOW)).toBe(1);
+    expect(countSettlements(rows, "half_refunded", WINDOW)).toBe(0);
+  });
+
+  it("includes a row landing exactly on `since` — the boundary is inclusive", () => {
+    const onTheEdge = [logRow(hoursAgo(5), "full_spent")];
+    const aMillisecondPast = [
+      logRow(new Date(NOW.getTime() - 5 * HOUR_MS - 1), "full_spent"),
+    ];
+    expect(countSettlements(onTheEdge, "full_spent", WINDOW)).toBe(1);
+    expect(countSettlements(aMillisecondPast, "full_spent", WINDOW)).toBe(0);
   });
 
   it("excludes unmarked legacy rows, which under-refunds rather than over-refunds", () => {
-    // The unmarked 11:30 row is invisible to `spent`, so an exit in that slot
-    // will not refund against it. Under-refunding is recoverable by hand;
-    // over-refunding hands out credits the tenant never sold.
-    const legacyOnly = [logRow(new Date("2026-08-27T09:30:00Z"), undefined)];
-    expect(countSettlements(legacyOnly, "full_spent", MORNING)).toBe(0);
+    // An unmarked row is invisible to `spent`, so an exit will not refund
+    // against it. Under-refunding is recoverable by hand; over-refunding hands
+    // out credits the tenant never sold.
+    const legacyOnly = [logRow(hoursAgo(1), undefined)];
+    expect(countSettlements(legacyOnly, "full_spent", WINDOW)).toBe(0);
   });
 
-  it("ignores other days entirely", () => {
-    expect(countSettlements(rows, "full_spent", { date: "2026-08-26", slot: "MORNING" })).toBe(1);
-    expect(countSettlements(rows, "full_spent", { date: "2026-08-25", slot: "MORNING" })).toBe(0);
+  it("ignores other days entirely, however wide the window", () => {
+    const yesterday = { date: "2026-08-26", since: new Date(0) };
+    expect(countSettlements(rows, "full_spent", yesterday)).toBe(1);
+    expect(
+      countSettlements(rows, "full_spent", { date: "2026-08-25", since: new Date(0) }),
+    ).toBe(0);
+  });
+
+  it("returns the matching rows, which is what `since` is then derived from", () => {
+    const selected = selectSettlements(rows, "full_spent", WINDOW);
+    expect(selected).toHaveLength(1);
+    expect(earliestExecutedAt(selected)).toEqual(hoursAgo(1));
+    expect(earliestExecutedAt([])).toBeNull();
   });
 });
 
-// ─── Slot scenario ───────────────────────────────────────────────────────────
+// ─── R2.1–R2.3 · the counters ────────────────────────────────────────────────
 
-describe("refund cap — full slot scenario", () => {
-  it("caps refunds at the number of full invitations spent in the slot", () => {
+describe("buildRefundCounters", () => {
+  it("counts an entry inside the window and none outside it", () => {
+    expect(
+      buildRefundCounters([logRow(hoursAgo(1), "full_spent")], [], NOW),
+    ).toEqual({ spent: 1, refunded: 0 });
+
+    expect(
+      buildRefundCounters([logRow(hoursAgo(6), "full_spent")], [], NOW),
+    ).toEqual({ spent: 0, refunded: 0 });
+  });
+
+  it("treats exactly five hours as inside, five hours and a millisecond as outside", () => {
+    expect(
+      buildRefundCounters([logRow(hoursAgo(5), "full_spent")], [], NOW).spent,
+    ).toBe(1);
+    expect(
+      buildRefundCounters(
+        [logRow(new Date(NOW.getTime() - 5 * HOUR_MS - 1), "full_spent")],
+        [],
+        NOW,
+      ).spent,
+    ).toBe(0);
+  });
+
+  it("charges a refund already granted against the entry it belongs to", () => {
+    const counters = buildRefundCounters(
+      [logRow(hoursAgo(2), "full_spent")],
+      [logRow(hoursAgo(1), "half_refunded", EXIT_ACTION)],
+      NOW,
+    );
+    expect(counters).toEqual({ spent: 1, refunded: 1 });
+  });
+
+  it("R2.2 does NOT charge a refund granted before the oldest counted entry", () => {
+    // The case a symmetric window gets wrong. The −4h refund belongs to the
+    // −6h entry, which has since aged out; charging it against the fresh −1h
+    // entry would silently deny that guest their credit.
+    const counters = buildRefundCounters(
+      [logRow(hoursAgo(6), "full_spent"), logRow(hoursAgo(1), "full_spent")],
+      [logRow(hoursAgo(4), "half_refunded", EXIT_ACTION)],
+      NOW,
+    );
+    expect(counters).toEqual({ spent: 1, refunded: 0 });
+  });
+
+  it("stays order-independent across several guests on one card", () => {
+    // Two entries inside the window, one refund already granted: exactly one
+    // refund is still owed, whatever order the rows arrive in.
+    const entries = [logRow(hoursAgo(1), "full_spent"), logRow(hoursAgo(3), "full_spent")];
+    const exits = [logRow(hoursAgo(2), "half_refunded", EXIT_ACTION)];
+
+    expect(buildRefundCounters(entries, exits, NOW)).toEqual({ spent: 2, refunded: 1 });
+    expect(buildRefundCounters([...entries].reverse(), exits, NOW)).toEqual({
+      spent: 2,
+      refunded: 1,
+    });
+  });
+
+  it("ignores yesterday's rows even when they are within five hours", () => {
+    // 00:30 Madrid, entry at 23:00 the previous local day: 1.5 hours elapsed,
+    // but the same-day gate is deliberately kept.
+    const justPastMidnight = new Date("2026-08-26T22:30:00Z");
+    const lateYesterday = new Date("2026-08-26T21:00:00Z");
+    expect(
+      buildRefundCounters([logRow(lateYesterday, "full_spent")], [], justPastMidnight),
+    ).toEqual({ spent: 0, refunded: 0 });
+  });
+});
+
+// ─── Full scenario ───────────────────────────────────────────────────────────
+
+describe("refund cap — full window scenario", () => {
+  it("caps refunds at the number of full invitations spent in the window", () => {
     // 2 full-paid entries, then 3 exits: two refund, the third finds the cap.
     let balances = { invitations: 2, halfInvitations: 0 };
     const settlements: string[] = [];
@@ -497,13 +592,13 @@ describe("handleAction — GUEST_ENTRY", () => {
 });
 
 describe("handleAction — GUEST_EXIT", () => {
-  it("R2.3 leaves the TARGET field UNCHANGED and grants a half credit", async () => {
-    vi.setSystemTime(MORNING_INSTANT);
+  it("R2.4 leaves the TARGET field UNCHANGED and grants a half credit", async () => {
+    vi.setSystemTime(NOW);
     const { ctx, writes } = fakeContext({
       actionId: EXIT_ACTION,
       invitations: 2,
       halfInvitations: 0,
-      history: [logRow(MORNING_INSTANT, "full_spent", ENTRY_ACTION)],
+      history: [logRow(hoursAgo(1), "full_spent", ENTRY_ACTION)],
     });
 
     const result = await InvitationActionStrategy.handleAction(ctx);
@@ -513,17 +608,68 @@ describe("handleAction — GUEST_EXIT", () => {
     expect(result.metadata?.invitationSettlement).toBe("half_refunded");
   });
 
-  it("R2.4 logs `none` and writes nothing when the cap is reached", async () => {
-    // The `none` row is deliberate: it is what makes the cap auditable, and
-    // what a later exit in the same slot counts as `refunded`.
-    vi.setSystemTime(MORNING_INSTANT);
+  it("refunds at exactly five hours, and not a millisecond later", async () => {
+    // The boundary the tenant asked for, end to end: inclusive, compared in
+    // milliseconds rather than bucketed by hour.
+    vi.setSystemTime(NOW);
+    const onTheEdge = fakeContext({
+      actionId: EXIT_ACTION,
+      invitations: 2,
+      halfInvitations: 0,
+      history: [logRow(hoursAgo(5), "full_spent", ENTRY_ACTION)],
+    });
+    const aMillisecondPast = fakeContext({
+      actionId: EXIT_ACTION,
+      invitations: 2,
+      halfInvitations: 0,
+      history: [
+        logRow(
+          new Date(NOW.getTime() - 5 * HOUR_MS - 1),
+          "full_spent",
+          ENTRY_ACTION,
+        ),
+      ],
+    });
+
+    const edge = await InvitationActionStrategy.handleAction(onTheEdge.ctx);
+    const past = await InvitationActionStrategy.handleAction(aMillisecondPast.ctx);
+
+    expect(edge.metadata?.invitationSettlement).toBe("half_refunded");
+    expect(onTheEdge.writes).toEqual([{ fieldId: HALF_FIELD, value: 1 }]);
+    expect(past.metadata?.invitationSettlement).toBe("none");
+    expect(aMillisecondPast.writes).toEqual([]);
+  });
+
+  it("R2.5 refunds nothing for a visit longer than five hours", async () => {
+    // The whole point of the rule: the same-day entry is there, it is marked
+    // refundable, and it still costs a full invitation because the guest
+    // stayed six hours.
+    vi.setSystemTime(NOW);
+    const { ctx, writes } = fakeContext({
+      actionId: EXIT_ACTION,
+      invitations: 2,
+      halfInvitations: 0,
+      history: [logRow(hoursAgo(6), "full_spent", ENTRY_ACTION)],
+    });
+
+    const result = await InvitationActionStrategy.handleAction(ctx);
+
+    expect(result.newValue).toBe(2);
+    expect(writes).toEqual([]);
+    expect(result.metadata?.invitationSettlement).toBe("none");
+  });
+
+  it("R2.5 logs `none` and writes nothing when the cap is reached", async () => {
+    // The `none` row is deliberate: it is what makes the cap auditable. The
+    // `half_refunded` row is what a later exit counts as `refunded`.
+    vi.setSystemTime(NOW);
     const { ctx, writes } = fakeContext({
       actionId: EXIT_ACTION,
       invitations: 2,
       halfInvitations: 1,
       history: [
-        logRow(MORNING_INSTANT, "full_spent", ENTRY_ACTION),
-        logRow(MORNING_INSTANT, "half_refunded", EXIT_ACTION),
+        logRow(hoursAgo(1), "full_spent", ENTRY_ACTION),
+        logRow(hoursAgo(0.5), "half_refunded", EXIT_ACTION),
       ],
     });
 
@@ -534,14 +680,18 @@ describe("handleAction — GUEST_EXIT", () => {
     expect(result.metadata?.invitationSettlement).toBe("none");
   });
 
-  it("never refunds an exit in a different slot than the entry", async () => {
-    // Entry in the MORNING, exit in the AFTERNOON: the guest occupied both.
-    vi.setSystemTime(AFTERNOON_INSTANT);
+  it("never refunds across midnight, however short the visit", async () => {
+    // Exit at 00:30 Madrid against an entry at 23:00 the previous local day —
+    // 1.5 hours elapsed. The same-day gate is kept deliberately, so this is a
+    // full spend. The entry is dropped by the paging filter, not by the window.
+    vi.setSystemTime(new Date("2026-08-26T22:30:00Z"));
     const { ctx, writes } = fakeContext({
       actionId: EXIT_ACTION,
       invitations: 2,
       halfInvitations: 0,
-      history: [logRow(MORNING_INSTANT, "full_spent", ENTRY_ACTION)],
+      history: [
+        logRow(new Date("2026-08-26T21:00:00Z"), "full_spent", ENTRY_ACTION),
+      ],
     });
 
     const result = await InvitationActionStrategy.handleAction(ctx);
@@ -551,13 +701,85 @@ describe("handleAction — GUEST_EXIT", () => {
     expect(result.metadata?.invitationSettlement).toBe("none");
   });
 
-  it("does not refund against an unmarked legacy entry", async () => {
-    vi.setSystemTime(MORNING_INSTANT);
+  it("serves several guests on one card: one refund per in-window entry", async () => {
+    // A member walked two guests in, at −6h and −1h, and both are leaving now.
+    // The log cannot say which guest is at the gate; the aggregate is what has
+    // to be right — exactly one refund, then the cap.
+    vi.setSystemTime(NOW);
+    const history = [
+      logRow(hoursAgo(6), "full_spent", ENTRY_ACTION),
+      logRow(hoursAgo(1), "full_spent", ENTRY_ACTION),
+    ];
+
+    const first = fakeContext({
+      actionId: EXIT_ACTION,
+      invitations: 2,
+      halfInvitations: 0,
+      history,
+    });
+    const firstResult = await InvitationActionStrategy.handleAction(first.ctx);
+
+    // The second exit sees the refund the first one logged.
+    const second = fakeContext({
+      actionId: EXIT_ACTION,
+      invitations: 2,
+      halfInvitations: 1,
+      history: [...history, logRow(NOW, "half_refunded", EXIT_ACTION)],
+    });
+    const secondResult = await InvitationActionStrategy.handleAction(second.ctx);
+
+    expect(firstResult.metadata?.invitationSettlement).toBe("half_refunded");
+    expect(first.writes).toEqual([{ fieldId: HALF_FIELD, value: 1 }]);
+    expect(secondResult.metadata?.invitationSettlement).toBe("none");
+    expect(second.writes).toEqual([]);
+  });
+
+  it("a stale refund does not swallow a fresh entry's refund", async () => {
+    // Long visit entered at −6h and refunded at −4h; that credit was then spent
+    // by a half-paid entry at −3h; a new guest came in at −1h and is leaving
+    // now. Counting refunds from the same cutoff as entries would charge the
+    // −4h refund against the −1h entry and deny this guest their credit.
+    vi.setSystemTime(NOW);
     const { ctx, writes } = fakeContext({
       actionId: EXIT_ACTION,
       invitations: 2,
       halfInvitations: 0,
-      history: [logRow(MORNING_INSTANT, undefined, ENTRY_ACTION)],
+      history: [
+        logRow(hoursAgo(6), "full_spent", ENTRY_ACTION),
+        logRow(hoursAgo(4), "half_refunded", EXIT_ACTION),
+        logRow(hoursAgo(3), "half_spent", ENTRY_ACTION),
+        logRow(hoursAgo(1), "full_spent", ENTRY_ACTION),
+      ],
+    });
+
+    const result = await InvitationActionStrategy.handleAction(ctx);
+
+    expect(result.metadata?.invitationSettlement).toBe("half_refunded");
+    expect(writes).toEqual([{ fieldId: HALF_FIELD, value: 1 }]);
+  });
+
+  it("never refunds an entry that was itself paid with a half credit", async () => {
+    vi.setSystemTime(NOW);
+    const { ctx, writes } = fakeContext({
+      actionId: EXIT_ACTION,
+      invitations: 2,
+      halfInvitations: 0,
+      history: [logRow(hoursAgo(1), "half_spent", ENTRY_ACTION)],
+    });
+
+    const result = await InvitationActionStrategy.handleAction(ctx);
+
+    expect(writes).toEqual([]);
+    expect(result.metadata?.invitationSettlement).toBe("none");
+  });
+
+  it("does not refund against an unmarked legacy entry", async () => {
+    vi.setSystemTime(NOW);
+    const { ctx, writes } = fakeContext({
+      actionId: EXIT_ACTION,
+      invitations: 2,
+      halfInvitations: 0,
+      history: [logRow(hoursAgo(1), undefined, ENTRY_ACTION)],
     });
 
     const result = await InvitationActionStrategy.handleAction(ctx);
@@ -603,15 +825,15 @@ describe("handleAction — R4 purchase mode", () => {
 
   it("R4.2 refunds nothing on exit and never reads the history", async () => {
     // Asserting the absent read, not just the absent refund: "no time logic"
-    // is the requirement, and an exit that computed a slot and then discarded
-    // the answer would pass an outcome-only assertion.
-    vi.setSystemTime(MORNING_INSTANT);
+    // is the requirement, and an exit that built the counters and then
+    // discarded them would pass an outcome-only assertion.
+    vi.setSystemTime(NOW);
     const { ctx, writes, historyCalls } = fakeContext({
       actionId: EXIT_ACTION,
       invitations: 5,
       halfInvitations: 0,
       purchaseMode: true,
-      history: [logRow(MORNING_INSTANT, "full_spent", ENTRY_ACTION)],
+      history: [logRow(hoursAgo(1), "full_spent", ENTRY_ACTION)],
     });
 
     const result = await InvitationActionStrategy.handleAction(ctx);
@@ -624,7 +846,7 @@ describe("handleAction — R4 purchase mode", () => {
   });
 
   it("R4.2 refunds nothing however many times the exit is run", async () => {
-    vi.setSystemTime(MORNING_INSTANT);
+    vi.setSystemTime(NOW);
     for (const halfInvitations of [0, 1, 9]) {
       const { ctx, writes } = fakeContext({
         actionId: EXIT_ACTION,
@@ -642,17 +864,17 @@ describe("handleAction — R4 purchase mode", () => {
 
   it("does not refund against a purchase entry after the flag is turned OFF", async () => {
     // The regression the distinct marker exists for: entries settled under R4
-    // in the morning, flag cleared, exit in the same slot. A shared
+    // an hour ago, flag cleared, exit well inside the window. A shared
     // `full_spent` marker would hand out a credit that was never sold.
-    vi.setSystemTime(MORNING_INSTANT);
+    vi.setSystemTime(NOW);
     const { ctx, writes } = fakeContext({
       actionId: EXIT_ACTION,
       invitations: 5,
       halfInvitations: 0,
       purchaseMode: false,
       history: [
-        logRow(MORNING_INSTANT, "purchase_spent", ENTRY_ACTION),
-        logRow(MORNING_INSTANT, "purchase_spent", ENTRY_ACTION),
+        logRow(hoursAgo(1), "purchase_spent", ENTRY_ACTION),
+        logRow(hoursAgo(1), "purchase_spent", ENTRY_ACTION),
       ],
     });
 
@@ -666,7 +888,7 @@ describe("handleAction — R4 purchase mode", () => {
   it("an absent flag behaves exactly as before R4 shipped", async () => {
     // `purchaseMode` defaults to null — the value a card with no
     // `field_values` row for the boolean actually reads back.
-    vi.setSystemTime(MORNING_INSTANT);
+    vi.setSystemTime(NOW);
     const { ctx: entryCtx } = fakeContext({
       actionId: ENTRY_ACTION,
       invitations: 5,
@@ -676,7 +898,7 @@ describe("handleAction — R4 purchase mode", () => {
       actionId: EXIT_ACTION,
       invitations: 5,
       halfInvitations: 0,
-      history: [logRow(MORNING_INSTANT, "full_spent", ENTRY_ACTION)],
+      history: [logRow(hoursAgo(1), "full_spent", ENTRY_ACTION)],
     });
 
     const entry = await InvitationActionStrategy.handleAction(entryCtx);
@@ -684,7 +906,7 @@ describe("handleAction — R4 purchase mode", () => {
 
     expect(entry.newValue).toBe(4);
     expect(entry.metadata?.invitationSettlement).toBe("full_spent");
-    expect(entry.metadata?.invitationMode).toBe("slot");
+    expect(entry.metadata?.invitationMode).toBe("duration");
     expect(exit.metadata?.invitationSettlement).toBe("half_refunded");
     expect(exitWrites).toEqual([{ fieldId: HALF_FIELD, value: 1 }]);
   });
@@ -700,13 +922,16 @@ describe("handleAction — R4 purchase mode", () => {
     const result = await InvitationActionStrategy.handleAction(ctx);
 
     expect(result.metadata?.invitationSettlement).toBe("full_spent");
-    expect(result.metadata?.invitationMode).toBe("slot");
+    expect(result.metadata?.invitationMode).toBe("duration");
   });
 });
 
 describe("handleAction — diagnostic metadata", () => {
-  it("stamps the slot, local date and mode alongside the settlement marker", async () => {
-    vi.setSystemTime(AFTERNOON_INSTANT);
+  it("stamps the local date and mode alongside the settlement marker", async () => {
+    // Exact shape, so a stray key cannot appear unnoticed — `invitationSlot`
+    // was one, and is gone. There is deliberately no key for the window: it is
+    // `executed_at` minus five hours.
+    vi.setSystemTime(NOW);
     const { ctx } = fakeContext({
       actionId: ENTRY_ACTION,
       invitations: 1,
@@ -717,9 +942,8 @@ describe("handleAction — diagnostic metadata", () => {
 
     expect(result.metadata).toEqual({
       invitationSettlement: "full_spent",
-      invitationSlot: "AFTERNOON",
       invitationDate: "2026-08-27",
-      invitationMode: "slot",
+      invitationMode: "duration",
     });
   });
 });

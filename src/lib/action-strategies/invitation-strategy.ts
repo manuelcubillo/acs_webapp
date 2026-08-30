@@ -6,19 +6,24 @@
  * the balance on two number fields of the card:
  *
  *   INVITATIONS      — full invitations. One covers a whole day.
- *   HALF_INVITATION  — half-invitation credits. One covers a single time slot.
+ *   HALF_INVITATION  — half-invitation credits. One covers a short visit.
  *
  * A third field, boolean, selects the accounting model per card:
  *
  *   PURCHASE_MODE    — "compra invitaciones". When true the holder BUYS their
- *                      invitations outright instead of drawing on a slot-based
+ *                      invitations outright instead of drawing on a duration-based
  *                      allotment, and nothing is ever returned to them.
  *
- * A *time slot* is derived from the execution timestamp in the tenant's civil
- * timezone (never from the raw UTC instant):
+ * What a visit costs is decided by HOW LONG IT LASTED, not by which half of the
+ * day it fell in:
  *
- *   MORNING    — local time before 15:00
- *   AFTERNOON  — local time from 15:00 onwards
+ *   ≤ 5 hours  — half an invitation.
+ *   > 5 hours  — a full invitation.
+ *
+ * The threshold is inclusive and compared in milliseconds, never bucketed by
+ * hour. The calendar day is still evaluated in the tenant's civil timezone
+ * (never from the raw UTC instant) because a refund additionally requires entry
+ * and exit to fall on the SAME local day.
  *
  * ─── Rules ───────────────────────────────────────────────────────────────────
  *
@@ -28,31 +33,43 @@
  *   2. otherwise            → spend one full invitation. This entry IS
  *                             refundable (see R2).
  *
- * R2 · GUEST_EXIT — with `S` the slot of the exit and `D` today's local date:
- *   1. spent    = GUEST_ENTRY executions on this card, on `D`, in slot `S`,
- *                 that consumed a full INVITATIONS unit (R1.2).
- *   2. refunded = GUEST_EXIT executions on this card, on `D`, in slot `S`,
- *                 that already granted a half-invitation.
- *   3. refunded < spent → grant one HALF_INVITATION.
- *   4. otherwise        → no balance change.
+ * R2 · GUEST_EXIT — with `N` the exit instant, `D` its local date and
+ *      `cutoff = N − 5h`:
+ *   1. spent    = GUEST_ENTRY executions on this card that consumed a full
+ *                 INVITATIONS unit (R1.2), whose local date is `D` AND whose
+ *                 `executedAt >= cutoff` — i.e. entries still inside the
+ *                 half-price window.
+ *   2. since    = the OLDEST `executedAt` among those entries, or `cutoff` when
+ *                 there are none. A refund granted before the oldest entry we
+ *                 are still counting cannot have been granted against any of
+ *                 them, so it must not consume one of their refunds.
+ *   3. refunded = GUEST_EXIT executions on this card, local date `D`, with
+ *                 `executedAt >= since`, that already granted a half-invitation.
+ *   4. refunded < spent → grant one HALF_INVITATION.
+ *   5. otherwise        → no balance change.
  *
- *   The cap is therefore self-enforcing: at most one half-invitation returned
- *   per full invitation consumed, per slot, per day. An exit in a different slot
- *   than its entry never refunds — the guest occupied both slots.
+ *   The comparison IS the cap: at most one half-invitation returned per full
+ *   invitation consumed inside the window. It is order-independent and needs no
+ *   entry↔exit pairing key, which is what makes it correct when several guests
+ *   are on one card at once — with entries at N−6h and N−1h and two exits at N,
+ *   exactly one refund is granted. The log cannot say WHICH guest left, but the
+ *   aggregate is right.
+ *
+ *   An entry that has aged past 5 hours, or that happened on the previous local
+ *   day, is simply not counted, so the exit that follows it refunds nothing.
  *
  * R4 · PURCHASE_MODE — evaluated per card, on both handled actions:
  *   1. GUEST_ENTRY keeps R1's preference — a half credit is still spent first,
  *      because a credit the holder already owns is still theirs to spend — but
  *      an entry that consumes a full invitation is marked `purchase_spent`
  *      rather than `full_spent`.
- *   2. GUEST_EXIT never refunds. R2 is skipped WHOLESALE: no slot arithmetic,
+ *   2. GUEST_EXIT never refunds. R2 is skipped WHOLESALE: no window arithmetic,
  *      no history read, no balance change.
  *
  *   R4.1's distinct marker is what makes R4.2 robust rather than merely correct
  *   today. R2 counts only `full_spent` as refundable, so an entry settled under
  *   purchase mode stays unrefundable even if the flag is flipped off later the
- *   same day in the same slot — which a shared `full_spent` marker would not
- *   survive.
+ *   same day — which a shared `full_spent` marker would not survive.
  *
  *   Numbered R4 and not R3 because R3 is already spoken for: it names the
  *   insufficient-balance gate in ADR `2026-08-27-invitation-accounting.md`,
@@ -77,12 +94,14 @@
  *
  * ─── Structure ───────────────────────────────────────────────────────────────
  *
- * The decision logic is a set of exported pure functions (slot resolution,
- * settlement counting, entry/exit decisions). The DB reads and writes live at
+ * The decision logic is a set of exported pure functions (local date resolution,
+ * settlement selection, entry/exit decisions). The DB reads and writes live at
  * the edges, in `handleGuestEntry` / `handleGuestExit` / `applyDecision`, so the
  * rules can be unit-tested without a database.
+ *
+ * Superseded the half-day slot rule (MORNING/AFTERNOON split at 15:00) on
+ * 2026-08-30 — ADR `2026-08-30-invitation-duration-refund.md`.
  */
-
 import type {
   ActionHistoryRecord,
   ActionStrategyContext,
@@ -115,18 +134,27 @@ export const INVITATION_CONFIG = {
 } as const;
 
 /**
- * The tenant's civil timezone. "Today" and the slot boundary are always
- * evaluated here, never in UTC — in summer Madrid is UTC+2, so an entry at
- * 00:30 local belongs to the previous UTC day and would be counted against the
- * wrong day if the raw instant were used.
+ * The tenant's civil timezone. "Today" is always evaluated here, never in UTC —
+ * in summer Madrid is UTC+2, so an entry at 00:30 local belongs to the previous
+ * UTC day and would be counted against the wrong day if the raw instant were
+ * used.
  *
  * Deliberately a single hardcoded constant: making it configurable is out of
  * scope, and keeping it in one place is what makes that change a one-liner.
  */
 export const TENANT_TIME_ZONE = "Europe/Madrid";
 
-/** Local hour at which the AFTERNOON slot begins. Before it, MORNING. */
-const AFTERNOON_START_HOUR = 15;
+/**
+ * A visit lasting at most this long costs half an invitation; a longer one
+ * costs a full invitation.
+ *
+ * The boundary is INCLUSIVE — exactly five hours still refunds — and the
+ * comparison is made in milliseconds off the two `executed_at` instants, never
+ * bucketed by hour. `REFUND_WINDOW_MS` is derived rather than spelled out so
+ * the two can never drift apart.
+ */
+const REFUND_WINDOW_HOURS = 5;
+const REFUND_WINDOW_MS = REFUND_WINDOW_HOURS * 60 * 60 * 1000;
 
 /** One guest entry costs exactly one credit (full or half). */
 const ENTRY_COST = 1;
@@ -138,13 +166,16 @@ const REFUND_AMOUNT = 1;
 export const SETTLEMENT_METADATA_KEY = "invitationSettlement";
 
 /** Diagnostic keys written alongside the marker (never read back by the rules;
- *  they exist so an auditor can see which day/slot a row was settled against
+ *  they exist so an auditor can see which local day a row was settled against
  *  without recomputing the timezone conversion).
  *
  *  `invitationMode` records which accounting model settled the row. It carries
  *  real information the marker cannot: an R4 exit settles as `none`, which is
- *  otherwise indistinguishable from a slot-mode exit that hit its refund cap. */
-export const SLOT_METADATA_KEY = "invitationSlot";
+ *  otherwise indistinguishable from a duration-mode exit that hit its refund
+ *  cap.
+ *
+ *  There is deliberately no key for the refund window: it is `executed_at`
+ *  minus five hours, derivable from the row itself. */
 export const DATE_METADATA_KEY = "invitationDate";
 export const MODE_METADATA_KEY = "invitationMode";
 
@@ -158,9 +189,6 @@ const HISTORY_PAGE_SIZE = 100;
 const HISTORY_MAX_PAGES = 5;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-/** The half-day window an execution belongs to. */
-export type InvitationSlot = "MORNING" | "AFTERNOON";
 
 /**
  * What an execution did to the balance. Written to the log on every entry/exit
@@ -181,17 +209,20 @@ export type InvitationSettlement =
   | "half_refunded"
   | "none";
 
-/** Which accounting model settled an execution. Diagnostic only — written to
- *  the log under {@link MODE_METADATA_KEY}, never read back by the rules. */
-export type InvitationMode = "purchase" | "slot";
-
-/** A calendar day + slot in the tenant's timezone. */
-export interface LocalMoment {
-  /** Local calendar day as `YYYY-MM-DD` (lexicographically comparable). */
-  date: string;
-  /** The half-day window. */
-  slot: InvitationSlot;
-}
+/**
+ * Which accounting model settled an execution. Diagnostic only — written to the
+ * log under {@link MODE_METADATA_KEY}, never read back by the rules.
+ *
+ *   purchase — R4: the holder buys outright, nothing is ever refunded.
+ *   duration — the ≤ 5h refund rule.
+ *   slot     — HISTORICAL ONLY. The half-day MORNING/AFTERNOON rule this
+ *              strategy applied before 2026-08-30, and the label
+ *              `scripts/legacyDBMigration/resync.ts` still writes on the rows it
+ *              reconstructs from the legacy system. The live strategy never
+ *              writes it any more, which is what makes pre-change rows
+ *              identifiable in the audit trail instead of silently relabelled.
+ */
+export type InvitationMode = "purchase" | "duration" | "slot";
 
 /** The card's two invitation counters. */
 export interface InvitationBalances {
@@ -199,16 +230,25 @@ export interface InvitationBalances {
   halfInvitations: number;
 }
 
-/** How many refundable entries and granted refunds exist in the current slot. */
-export interface SlotCounters {
+/** How many refundable entries and granted refunds the refund window holds. */
+export interface RefundCounters {
   /**
-   * GUEST_ENTRY executions in this slot that consumed a full invitation under
-   * slot accounting. `purchase_spent` entries are deliberately NOT counted:
-   * R4.1 makes them permanently unrefundable.
+   * GUEST_ENTRY executions inside the window that consumed a full invitation
+   * under duration accounting. `purchase_spent` entries are deliberately NOT
+   * counted: R4.1 makes them permanently unrefundable.
    */
   spent: number;
-  /** GUEST_EXIT executions in this slot that already granted a half. */
+  /** GUEST_EXIT executions since those entries that already granted a half. */
   refunded: number;
+}
+
+/** The slice of history a settlement lookup is restricted to: one local day,
+ *  from one instant onwards. */
+export interface RefundWindow {
+  /** Local calendar day as `YYYY-MM-DD` (lexicographically comparable). */
+  date: string;
+  /** Earliest `executedAt` that still counts, INCLUSIVE. */
+  since: Date;
 }
 
 /** The outcome of applying R1 or R2: what happened, and the resulting balances. */
@@ -222,7 +262,7 @@ export interface SettlementDecision {
 
 /**
  * Cache of `Intl.DateTimeFormat` instances by timezone. Constructing one is
- * comparatively expensive and the counting pass formats every history row.
+ * comparatively expensive and the selection pass formats every history row.
  */
 const formatterCache = new Map<string, Intl.DateTimeFormat>();
 
@@ -234,10 +274,6 @@ function localFormatter(timeZone: string): Intl.DateTimeFormat {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
-      // h23 rather than `hour12: false`: the latter renders midnight as "24"
-      // in several locales, which would push it into the AFTERNOON slot.
-      hourCycle: "h23",
-      hour: "2-digit",
     });
     formatterCache.set(timeZone, formatter);
   }
@@ -245,34 +281,24 @@ function localFormatter(timeZone: string): Intl.DateTimeFormat {
 }
 
 /**
- * Map a local hour to its slot.
+ * Convert an instant to the tenant's local calendar day.
  *
- * @param localHour - Hour of day (0–23) in the tenant's timezone.
- * @returns MORNING before {@link AFTERNOON_START_HOUR}, AFTERNOON from it on.
- */
-export function resolveSlot(localHour: number): InvitationSlot {
-  return localHour < AFTERNOON_START_HOUR ? "MORNING" : "AFTERNOON";
-}
-
-/**
- * Convert an instant to the tenant's local calendar day + slot.
+ * The only timezone-sensitive quantity left in the rules: elapsed time is a
+ * difference between two instants and needs no conversion, but "same day" does.
  *
  * @param instant  - The UTC instant (an execution timestamp).
  * @param timeZone - IANA timezone; defaults to the tenant's.
- * @returns The local day (`YYYY-MM-DD`) and its slot.
+ * @returns The local day as `YYYY-MM-DD` (lexicographically comparable).
  */
-export function resolveLocalMoment(
+export function resolveLocalDate(
   instant: Date,
   timeZone: string = TENANT_TIME_ZONE,
-): LocalMoment {
+): string {
   const parts = localFormatter(timeZone).formatToParts(instant);
   const get = (type: Intl.DateTimeFormatPartTypes): string =>
     parts.find((p) => p.type === type)?.value ?? "";
 
-  return {
-    date: `${get("year")}-${get("month")}-${get("day")}`,
-    slot: resolveSlot(Number(get("hour"))),
-  };
+  return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
 // ─── Pure helpers — balances and markers ─────────────────────────────────────
@@ -337,33 +363,116 @@ export function readSettlement(
 }
 
 /**
- * Count the records carrying a given settlement marker within one day + slot.
+ * Select the records carrying a given settlement marker inside a window.
  *
  * Pure over the record list: the caller supplies whatever rows it fetched and
- * this re-derives each row's local moment, so the filter cannot disagree with
- * the moment the decision is being made for.
+ * this re-derives each row's local date, so the filter cannot disagree with the
+ * moment the decision is being made for.
+ *
+ * `since` is inclusive, which is what makes an exactly-five-hour visit refund.
  *
  * @param records    - Decoded `action_logs` rows (any order).
- * @param settlement - The marker to count.
- * @param moment     - The day + slot to restrict to.
+ * @param settlement - The marker to select.
+ * @param window     - Local day + earliest `executedAt` that still counts.
  * @param timeZone   - IANA timezone; defaults to the tenant's.
- * @returns How many records match.
+ * @returns The matching records, in the order they were supplied.
+ */
+export function selectSettlements(
+  records: ActionHistoryRecord[],
+  settlement: InvitationSettlement,
+  window: RefundWindow,
+  timeZone: string = TENANT_TIME_ZONE,
+): ActionHistoryRecord[] {
+  const since = window.since.getTime();
+
+  return records.filter(
+    (record) =>
+      readSettlement(record) === settlement &&
+      record.executedAt.getTime() >= since &&
+      resolveLocalDate(record.executedAt, timeZone) === window.date,
+  );
+}
+
+/**
+ * How many records carry a given settlement marker inside a window.
+ *
+ * @see selectSettlements — this is its arity, counted.
  */
 export function countSettlements(
   records: ActionHistoryRecord[],
   settlement: InvitationSettlement,
-  moment: LocalMoment,
+  window: RefundWindow,
   timeZone: string = TENANT_TIME_ZONE,
 ): number {
-  let total = 0;
+  return selectSettlements(records, settlement, window, timeZone).length;
+}
+
+/**
+ * The oldest execution instant in a record list.
+ *
+ * @param records - Decoded `action_logs` rows (any order).
+ * @returns The earliest `executedAt`, or null when the list is empty.
+ */
+export function earliestExecutedAt(
+  records: ActionHistoryRecord[],
+): Date | null {
+  let earliest: Date | null = null;
   for (const record of records) {
-    if (readSettlement(record) !== settlement) continue;
-    const recordMoment = resolveLocalMoment(record.executedAt, timeZone);
-    if (recordMoment.date === moment.date && recordMoment.slot === moment.slot) {
-      total += 1;
+    if (earliest === null || record.executedAt < earliest) {
+      earliest = record.executedAt;
     }
   }
-  return total;
+  return earliest;
+}
+
+/**
+ * R2.1–R2.3 — count the refundable entries and the refunds already granted
+ * against them.
+ *
+ * `spent` is scoped to entries still inside the five-hour window on today's
+ * local date: an entry older than that, or from yesterday, is not refundable and
+ * must not raise the cap.
+ *
+ * `refunded` is scoped from the OLDEST counted entry rather than from the same
+ * cutoff, and that asymmetry is the point. A refund granted before that entry
+ * existed cannot have been granted against any entry we are counting, so
+ * charging it against one of them would silently swallow a fresh entry's refund
+ * — the exact case of a long visit refunded hours ago followed by a short visit
+ * now.
+ *
+ * @param entryRecords - GUEST_ENTRY rows for the card (any order).
+ * @param exitRecords  - GUEST_EXIT rows for the card (any order).
+ * @param now          - The exit instant being settled.
+ * @param timeZone     - IANA timezone; defaults to the tenant's.
+ * @returns The two counts R2.4 compares.
+ */
+export function buildRefundCounters(
+  entryRecords: ActionHistoryRecord[],
+  exitRecords: ActionHistoryRecord[],
+  now: Date,
+  timeZone: string = TENANT_TIME_ZONE,
+): RefundCounters {
+  const date = resolveLocalDate(now, timeZone);
+  const cutoff = new Date(now.getTime() - REFUND_WINDOW_MS);
+
+  const spentRecords = selectSettlements(
+    entryRecords,
+    "full_spent",
+    { date, since: cutoff },
+    timeZone,
+  );
+
+  const since = earliestExecutedAt(spentRecords) ?? cutoff;
+
+  return {
+    spent: spentRecords.length,
+    refunded: countSettlements(
+      exitRecords,
+      "half_refunded",
+      { date, since },
+      timeZone,
+    ),
+  };
 }
 
 // ─── Pure helpers — the rules ────────────────────────────────────────────────
@@ -413,25 +522,28 @@ export function decideEntry(
 }
 
 /**
- * R2 — decide whether a GUEST_EXIT refunds a half-invitation.
+ * R2.4 — decide whether a GUEST_EXIT refunds a half-invitation.
  *
- * The comparison IS the cap: one refund per full invitation consumed in the
- * same slot on the same day. An exit whose entry was paid with a half credit
- * (or that happened in the other slot) finds `spent` at 0 and refunds nothing.
+ * The comparison IS the cap: one refund per full invitation consumed inside the
+ * five-hour window. An exit whose entry was paid with a half credit — or whose
+ * entry has aged past the window, or fell on the previous local day — finds
+ * `spent` at 0 and refunds nothing.
  *
- * R4.2 rides the same function: `counters === null` means slot accounting does
- * not apply to this card, and nothing is ever returned. Null rather than zeroed
- * counters because the two are not the same claim — `{ spent: 0, refunded: 0 }`
- * asserts a history read that, under purchase mode, never happened.
+ * R4.2 rides the same function: `counters === null` means duration accounting
+ * does not apply to this card, and nothing is ever returned. Null rather than
+ * zeroed counters because the two are not the same claim —
+ * `{ spent: 0, refunded: 0 }` asserts a history read that, under purchase mode,
+ * never happened.
  *
  * @param balances - Current counters.
- * @param counters - Same-slot entry/refund counts from the log, or null when
- *                   purchase mode (R4.2) disables slot accounting for this card.
+ * @param counters - In-window entry/refund counts from the log, or null when
+ *                   purchase mode (R4.2) disables duration accounting for this
+ *                   card.
  * @returns The settlement and the resulting balances.
  */
 export function decideExit(
   balances: InvitationBalances,
-  counters: SlotCounters | null,
+  counters: RefundCounters | null,
 ): SettlementDecision {
   if (counters !== null && counters.refunded < counters.spent) {
     return {
@@ -495,15 +607,19 @@ function readPurchaseMode(ctx: ActionStrategyContext): Promise<boolean> {
  * an earlier local day. Only `log_type = "action"` rows are requested —
  * lifecycle and scan rows carry no settlement and must never be counted.
  *
+ * The day is the coarse filter; the five-hour window is applied afterwards by
+ * `buildRefundCounters`, which is pure. Collecting the whole day and narrowing
+ * in memory keeps the paging loop's stop condition a simple string comparison.
+ *
  * @param ctx                - The strategy context (card-scoped reader).
  * @param actionDefinitionId - Which action's executions to collect.
- * @param moment             - The local day to collect (slot ignored here).
+ * @param today              - The local day to collect, as `YYYY-MM-DD`.
  * @returns The matching rows, newest first.
  */
 async function collectSameDayExecutions(
   ctx: ActionStrategyContext,
   actionDefinitionId: string,
-  moment: LocalMoment,
+  today: string,
 ): Promise<ActionHistoryRecord[]> {
   const collected: ActionHistoryRecord[] = [];
 
@@ -517,12 +633,12 @@ async function collectSameDayExecutions(
 
     let reachedPreviousDay = false;
     for (const row of rows) {
-      const rowDate = resolveLocalMoment(row.executedAt).date;
-      if (rowDate < moment.date) {
+      const rowDate = resolveLocalDate(row.executedAt);
+      if (rowDate < today) {
         reachedPreviousDay = true;
         break;
       }
-      if (rowDate === moment.date) collected.push(row);
+      if (rowDate === today) collected.push(row);
     }
 
     if (reachedPreviousDay || rows.length < HISTORY_PAGE_SIZE) break;
@@ -568,7 +684,7 @@ async function applyDecision(
   ctx: ActionStrategyContext,
   decision: SettlementDecision,
   before: InvitationBalances,
-  moment: LocalMoment,
+  today: string,
   purchaseMode: boolean,
 ): Promise<ActionStrategyResult> {
   const { next } = decision;
@@ -585,11 +701,10 @@ async function applyDecision(
     newValue: next.invitations,
     metadata: {
       [SETTLEMENT_METADATA_KEY]: decision.settlement,
-      [SLOT_METADATA_KEY]: moment.slot,
-      [DATE_METADATA_KEY]: moment.date,
+      [DATE_METADATA_KEY]: today,
       [MODE_METADATA_KEY]: (purchaseMode
         ? "purchase"
-        : "slot") satisfies InvitationMode,
+        : "duration") satisfies InvitationMode,
     },
   };
 }
@@ -602,7 +717,7 @@ async function applyDecision(
  */
 async function handleGuestEntry(
   ctx: ActionStrategyContext,
-  moment: LocalMoment,
+  today: string,
 ): Promise<ActionStrategyResult> {
   // One wave: the flag read rides alongside the balance reads rather than
   // adding a round trip in front of them.
@@ -612,12 +727,12 @@ async function handleGuestEntry(
   ]);
 
   const decision = decideEntry(balances, purchaseMode);
-  return applyDecision(ctx, decision, balances, moment, purchaseMode);
+  return applyDecision(ctx, decision, balances, today, purchaseMode);
 }
 
 /**
- * R2 — GUEST_EXIT: refund one half-invitation while this slot still has
- * unrefunded full-invitation entries. R4.2 short-circuits the whole rule.
+ * R2 — GUEST_EXIT: refund one half-invitation while the five-hour window still
+ * holds unrefunded full-invitation entries. R4.2 short-circuits the whole rule.
  *
  * The flag is read in its own wave, ahead of the history, precisely so that a
  * purchase-mode card never pays for the two same-day history reads it has no
@@ -626,7 +741,8 @@ async function handleGuestEntry(
  */
 async function handleGuestExit(
   ctx: ActionStrategyContext,
-  moment: LocalMoment,
+  today: string,
+  now: Date,
 ): Promise<ActionStrategyResult> {
   const [balances, purchaseMode] = await Promise.all([
     readBalances(ctx),
@@ -635,21 +751,18 @@ async function handleGuestExit(
 
   if (purchaseMode) {
     const decision = decideExit(balances, null);
-    return applyDecision(ctx, decision, balances, moment, true);
+    return applyDecision(ctx, decision, balances, today, true);
   }
 
   const [entryRecords, exitRecords] = await Promise.all([
-    collectSameDayExecutions(ctx, INVITATION_CONFIG.guestEntryActionId, moment),
-    collectSameDayExecutions(ctx, INVITATION_CONFIG.guestExitActionId, moment),
+    collectSameDayExecutions(ctx, INVITATION_CONFIG.guestEntryActionId, today),
+    collectSameDayExecutions(ctx, INVITATION_CONFIG.guestExitActionId, today),
   ]);
 
-  const counters: SlotCounters = {
-    spent: countSettlements(entryRecords, "full_spent", moment),
-    refunded: countSettlements(exitRecords, "half_refunded", moment),
-  };
+  const counters = buildRefundCounters(entryRecords, exitRecords, now);
 
   const decision = decideExit(balances, counters);
-  return applyDecision(ctx, decision, balances, moment, false);
+  return applyDecision(ctx, decision, balances, today, false);
 }
 
 /**
@@ -708,18 +821,20 @@ export const InvitationActionStrategy: TenantActionStrategy = {
       return handleStandardAction(ctx);
     }
 
-    // One clock read per execution, shared by the decision and the marker, so a
-    // single execution can never straddle the 15:00 boundary internally.
+    // One clock read per execution, shared by the elapsed-time arithmetic, the
+    // day filter and the marker, so a single execution can never disagree with
+    // itself about when it happened.
     //
     // Note: `action_logs.executed_at` defaults to the DB's now(), a few
-    // milliseconds after this. An execution landing exactly on the boundary can
-    // therefore be settled as MORNING but logged with an AFTERNOON timestamp,
-    // making a later exit read it as a different slot. Sub-second window; the
-    // alternative (a strategy-supplied executed_at) is a change to executeAction.
-    const moment = resolveLocalMoment(new Date());
+    // milliseconds after this, so the instant a later exit measures against is
+    // marginally later than the one the entry settled with. Sub-second skew
+    // against a five-hour threshold; the alternative (a strategy-supplied
+    // executed_at) is a change to executeAction.
+    const now = new Date();
+    const today = resolveLocalDate(now);
 
     return isEntry
-      ? handleGuestEntry(ctx, moment)
-      : handleGuestExit(ctx, moment);
+      ? handleGuestEntry(ctx, today)
+      : handleGuestExit(ctx, today, now);
   },
 };

@@ -11,6 +11,7 @@ Router for tasks. Read `foundation/` once per session. Then read only the module
 | Card design, design editor, layout, Konva, PNG export, passbook | `card-designs`, `card-types`, `fields` |
 | Action definition, auto-action, execute action       | `actions`, `fields`, `card-types`               |
 | Action override flow, `allow_override_on_error`      | `actions`, `dashboard` (setting lives in `dashboard_settings`) |
+| Invitation accounting, guest entry/exit, half-invitation refund, 5-hour window, `compra_invitaciones` | `actions`, `decisions/2026-08-30-invitation-duration-refund.md` |
 | Scan, scanner, reader, QR, external reader           | `scanning`, `actions`, `dashboard`              |
 | Operational vs informational consultation            | `scanning`, `actions`, `cards`                  |
 | Field type, field definition, renderer, input        | `fields`, `validations`                         |

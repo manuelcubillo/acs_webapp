@@ -159,7 +159,7 @@ Payloads are stripped of `photo` object keys at the Server Action boundary (`loa
 
 ## Open TODOs
 
-- [ ] **Invitation tenant: entries/exits can render as no-ops.** For `scan_strategy = 'invitation'`, `GUEST_ENTRY` paid with a half-credit and `GUEST_EXIT` (refunding or not) log `before_value === after_value` on `invitations`; the real `HALF_INVITATION` change goes through the unlogged `setFieldValue`. Only `metadata.invitationSettlement` records what happened, and no surface reads it. Fix belongs here, not in the strategy. ADR `2026-08-27-invitation-accounting.md`.
+- [ ] **Invitation tenant: entries/exits can render as no-ops.** For `scan_strategy = 'invitation'`, `GUEST_ENTRY` paid with a half-credit and `GUEST_EXIT` (refunding or not) log `before_value === after_value` on `invitations`; the real `HALF_INVITATION` change goes through the unlogged `setFieldValue`. Only `metadata.invitationSettlement` records what happened, and no surface reads it. Fix belongs here, not in the strategy. ADRs `2026-08-27-invitation-accounting.md`, `2026-08-30-invitation-duration-refund.md` (the 2026-08-30 rule change removed `invitationSlot`; it neither helps nor worsens this gap).
 
 ## Recent changes
 
