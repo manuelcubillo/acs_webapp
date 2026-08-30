@@ -3,14 +3,16 @@
 /**
  * DashboardSearchBar — operational scan input.
  *
- * Behavior preserved EXACTLY:
- *   - Autofocus on mount (immediate barcode-reader capture).
+ * Behavior:
+ *   - Autofocus on mount, and refocus after every scan (immediate reader capture).
  *   - Enter submits → onScan(code) (parent handles executeScanWithAutoActionsAction).
  *   - External reader keystrokes land in this input via natural focus alone.
  *     `useExternalScanner` is NOT mounted on the dashboard route, so this field
  *     holding focus is the ONLY thing that makes the HID reader work here.
+ *   - A code read while the dashboard is busy is QUEUED, not dropped. See the
+ *     queue block below.
  *
- * Presentation rebuilt on shadcn Input + Button. Token-driven, no hex, no inline styles.
+ * Presentation built on shadcn Input + Button. Token-driven, no hex, no inline styles.
  * Visually the primary operational action on the page.
  */
 
@@ -30,37 +32,90 @@ const TEXT = {
   ARIA_INPUT:   "Código del carnet",
   ARIA_SUBMIT:  "Iniciar escaneo",
   HINT:         "Pulsa Enter para escanear. El lector externo escribe directamente aquí.",
+  QUEUED: (n: number) =>
+    n === 1
+      ? "1 código en cola — se escaneará al terminar el actual."
+      : `${n} códigos en cola — se escanearán al terminar el actual.`,
 } as const;
 
 interface DashboardSearchBarProps {
   onScan: (code: string) => Promise<void>;
+  /** A scan is in flight. Drives the busy affordance on the submit button. */
   isScanning: boolean;
+  /**
+   * The dashboard is mid-decision or mid-mutation: a confirmation modal is
+   * open, a resume is running, or a manual action is executing. Queued codes
+   * must WAIT for this to clear — every one of those flows reads `activeCard`,
+   * and a scan slipping in would replace it underneath them.
+   */
+  isBlocked?: boolean;
 }
 
-export default function DashboardSearchBar({ onScan, isScanning }: DashboardSearchBarProps) {
+export default function DashboardSearchBar({
+  onScan,
+  isScanning,
+  isBlocked = false,
+}: DashboardSearchBarProps) {
   const [code, setCode] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   /**
-   * Keeps the field focused: an HID reader types wherever focus is, so this
-   * input must own it. Covers mount and every scan completion.
+   * Codes read while the dashboard was busy, oldest first.
    *
-   * It cannot live in `handleSubmit`'s continuation — that runs in the promise
-   * microtask, before React has committed `isScanning: false`, so a `focus()`
-   * there would still hit the input mid-scan and do nothing.
+   * A ref, not state: it is the authoritative queue and must not put itself in
+   * the drain effect's dependencies — an effect that re-runs on every queue
+   * mutation could drain twice for one completed scan and put two scans in
+   * flight at once. `queueDepth` mirrors the length for display only.
+   *
+   * Held to ONE slot per read, never collapsed: at a door each read is a person
+   * whose entry has to be logged, so dropping the middle of a burst would be
+   * the same silent-loss bug this queue exists to fix.
+   */
+  const queueRef = useRef<string[]>([]);
+  const [queueDepth, setQueueDepth] = useState(0);
+
+  // Same reason as above: keeps `onScan` out of the drain effect's deps.
+  const onScanRef = useRef(onScan);
+  onScanRef.current = onScan;
+
+  const isBusy = isScanning || isBlocked;
+
+  /**
+   * Refocus the field and drain ONE queued code, on every transition back to
+   * idle. Each drained scan flips `isScanning` true → false again, which
+   * re-runs this effect and takes the next one, so a burst drains in order.
+   *
+   * The refocus cannot live in `handleSubmit`'s continuation — that runs in the
+   * promise microtask, before React has committed `isScanning: false`, so a
+   * `focus()` there would fire while the field is still mid-scan.
    */
   useEffect(() => {
-    if (!isScanning) inputRef.current?.focus();
-  }, [isScanning]);
+    if (isBusy) return;
+    inputRef.current?.focus();
+
+    const next = queueRef.current.shift();
+    if (next === undefined) return;
+    setQueueDepth(queueRef.current.length);
+    void onScanRef.current(next);
+  }, [isBusy]);
 
   const handleSubmit = useCallback(async () => {
     const trimmed = code.trim();
-    // Load-bearing guard: the input stays focusable while scanning (readOnly,
-    // not disabled), so Enter still reaches this handler mid-scan.
-    if (!trimmed || isScanning) return;
-    await onScan(trimmed);
+    if (!trimmed) return;
+
+    // Cleared BEFORE the await, never after: a reader can start the next burst
+    // while this scan is in flight, and a post-await clear would wipe those
+    // characters mid-code and submit a truncated one.
     setCode("");
-  }, [code, isScanning, onScan]);
+
+    if (isBusy) {
+      queueRef.current.push(trimmed);
+      setQueueDepth(queueRef.current.length);
+      return;
+    }
+
+    await onScan(trimmed);
+  }, [code, isBusy, onScan]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -77,6 +132,7 @@ export default function DashboardSearchBar({ onScan, isScanning }: DashboardSear
   return (
     <section
       aria-label="Escaneo operacional"
+      aria-busy={isBusy}
       className={cn(
         "rounded-2xl border bg-card shadow-sm",
         "border-border ring-1 ring-transparent",
@@ -101,12 +157,11 @@ export default function DashboardSearchBar({ onScan, isScanning }: DashboardSear
             onKeyDown={handleKeyDown}
             placeholder={TEXT.PLACEHOLDER}
             aria-label={TEXT.ARIA_INPUT}
-            // readOnly, NOT disabled: a disabled control cannot hold focus, so
-            // the browser would blur it the moment a scan starts and the next
-            // read would go nowhere. readOnly keeps focus and still delivers
-            // keydown, while the reader's characters stay out of the value.
-            readOnly={isScanning}
-            aria-busy={isScanning}
+            // Never `disabled`, and never `readOnly` either: a disabled control
+            // cannot hold focus (the browser blurs it the moment a scan starts,
+            // and the next read goes nowhere), and a read-only one swallows the
+            // characters the queue needs. The field stays writable throughout;
+            // `handleSubmit` decides whether Enter scans or queues.
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="off"
@@ -114,7 +169,6 @@ export default function DashboardSearchBar({ onScan, isScanning }: DashboardSear
             className={cn(
               "h-12 w-full rounded-xl pl-12 pr-4 text-base font-medium",
               "placeholder:text-muted-foreground/70",
-              isScanning && "text-muted-foreground",
             )}
           />
         </div>
@@ -149,8 +203,14 @@ export default function DashboardSearchBar({ onScan, isScanning }: DashboardSear
         </Button>
       </div>
 
-      <p className="border-t border-border bg-muted/40 px-5 py-2 text-xs text-muted-foreground">
-        {TEXT.HINT}
+      <p
+        aria-live="polite"
+        className={cn(
+          "border-t border-border bg-muted/40 px-5 py-2 text-xs",
+          queueDepth > 0 ? "font-medium text-foreground" : "text-muted-foreground",
+        )}
+      >
+        {queueDepth > 0 ? TEXT.QUEUED(queueDepth) : TEXT.HINT}
       </p>
     </section>
   );

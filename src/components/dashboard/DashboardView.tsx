@@ -444,6 +444,23 @@ export default function DashboardView({
     setManualActionModalErrors([]);
   }, []);
 
+  /**
+   * Holds the search bar's queued codes back while the operator is mid-decision
+   * or a mutation is running.
+   *
+   * Every one of these flows reads `activeCard`, and a queued scan would replace
+   * it underneath them. `handleAutoActionResume` is the sharp case: it resumes
+   * the PAUSED scan's `pendingAutoActionIds` against `activeCard.code`, so a
+   * scan slipping in between the modal opening and the operator confirming
+   * would run card A's pending actions on card B.
+   */
+  const isScanBlocked =
+    showAutoActionModal ||
+    isResumingAutoActions ||
+    showManualActionModal ||
+    isConfirmingManualAction ||
+    isExecutingActionId !== null;
+
   // Toggle switches show the value they would flip. `activeCard` is replaced
   // after every execution (`executeAndRefresh` re-fetches it), so this is
   // recomputed from server state on each mutation — no optimistic update.
@@ -481,7 +498,11 @@ export default function DashboardView({
 
       <div className="flex flex-col gap-6">
         {/* 1. Primary operational action — the focal point */}
-        <DashboardSearchBar onScan={handleScan} isScanning={isScanning} />
+        <DashboardSearchBar
+          onScan={handleScan}
+          isScanning={isScanning}
+          isBlocked={isScanBlocked}
+        />
 
         {/* Scan error toast (from execute action layer) */}
         {scanError && (
