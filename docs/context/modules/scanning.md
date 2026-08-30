@@ -1,6 +1,6 @@
 # Module: scanning
 
-**Last updated**: 2026-07-17 · **Last feature**: operational scan conditioned by card lifecycle status (phase 2)
+**Last updated**: 2026-08-30 · **Last feature**: the dashboard scan field keeps focus across a scan (HID reader fix)
 
 ## Responsibility
 
@@ -12,8 +12,8 @@ Does not own action execution (see `actions`) or card resolution (see `cards`).
 
 ### Operational scan surfaces (dashboard)
 
-- `src/components/dashboard/DashboardView.tsx` — **Primary operational scan surface.** On code received (from `DashboardSearchBar` or `useExternalScanner`), calls `executeScanWithAutoActionsAction(code)`. Displays result in `ActiveCardZone`.
-- `src/components/dashboard/DashboardSearchBar.tsx` — Manual code input + external reader. Focused on mount. Calls `onScan(code)` → `DashboardView`.
+- `src/components/dashboard/DashboardView.tsx` — **Primary operational scan surface.** On code received from `DashboardSearchBar`, calls `executeScanWithAutoActionsAction(code)`. Displays result in `ActiveCardZone`. ⚠️ It does **not** mount `useExternalScanner` — the dashboard has no global HID listener.
+- `src/components/dashboard/DashboardSearchBar.tsx` — Manual code input + external reader. Calls `onScan(code)` → `DashboardView`. **Its focus IS the dashboard's reader support**: an HID reader types wherever focus is, and nothing else on this route listens. Hence `readOnly` (never `disabled`) while a scan runs, plus a `useEffect` keyed on `isScanning` that refocuses after React commits.
 - `src/lib/actions/cards.ts` — `executeScanWithAutoActionsAction` (log + auto-actions), `resumeAutoActionsAction` (override continuation). See `modules/actions.md` for full pipeline.
 
 ### Informational scan page (/cards/scan)
@@ -43,7 +43,7 @@ Does not own action execution (see `actions`) or card resolution (see `cards`).
 
 ### Operational scan flow (dashboard)
 
-Entry: `DashboardSearchBar` (manual input or external reader keystroke captured there) or `useExternalScanner` mounted in `DashboardView`.
+Entry: `DashboardSearchBar` only — manual input or external reader keystrokes, both captured by its focused input. There is no `useExternalScanner` on this route.
 
 1. Code received → `DashboardView.onScan(code)` → `executeScanWithAutoActionsAction(code)`.
 2. Full pipeline in `src/lib/actions/cards.ts`: log scan entry (always, even for an archived card), evaluate the **lifecycle gate** (phase 2, see `modules/cards.md`) and scan validations, run auto-actions sequentially, re-validate after each (see `modules/actions.md`).
@@ -98,6 +98,7 @@ Keystrokes arriving faster than `THRESHOLD_MS` (50ms) between characters are cla
 
 ## Recent changes
 
+- 2026-08-30 — Fixed: the dashboard code field lost focus after every barcode read, so the next scan was silently dropped. Root cause: the input was `disabled={isScanning}`; a disabled control cannot hold focus, so the browser blurred it the moment `setIsScanning(true)` committed inside the keydown event. The existing `inputRef.current?.focus()` in `handleSubmit` never helped — it runs in the promise-resolution microtask, before React's normal-lane commit of `isScanning: false` re-enables the input. Now `readOnly` + `aria-busy` (focusable, still receives keydown, reader chars stay out of the value), the re-entrant submit blocked by the `isScanning` guard already in `handleSubmit`, and the refocus moved to a `useEffect` keyed on `isScanning`. Also corrected here: this module claimed `useExternalScanner` was mounted in `DashboardView`; it never was. No ADR — bug fix.
 - 2026-07-17 — Phase-2 scan behaviour by status: the operational scan now evaluates `resolveLifecycleGate` after logging. Archived → hard denial (no auto-actions, scan still logged); inactive/expired → override pause / block via a synthetic scan check. The `/cards/scan` informational path is unchanged (still no log, no actions). ADR `2026-07-17-card-lifecycle-scan-behaviour.md`.
 - 2026-04-19 — Initial extraction.
 - 2026-04-19 — Synchronized documentation against source code: completely corrected operational scan flow (dashboard, not /cards/scan); added DashboardView/DashboardSearchBar as primary operational surfaces; clarified /cards/scan as informational; added resumeAutoActionsAction cross-reference.

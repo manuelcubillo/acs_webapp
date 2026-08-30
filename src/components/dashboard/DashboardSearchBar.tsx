@@ -6,7 +6,9 @@
  * Behavior preserved EXACTLY:
  *   - Autofocus on mount (immediate barcode-reader capture).
  *   - Enter submits → onScan(code) (parent handles executeScanWithAutoActionsAction).
- *   - External reader keystrokes land in this input via natural focus + useExternalScanner.
+ *   - External reader keystrokes land in this input via natural focus alone.
+ *     `useExternalScanner` is NOT mounted on the dashboard route, so this field
+ *     holding focus is the ONLY thing that makes the HID reader work here.
  *
  * Presentation rebuilt on shadcn Input + Button. Token-driven, no hex, no inline styles.
  * Visually the primary operational action on the page.
@@ -39,17 +41,25 @@ export default function DashboardSearchBar({ onScan, isScanning }: DashboardSear
   const [code, setCode] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Focus on mount for immediate external-reader capture.
+  /**
+   * Keeps the field focused: an HID reader types wherever focus is, so this
+   * input must own it. Covers mount and every scan completion.
+   *
+   * It cannot live in `handleSubmit`'s continuation — that runs in the promise
+   * microtask, before React has committed `isScanning: false`, so a `focus()`
+   * there would still hit the input mid-scan and do nothing.
+   */
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+    if (!isScanning) inputRef.current?.focus();
+  }, [isScanning]);
 
   const handleSubmit = useCallback(async () => {
     const trimmed = code.trim();
+    // Load-bearing guard: the input stays focusable while scanning (readOnly,
+    // not disabled), so Enter still reaches this handler mid-scan.
     if (!trimmed || isScanning) return;
     await onScan(trimmed);
     setCode("");
-    inputRef.current?.focus();
   }, [code, isScanning, onScan]);
 
   const handleKeyDown = useCallback(
@@ -91,7 +101,12 @@ export default function DashboardSearchBar({ onScan, isScanning }: DashboardSear
             onKeyDown={handleKeyDown}
             placeholder={TEXT.PLACEHOLDER}
             aria-label={TEXT.ARIA_INPUT}
-            disabled={isScanning}
+            // readOnly, NOT disabled: a disabled control cannot hold focus, so
+            // the browser would blur it the moment a scan starts and the next
+            // read would go nowhere. readOnly keeps focus and still delivers
+            // keydown, while the reader's characters stay out of the value.
+            readOnly={isScanning}
+            aria-busy={isScanning}
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="off"
@@ -99,6 +114,7 @@ export default function DashboardSearchBar({ onScan, isScanning }: DashboardSear
             className={cn(
               "h-12 w-full rounded-xl pl-12 pr-4 text-base font-medium",
               "placeholder:text-muted-foreground/70",
+              isScanning && "text-muted-foreground",
             )}
           />
         </div>
