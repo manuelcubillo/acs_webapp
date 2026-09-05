@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# Copies into the production R2 bucket every photo object the local database
-# references but R2 does not have yet, preserving the object key byte for byte.
+# Copies into the production bucket every photo object the local database
+# references but the bucket does not have yet, preserving the object key byte
+# for byte. Provider-agnostic: the destination is whatever `.env.prod` says
+# (AWS S3, R2, or any S3-compatible endpoint).
 #
 # It is the storage half of "make production look like local". The database half
 # is scripts/push-prod-db.sh, and this one must run FIRST: uploading objects is
 # additive and harmless, so a bucket that is ready before the swap means no card
 # is ever left pointing at a missing image.
 #
-# Additive only. It never deletes from R2, so objects belonging to rows that
-# only exist in production survive as orphans rather than disappearing.
+# Additive only. It never deletes from the destination, so objects belonging to
+# rows that only exist in production survive as orphans rather than disappearing.
 #
 # Source of truth for "referenced": field_values.value_text on photo fields,
 # plus the object keys embedded in card_designs.layout (JSON, not a column) and
@@ -17,7 +19,9 @@
 # Requires:
 #   - Docker running with the local Postgres container up
 #   - MinIO up:  docker compose --profile storage up -d
-#   - awscli, and .env.prod carrying the R2 credentials plus S3_BUCKET
+#   - awscli, and .env.prod carrying the destination credentials, S3_BUCKET and
+#     STORAGE_DRIVER (plus S3_REGION for "s3", or S3_ENDPOINT for "r2"; under
+#     "s3", S3_ENDPOINT is ignored and only S3_ENDPOINT_OVERRIDE is honoured)
 #
 # Usage: pnpm push:photos [-y]
 set -euo pipefail
@@ -34,7 +38,11 @@ LOCAL_PG_DB="${LOCAL_PG_DB:-acs_dev}"
 # production values (identically named) can never clobber each other.
 envget() {
   local file="$1" key="$2"
-  sed -n "s/^${key}=//p" "$file" | tail -n 1 | tr -d '"'"'"'\r'
+  # Trailing whitespace is invisible in an editor and survives dotenv (Next
+  # trims it), so a credential can look right in .env.prod and still be
+  # rejected by the CLI. Strip quotes, CR, and surrounding blanks.
+  sed -n "s/^${key}=//p" "$file" | tail -n 1 | tr -d '"'"'"'\r' \
+    | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
 }
 
 for f in "$LOCAL_ENV_FILE" "$PROD_ENV_FILE"; do
@@ -51,10 +59,47 @@ DST_ENDPOINT="$(envget "$PROD_ENV_FILE" S3_ENDPOINT)"
 DST_BUCKET="$(envget "$PROD_ENV_FILE" S3_BUCKET)"
 DST_KEY_ID="$(envget "$PROD_ENV_FILE" S3_ACCESS_KEY_ID)"
 DST_SECRET="$(envget "$PROD_ENV_FILE" S3_SECRET_ACCESS_KEY)"
+DST_REGION="$(envget "$PROD_ENV_FILE" S3_REGION)"
+DST_DRIVER="$(envget "$PROD_ENV_FILE" STORAGE_DRIVER)"
 
 if [[ -z "$DST_BUCKET" ]]; then
   echo "Error: S3_BUCKET is empty in $PROD_ENV_FILE." >&2
-  echo "Copy the bucket name from the Cloudflare R2 panel." >&2
+  echo "Copy the bucket name from your provider's console." >&2
+  exit 1
+fi
+
+# Region and endpoint must be resolved the same way src/lib/storage/index.ts
+# resolves them, or the CLI signs for a different host than the app does.
+DST_ENDPOINT_ARGS=()
+case "$DST_DRIVER" in
+  s3)
+    if [[ -z "$DST_REGION" ]]; then
+      echo "Error: S3_REGION is empty in $PROD_ENV_FILE, and driver \"s3\" has no default." >&2
+      echo "Use the bucket's real region — a wrong one answers 301 on every call." >&2
+      exit 1
+    fi
+    # No --endpoint-url: the CLI derives the regional one, as the SDK does.
+    # S3_ENDPOINT is deliberately NOT consulted here — .env.prod may still carry
+    # the R2 host, and honouring it would point this script at the old bucket.
+    # Only the driver's own escape hatch counts, exactly as in index.ts.
+    DST_OVERRIDE="$(envget "$PROD_ENV_FILE" S3_ENDPOINT_OVERRIDE)"
+    if [[ -n "$DST_OVERRIDE" ]]; then
+      DST_ENDPOINT_ARGS=(--endpoint-url "$DST_OVERRIDE")
+    fi
+    ;;
+  r2 | "")
+    # The R2 adapter hardcodes "auto" and ignores S3_REGION; match it.
+    DST_REGION="auto"
+    DST_ENDPOINT_ARGS=(--endpoint-url "$DST_ENDPOINT")
+    ;;
+  *)
+    DST_REGION="${DST_REGION:-us-east-1}"
+    DST_ENDPOINT_ARGS=(--endpoint-url "$DST_ENDPOINT")
+    ;;
+esac
+
+if [[ "$DST_DRIVER" != "s3" && -z "$DST_ENDPOINT" ]]; then
+  echo "Error: S3_ENDPOINT is empty in $PROD_ENV_FILE (required by driver \"${DST_DRIVER:-r2}\")." >&2
   exit 1
 fi
 
@@ -74,8 +119,8 @@ src_aws() {
 }
 dst_aws() {
   AWS_ACCESS_KEY_ID="$DST_KEY_ID" AWS_SECRET_ACCESS_KEY="$DST_SECRET" \
-  AWS_DEFAULT_REGION="auto" AWS_EC2_METADATA_DISABLED=true \
-  aws --endpoint-url "$DST_ENDPOINT" "$@"
+  AWS_DEFAULT_REGION="$DST_REGION" AWS_EC2_METADATA_DISABLED=true \
+  aws ${DST_ENDPOINT_ARGS[@]+"${DST_ENDPOINT_ARGS[@]}"} "$@"
 }
 
 echo "Collecting the object keys the local database references..."
@@ -103,13 +148,13 @@ MISSING=$(wc -l < "$WORK/missing.txt" | tr -d ' ')
 
 echo
 echo "  Referenced by the local database: $REFERENCED"
-echo "  Already in R2:                    $((REFERENCED - MISSING))"
+echo "  Already in the bucket:            $((REFERENCED - MISSING))"
 echo "  To upload:                        $MISSING"
-echo "  (R2 holds $REMOTE objects in total; none are deleted.)"
+echo "  (The bucket holds $REMOTE objects in total; none are deleted.)"
 
 if [[ "$MISSING" -eq 0 ]]; then
   echo
-  echo "Nothing to do — R2 already has every object the local database points at."
+  echo "Nothing to do — the bucket already has every object the local database points at."
   exit 0
 fi
 
@@ -155,9 +200,9 @@ dst_aws s3 ls "s3://$DST_BUCKET/" --recursive \
 STILL_MISSING=$(comm -23 "$WORK/referenced.txt" "$WORK/remote_after.txt" | wc -l | tr -d ' ')
 
 if [[ "$STILL_MISSING" -ne 0 ]]; then
-  echo "Error: $STILL_MISSING referenced object(s) are still absent from R2." >&2
+  echo "Error: $STILL_MISSING referenced object(s) are still absent from the bucket." >&2
   comm -23 "$WORK/referenced.txt" "$WORK/remote_after.txt" | sed 's/^/    /' >&2
   exit 1
 fi
 
-echo "Done. R2 now holds all $REFERENCED objects the local database references."
+echo "Done. The bucket now holds all $REFERENCED objects the local database references."

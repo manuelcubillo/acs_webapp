@@ -29,7 +29,7 @@
     "db:seed": "tsx scripts/seed.ts",
     "db:pull-prod": "bash scripts/pull-prod-db.sh",
     "db:push-prod": "bash scripts/push-prod-db.sh",
-    "push:photos": "bash scripts/push-photos-to-r2.sh",
+    "push:photos": "bash scripts/push-photos-to-bucket.sh",
     "import:legacy": "tsx scripts/legacyDBMigration/import.ts",
     "resync:legacy": "tsx scripts/legacyDBMigration/resync.ts",
     "design:veredillas-personal": "tsx scripts/veredillasPersonalCardDesign.ts",

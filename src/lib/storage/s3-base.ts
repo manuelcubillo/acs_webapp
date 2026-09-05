@@ -1,9 +1,10 @@
 /**
  * Storage Layer — Shared S3-compatible base
  *
- * R2 and MinIO both speak the S3 API. The only differences are endpoint,
- * region, and addressing style (path-style for MinIO, virtual-host for R2).
- * This module owns the SDK setup so the two adapters are thin shims.
+ * AWS S3, R2 and MinIO all speak the S3 API. The only differences are
+ * endpoint, region, and addressing style (path-style for MinIO, virtual-host
+ * for S3 and R2). This module owns the SDK setup so the adapters are thin
+ * shims.
  */
 
 import {
@@ -25,12 +26,21 @@ import type {
 } from "./types";
 
 export interface S3StorageConfig {
-  endpoint: string;
+  /**
+   * Custom endpoint, required by every S3-compatible provider that is not AWS
+   * (R2, MinIO). Leave undefined for AWS S3 so the SDK derives the regional
+   * endpoint from `region` — the same value it signs with. A hand-written
+   * endpoint that disagrees with the region answers `301 PermanentRedirect`.
+   */
+  endpoint?: string;
   region: string;
   bucket: string;
   accessKeyId: string;
   secretAccessKey: string;
-  /** path-style addressing is required for MinIO; R2 uses virtual-host style. */
+  /**
+   * path-style addressing is required for MinIO; AWS S3 and R2 use
+   * virtual-host style.
+   */
   forcePathStyle: boolean;
 }
 
@@ -44,7 +54,9 @@ export class S3CompatibleStorage implements CardPhotoStorage {
   constructor(config: S3StorageConfig) {
     this.bucket = config.bucket;
     this.client = new S3Client({
-      endpoint: config.endpoint,
+      // Omitted, not undefined: passing the key at all makes the SDK skip its
+      // regional endpoint resolver.
+      ...(config.endpoint ? { endpoint: config.endpoint } : {}),
       region: config.region,
       credentials: {
         accessKeyId: config.accessKeyId,

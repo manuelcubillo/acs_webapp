@@ -64,7 +64,7 @@ local, así que no hay nada más que configurar.
 | Levantar contra producción ⚠️ | `pnpm dev:prod` | **producción** |
 | Traerme los datos de producción a local | `pnpm db:pull-prod` | vuelca prod → `acs_dev` |
 | Llevar mis datos locales a producción ⚠️ | `pnpm db:push-prod` | **sobrescribe producción** |
-| Subir a R2 las fotos que le falten | `pnpm push:photos` | R2 de producción |
+| Subir al bucket las fotos que le falten | `pnpm push:photos` | bucket de producción |
 | Datos de ejemplo | `pnpm db:seed` | `acs_dev` |
 
 ### Tests
@@ -201,6 +201,12 @@ flujo de invitación o de reset:
 | `RESEND_APIKEY` | | | vacía | vacía | vacía | vacía | ✅ |
 | `STORAGE_DRIVER` / `S3_*` | ✅ minio | | | | ✅ minio | ✅ r2 | ✅ r2 |
 
+`STORAGE_DRIVER` acepta `s3` (AWS S3), `r2` y `minio`. Producción usa `r2` hoy;
+cambiar de proveedor es cambiar ese bloque de variables y copiar los objetos —
+la base de datos guarda object keys, no URLs, así que no hay nada que migrar en
+ella. Cada driver pide un juego distinto de `S3_*`: ver
+`infra/storage/README.md`.
+
 **Prioridad** (gana el de más abajo): `.env` → `.env.development` → `.env.local`
 → overlay de `dotenv-cli` (`:prod` / `:branch`) → variables reales del proceso
 (las de Vercel). Por eso un valor de `.env` versionado nunca puede pisar
@@ -233,7 +239,8 @@ en `DATABASE_URL_UNPOOLED`: la necesitan `pg_dump` y `psql`, que no pueden
 atravesar el pooler, y sin ella no se puede ensayar `db:push-prod` en la rama.
 
 Una rama clona la base de datos, no el bucket. Para ver las fotos, copia en
-`.env.neon-branch` los cinco valores `S3_*` de `.env.prod`.
+`.env.neon-branch` el bloque de almacenamiento de `.env.prod` completo
+(`STORAGE_DRIVER` y los `S3_*` que ese driver use).
 
 Cuando la rama se quede vieja, se refresca en segundos:
 
@@ -306,6 +313,15 @@ base de datos, no el bucket. Los object keys apuntan a R2 y local lee de MinIO.
 su valor, así que si algún día se pierde, se recupera listando los buckets con
 las credenciales de `.env.prod` (`aws --endpoint-url "$S3_ENDPOINT" s3 ls`) o
 desde el panel de Cloudflare.
+
+**¿Puedo pasar producción a AWS S3?** Sí, sin tocar la base de datos. Crea el
+bucket con Block Public Access activado, aplícale
+`infra/storage/s3-cors.json`, copia los objetos con `aws s3 sync` (los keys se
+conservan tal cual) y cambia en Vercel `STORAGE_DRIVER=s3`, `S3_REGION=<región
+real del bucket>` y las credenciales. `S3_ENDPOINT` puede quedarse: el driver
+`s3` la ignora a propósito y deriva el endpoint regional de `S3_REGION`. Ojo: en S3 el egress se paga por GB. Todos los pasos
+en `infra/storage/README.md` y el ADR
+`docs/context/decisions/2026-09-05-aws-s3-storage-driver.md`.
 
 **¿Cuántos objetos debería tener R2?** Los que referencie la base de datos:
 `pnpm push:photos` lo dice sin subir nada si no falta ninguno. El bucket tiene

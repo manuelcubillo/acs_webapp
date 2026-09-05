@@ -1,0 +1,17 @@
+{
+  "CORSRules": [
+    {
+      "AllowedOrigins": [
+        "https://acs-mc.vercel.app",
+        "https://acs-webapp-mcubs-projects.vercel.app",
+        "https://acs-webapp-git-main-mcubs-projects.vercel.app",
+        "https://acs-webapp-*-mcubs-projects.vercel.app",
+        "http://localhost:3000"
+      ],
+      "AllowedMethods": ["GET", "PUT", "HEAD"],
+      "AllowedHeaders": ["*"],
+      "ExposeHeaders": ["ETag"],
+      "MaxAgeSeconds": 3600
+    }
+  ]
+}

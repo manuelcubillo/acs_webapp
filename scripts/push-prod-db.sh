@@ -7,7 +7,7 @@
 # That is why it always writes a timestamped backup of production first and
 # keeps it, and why it asks the operator to type the target database name.
 #
-# Run scripts/push-photos-to-r2.sh BEFORE this one. Object keys survive the dump
+# Run scripts/push-photos-to-bucket.sh BEFORE this one. Object keys survive the dump
 # verbatim (they are plain text in field_values.value_text), so a key whose
 # object never reached R2 becomes a broken image the moment the swap lands.
 #

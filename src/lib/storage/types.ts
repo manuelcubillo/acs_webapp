@@ -1,8 +1,8 @@
 /**
  * Storage Layer — Types
  *
- * Single interface for photo object storage. Implemented by `R2Storage`
- * (production) and `MinIOStorage` (self-hosted / local). The factory in
+ * Single interface for photo object storage. Implemented by `AwsS3Storage`,
+ * `R2Storage` and `MinIOStorage` (self-hosted / local). The factory in
  * `index.ts` picks one at runtime via `STORAGE_DRIVER`.
  *
  * Object keys are tenant-prefixed; `validation.ts` enforces that any read
@@ -82,7 +82,7 @@ export interface HeadResult {
 
 /**
  * Object storage operations used by the photo pipeline.
- * Both R2 and MinIO implementations satisfy this contract.
+ * Every adapter (S3, R2, MinIO) satisfies this contract.
  */
 export interface CardPhotoStorage {
   /** Generate a short-lived presigned PUT URL. */
