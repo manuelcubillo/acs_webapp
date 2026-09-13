@@ -12,11 +12,25 @@ import { getPhotoStorage } from "./index";
 /** 15 minutes — long enough for a page session, short enough to limit leakage. */
 const DEFAULT_TTL_SECONDS = 900;
 
+/**
+ * @param opts.responseCacheControl - `Cache-Control` the store returns with the
+ * bytes. Only worth setting for a caller whose signed URL is stable across
+ * requests; a URL re-minted per render is a new cache key every time, so a
+ * long directive on it buys nothing. Today that is the stable photo route
+ * (`/api/photos/cards/[code]`), which mints a fresh signature per request but
+ * keys it on an object that never changes in place.
+ */
 export async function signPhotoForRead(
   key: string,
   ttlSeconds: number = DEFAULT_TTL_SECONDS,
+  opts?: { responseCacheControl?: string },
 ): Promise<string> {
-  return getPhotoStorage().getReadUrl(key, { ttlSeconds });
+  return getPhotoStorage().getReadUrl(key, {
+    ttlSeconds,
+    ...(opts?.responseCacheControl
+      ? { responseCacheControl: opts.responseCacheControl }
+      : {}),
+  });
 }
 
 export async function signPhotoForReadOptional(

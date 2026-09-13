@@ -98,6 +98,7 @@ export default function CardTableView({
                       label={f.label}
                       cardCode={card.code}
                       fieldDefinitionId={fieldIdMap[f.id]}
+                      updatedAt={card.updatedAt}
                       // The row navigates to the card detail; a photo lightbox
                       // here would swallow that click.
                       enlargeable={false}

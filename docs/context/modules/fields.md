@@ -1,6 +1,6 @@
 # Module: fields
 
-**Last updated**: 2026-08-29 · **Last feature**: date inputs normalize through `toDateInputValue`, so an unset date field renders empty
+**Last updated**: 2026-09-08 · **Last feature**: multi-select implemented; typed default-value control in the field editor
 
 ## Responsibility
 
@@ -13,12 +13,15 @@ Validation rules per field type are stored here (in `validation_rules` jsonb) bu
 - `src/lib/dal/field-definitions.ts` — CRUD + `getCommonFieldDefinitions(tenantId, cardTypeIds[])`.
 - `src/lib/fields/system.ts` — `excludeSystemFields` / `excludeSystemActions`. Applied **at each consumer**, never inside a DAL read (constraint #27). Grep either name to enumerate every surface that has declared its intent.
 - `src/lib/fields/date-input-value.ts` — `toDateInputValue`: any stored date shape (`Date`, ISO string, `YYYY-MM-DD`) → the `YYYY-MM-DD` a native date input accepts, everything else → `""`. Unit-tested. Consumed by `DateInput`.
-- `src/lib/dal/field-values.ts` — Read/write with `mapValueToColumn` / `extractValue`.
+- `src/lib/dal/field-values.ts` — Read/write with `mapValueToColumn` / `extractValue`. A `select` dispatches on the value's SHAPE: a string goes to `value_text`, an array to `value_json`.
+- `src/lib/dal/field-value-sql.ts` — `fieldValueTextIlike` / `fieldValueTextEquals`: the shared text predicate for the two field-filter builders (`cards.ts`, `action-history.ts`), matching `value_text` **and** every element of a multi-select `value_json` array.
 - `src/lib/db/schema/access-control.ts` — `field_definitions`, `field_values` tables.
 - `src/components/card-types/fields/FieldEditor.tsx` — Slide-in panel, create/edit `FieldDefinitionDraft`.
 - `src/components/card-types/fields/FieldList.tsx` — `@dnd-kit/core` drag-drop reorder.
 - `src/components/card-types/fields/FieldTypeSelector.tsx` — 6-type visual grid. `onChange` is optional (safe to render from server components, `readOnly` mode available).
-- `src/components/card-types/fields/ValidationRulesEditor.tsx` — Per-field validation toggle/config.
+- `src/components/card-types/fields/ValidationRulesEditor.tsx` — Per-field validation toggle/config. Renders `getValidationRulesForFieldType`, so field-CONFIGURATION rules never appear here; returns `null` when a type has none (today: `select`) and the parent hides the heading with it.
+- `src/components/card-types/fields/DefaultValueInput.tsx` — The "Valor por defecto" control, shaped by the field type (number input / date picker / Sí-No / the configured options). Exports `hasDefaultValue`, which is false for `photo` — the parent hides the label with it. Storage stays a `text` column, so each type serialises the way its own input already produces it. The date and dropdown variants carry an explicit clear button (`Clearable`): neither can be emptied on its own — Radix forbids an empty `SelectItem`, and a native date input fights being cleared.
+- `src/components/card-types/fields/SelectOptionsEditor.tsx` — The `select` configuration panel: options added one at a time (add / rename inline / delete / drag-reorder via `@dnd-kit`), plus the `allowMultiple` switch. Duplicates rejected case-insensitively; the option string doubles as the dnd id.
 - `src/components/cards/DynamicFieldRenderer.tsx` — `switch(fieldType) → *Renderer`.
 - `src/components/cards/DynamicFieldInput.tsx` — `switch(fieldType) → *Input`.
 - `src/components/cards/renderers/` — `TextRenderer`, `NumberRenderer`, `BooleanRenderer`, `DateRenderer`, `PhotoRenderer` (thumbnail; given the card `code` + `fieldDefinitionId` it derives its own `src` from the stable route, and unless `enlargeable={false}` a click opens a lightbox with a **Descargar** button), `SelectRenderer`.
@@ -56,8 +59,8 @@ Typed columns: `value_text`, `value_number`, `value_boolean`, `value_date`, `val
 | `number`   | `value_number`  |                                                |
 | `boolean`  | `value_boolean` |                                                |
 | `date`     | `value_date`    |                                                |
-| `photo`    | `value_text`    | Object key in the photo storage bucket — never a URL. Detail/edit surfaces sign it at render (`signCardPhotos` / `buildPhotoReadUrlMap`); list surfaces strip it to a presence flag and address the photo by route instead. |
-| `select`   | `value_text`    | Single string. `mapValueToColumn` groups `select` with `text`/`photo` and **throws on a non-string** — multi-select is not implemented, despite the `allowMultiple` rule existing in `rules.ts`. Filter SQL matches on `value_text` accordingly. |
+| `photo`    | `value_text`    | Object key in the photo storage bucket — never a URL, and never sent to a client component: every card payload crossing that boundary strips it to a presence flag (`stripCardPhotoKeys`) and the photo is addressed by route. Only two server-side consumers still sign it — the card-design preview renderer and the external API (`signCardPhotos`) — plus `buildPhotoReadUrlMap` for the edit form's preview state. |
+| `select`   | `value_text` **or** `value_json` | A single option is a string in `value_text`; several are a `string[]` in `value_json`. `mapValueToColumn` picks the column from the value's SHAPE, never from the field's `allowMultiple` rule — it only receives `fieldType`. `extractValue` returns `valueJson ?? valueText`. An emptied multi-select clears the row rather than storing `[]`. Text filters cover both columns via `field-value-sql.ts`. ADR `2026-09-08-multi-select-storage.md`. |
 
 ## Main flows
 
@@ -87,13 +90,21 @@ Card photos support two capture sources and an interactive crop, in both edit + 
 
 `PhotoRenderer` has **two addressing modes**. Given `cardCode` +
 `fieldDefinitionId` it builds the `<img src>` itself from
-`cardPhotoRoute(code, { fieldDefinitionId })` — a stable, session-authed route
-that mints the signature per request, so the image cannot expire in place, the
-browser can cache it, and it survives a client-side refetch that carries no URL.
-Without those props it falls back to treating `value` as a ready-made URL. In
-both modes `value` is the presence signal (empty → dash). Card lists and card
-detail use the route; scan results (`ActiveCardZone`) still pass signed URLs.
-See ADR `2026-08-02-card-list-photos-stable-route.md`.
+`cardPhotoRoute(code, { fieldDefinitionId, updatedAt })` — a stable,
+session-authed route that mints the signature per request, so the image cannot
+expire in place, the browser can cache it, and it survives a client-side refetch
+that carries no URL. Without those props it falls back to treating `value` as a
+ready-made URL. In both modes `value` is the presence signal (empty → dash).
+
+Every card surface now uses the route — lists, card detail and `ActiveCardZone`
+alike; only the external API and the card-detail server page (for the design
+preview) still consume signed URLs, and neither goes through this component.
+
+`updatedAt` is the **card's**, threaded from each view through
+`DynamicFieldRenderer`, and serialises to `?v=`. It is what keeps a replaced
+photo from being served out of the browser's cache, which matters because the
+route now caches for days. See ADRs `2026-08-02-card-list-photos-stable-route.md`
+and `2026-09-08-photo-cache-version-token.md`.
 
 The thumbnail's longer side is capped at `--photo-thumbnail-size` (Layer-3 layout-chrome var in `globals.css`, currently `6rem`/96px), consumed as `max-h-[var(--photo-thumbnail-size)] max-w-[var(--photo-thumbnail-size)]`. Aspect ratio is always preserved (no crop, no stretch); `self-start` + `shrink-0` cancel the flex-stretch imposed by the parent `flex flex-col` wrapper in `CardDetailClient.tsx`. Both variants share a `THUMBNAIL_CLASS` constant so they cannot drift.
 
@@ -101,19 +112,27 @@ The thumbnail's longer side is capped at `--photo-thumbnail-size` (Layer-3 layou
 
 Thumbnails are `loading="lazy"` + `decoding="async"`. Each one costs a round trip to the photo route (session check + `getCardByCode` + a signature), so a 50-row list would otherwise spend 50 of them to paint the handful of rows on screen. This mitigates rather than removes the N+1 — the browser's prefetch margin is generous — and the batch endpoint noted in ADR `2026-08-02-card-list-photos-stable-route.md` remains the real fix if it ever matters.
 
-The dashboard renders card photos from its own signed URLs, **not** through `PhotoRenderer`: `ActiveCardZone` shows the `photo` summary field as a `max-h-16` thumbnail, and `ActivityFeedEntryRow` uses a 36px `object-cover` avatar for scan rows. See `modules/dashboard.md`. `HistoryTableRow` does the same in the Resumen column — a 36px avatar built from `cardPhotoRoute`, not `PhotoRenderer` (the 6rem thumbnail and its lightbox are too heavy for an audit row). See `modules/history.md`.
+`ActiveCardZone` renders its `photo` summary cell through `PhotoRenderer` in route mode, with a `className` override for the panel's two-row sizing — it stopped hand-rolling an `<img>` over a signed URL in ADR `2026-08-25-active-card-zone-stable-photo-route.md`. `ActivityFeedEntryRow` (36px `object-cover` avatar on scan rows) and `HistoryTableRow` (the Resumen column) still build a bare `<img>` from `cardPhotoRoute` rather than mounting `PhotoRenderer`, because the 6rem thumbnail and its lightbox are too heavy for a feed or audit row. All three pass the card's `updatedAt`. See `modules/dashboard.md` and `modules/history.md`.
 
 ### Photo download (named by card code)
 
-The `PhotoRenderer` lightbox shows a **Descargar** button when the card `code` + `fieldDefinitionId` are supplied (threaded via `DynamicFieldRenderer`). In practice that means **the card detail page only**: the button lives inside the lightbox, and both list views disable it with `enlargeable={false}`. The href comes from `cardPhotoRoute(code, { fieldDefinitionId, download: true })`, which 302s to a signed URL whose `Content-Disposition` names the file `<code>_<fieldName>_<random>.<ext>`. The **stored object key is unchanged** (still random UUID); the `<random>` in the filename is that key's final segment, so a downloaded file is traceable back to its bucket object, and `<fieldName>` disambiguates multi-photo cards. Route + storage plumbing live in `infrastructure`. ADR `2026-07-19-webcam-capture-and-crop.md`.
+The `PhotoRenderer` lightbox shows a **Descargar** button when the card `code` + `fieldDefinitionId` are supplied (threaded via `DynamicFieldRenderer`). In practice that means **the card detail page only**: the button lives inside the lightbox, and both list views disable it with `enlargeable={false}`. The href comes from `cardPhotoRoute(code, { fieldDefinitionId, updatedAt, download: true })`, which 302s to a signed URL whose `Content-Disposition` names the file `<code>_<fieldName>_<random>.<ext>`. The **stored object key is unchanged** (still random UUID); the `<random>` in the filename is that key's final segment, so a downloaded file is traceable back to its bucket object, and `<fieldName>` disambiguates multi-photo cards. Route + storage plumbing live in `infrastructure`. ADR `2026-07-19-webcam-capture-and-crop.md`.
 
-### Select options
+### Select options — configuration, not validation
 
-Options live inside `validation_rules.rules` (no dedicated `options` column), as `{ rule: "options", value: string[] }`.
+Options live inside `validation_rules.rules` (no dedicated `options` column), as `{ rule: "options", value: string[] }`, and `allowMultiple` beside them. **That is storage, not meaning**: both describe what the field IS, so the wizard edits them in `SelectOptionsEditor` and the «Reglas de validación» section is hidden for a `select` entirely. `FIELD_CONFIGURATION_RULES` names the split; both rules keep their `RULES_BY_FIELD_TYPE` + `VALIDATOR_REGISTRY` entries and are still enforced on submit. ADR `2026-09-08-select-options-are-configuration.md`.
 
-Read them **only** via `getSelectOptions(validationRules)` from `@/lib/validation/rules` — never by walking the jsonb inline. The rule name is exported alongside it as `SELECT_OPTIONS_RULE` and is what `RULES_BY_FIELD_TYPE.select` and the `VALIDATOR_REGISTRY` key both derive from, so the wizard that writes the options and every layer that reads them cannot desync. Consumers: `SelectInput` (card form), `FieldFilterBuilder` (card list + history filters), `validateAllowMultiple`. See `modules/validations.md`.
+Read them **only** via `getSelectOptions(validationRules)` / `getAllowMultiple(validationRules)` from `@/lib/validation/rules` — never by walking the jsonb inline. The rule names are exported alongside as `SELECT_OPTIONS_RULE` / `ALLOW_MULTIPLE_RULE` and are what `RULES_BY_FIELD_TYPE.select` and the `VALIDATOR_REGISTRY` keys both derive from, so the wizard that writes the options and every layer that reads them cannot desync. Consumers: `SelectInput` (card form), `FieldFilterBuilder` (card list + history filters), `validateAllowMultiple`, `SelectOptionsEditor`. See `modules/validations.md`.
 
 ⚠️ An inline read that misses returns `[]`, not an error — the failure surfaces as a silently empty dropdown, which is exactly how this went unnoticed in two layers at once.
+
+**Counting rules for a badge** uses `countValidationRules(validationRules)`, which excludes the configuration rules. A select whose only content is its option list must not read «1 regla».
+
+**Multiple selection.** `SelectInput` renders a shadcn `Select` when the field is single and a popover of checkboxes when `allowMultiple` is on, emitting `string[] | null` (never `[]`). `SelectRenderer` renders one chip per selection. Both read the SHAPE of the value, not the rule, so a field toggled back to single still shows what the card holds — the input coerces a stored array to its first item rather than blanking the control.
+
+⚠️ **Four surfaces format a select value** and each has its own helper: `SelectRenderer` plus the `formatValue` / `formatFieldValue` functions in `HistoryTableRow`, `ActivityFeedEntryRow` and `ActiveCardZone`. All four handle an array; a fifth that does not would degrade to `String(["a","b"])` → `"a,b"` rather than erroring.
+
+An option may contain **any** character, commas included. The previous editor was one comma-separated input that re-split on every keystroke, so `"Portal 1, bajo A"` was unstorable.
 
 ### Shared fields across card types
 
@@ -141,12 +160,20 @@ Read them **only** via `getSelectOptions(validationRules)` from `@/lib/validatio
 ## Future considerations
 
 - Select options live inside `validation_rules`. Consider a dedicated `options` jsonb column if the pattern becomes more common.
-- Multi-select is declared but not implemented: the `allowMultiple` rule exists in `rules.ts` and `validateAllowMultiple` enforces it, but `SelectInput` can only emit a single string and `mapValueToColumn` throws on a non-string. Enabling the rule on a field therefore makes that field unsubmittable. Either implement it (multi `SelectInput` + `value_json` storage + `extractValue`) or drop the rule.
+- `field_definitions.default_value` is **stored and displayed but never applied**: no card-creation path seeds `useCardForm`'s `initialValues` from it, so configuring a default changes nothing for the operator. `DefaultValueInput` now at least makes the configured value type-correct. Either wire it into `/cards/new` or drop the column.
+- The two select columns are not mutually exclusive at the schema level. Nothing writes both (`mapValueToColumn` always nulls the rest), but a hand-written UPDATE could, and `value_json` would silently win.
 
 ## Recent changes
 
+- 2026-09-08 — Multi-select implemented, after existing as an unusable rule since the engine was written. Storage dispatches on the value's shape (`value_text` for one option, `value_json` for several), so no migration and no existing row changed; `SelectInput` gained a checkbox-popover variant, `SelectRenderer` renders one chip per selection, the text filters gained a shared select-aware predicate, and snapshots freeze the selection SORTED with an array-aware `diffSnapshots`. New `__tests__/multi-select.test.ts` + `dal/__tests__/multi-select-filter.integration.test.ts` (the filter SQL is only provable against real Postgres). ADR `2026-09-08-multi-select-storage.md`.
+- 2026-09-08 — Field editor layout fix, in two passes. The sheet used to span the whole content area with only its BODY capped at 720px, so the form sat against the left edge with ~600px of dead space beside it and the save button drifting off at the far right. The sheet ITSELF is now capped at `--field-editor-width` (64rem, a new Layer-3 layout-chrome var) and centred over the content area, with a `px-4` gutter as the narrow-screen fallback; one `px-7` padding box then aligns header, body and footer, so no inner max-widths are needed. Its height is also FIXED (`h-[min(85vh,46rem)]`) rather than content-driven — field types configure wildly different amounts (a `photo` has no rules, a `select` has an option list), so the panel used to resize and move the header and save button on every type change. Only the body scrolls; short content leaves whitespace. Measured in the browser: 1024×736 at the same offset for `text`, `photo`, `select` and `date`. Same pass added the clear button to the date default.
+- 2026-09-08 — The "Valor por defecto" box stopped being free text for every type. `DefaultValueInput` renders a numeric input, a date picker, a Sí/No choice or the configured select options, and nothing at all for a `photo`; changing a field's type now clears the default as well as the rules, so «mañana» can no longer sit in a date field. The column stays `text`. ⚠️ Recorded above under Future considerations: nothing consumes `default_value` at card creation, so this makes the value correct, not effective.
+- 2026-09-08 — A `select` field is now configured, not validated. `SelectOptionsEditor` replaces the comma-separated `string[]` input inside `ValidationRulesEditor`: options are added one at a time and each renders as its own row with inline rename, delete and drag-reorder. This fixes two things at once — a comma is now a legal character inside an option (the old input split on it, so `"Portal 1, bajo A"` silently became two options and the caret jumped on every keystroke), and the option list stopped being presented as a constraint on user input. `FIELD_CONFIGURATION_RULES` + `getValidationRulesForFieldType` express the split without touching the engine, so `select` yields an empty rules catalogue and `FieldEditor` drops the «Reglas de validación» heading for it. `countValidationRules` corrected the badges in `FieldList`, `ReviewStep`, `FieldDefinitionsStep` and the card-type detail page, which counted a select's options as validation rules. ADR `2026-09-08-select-options-are-configuration.md`.
 - 2026-08-29 — Card date inputs no longer show today's date for a field that has no value. `DateInput` normalized with `String(value).slice(0, 10)`, but `value_date` is a `timestamp`, so the form receives a `Date` whose `String()` form (`"Thu Aug 27"`) is NOT a valid `<input type="date">` value: the browser discards it, the input renders blank while React still believes it holds a value, and the native picker — treating the control as unassigned — opens on and commits **today** at the first interaction, which the wholesale save then persists. Normalization moved to `toDateInputValue`, which formats a `Date` with LOCAL calendar components (never `toISOString()`: stored dates are midnights and UTC would shift them a day back) and maps anything unparseable to `""`. Affects `/cards/new` and `/cards/[code]/edit` — the only two surfaces reaching `DateInput`. Bug fix, no ADR.
-- 2026-08-24 — `field_definitions` gained `is_system`, and `field_values.updated_at` became trigger-maintained. System fields are filtered out at the consumer by `excludeSystemFields` (`src/lib/fields/system.ts`) — applied to the card create/edit forms, the wizard's edit loader (before the tempId mapping), the card-type detail + list tiles, the dashboard-settings pickers, the card-list columns, the field-filter builders (via `getCommonFieldDefinitionsAction`), the design-editor bindings, and the card-detail value grid. Deliberately NOT applied to the DAL reads themselves, nor to `getAutoExecuteActions`. `EnrichedFieldValue`, `CommonFieldDefinition` and `FilterableFieldDefinition` now carry `isSystem`. ADR `2026-08-24-presence-control.md`.
-- 2026-08-15 — `is_required` now has a second consumer: at scan time a non-mandatory field with no value makes its scan validations skip rather than fail. No code changed in this module — the flag is joined onto the rule in `src/lib/dal/scan-validations.ts`, because a field blank since creation has no `field_values` row and never reaches `EnrichedFieldValue[]`. ADR `2026-08-15-scan-validation-empty-optional-fields.md`.
-- 2026-08-02 — Select options are now read through one shared helper, `getSelectOptions` in `@/lib/validation/rules`. `SelectInput` was looking up a rule named `allowedValues` (nothing writes that name), so the card form's select dropdown was always empty and a select field could not be assigned on create or edit. Corrected the storage table above: `select` lives in **`value_text`**, not `value_json` — the doc described a multi-select design that was never implemented. Bug fix, no ADR.
-- 2026-08-02 — `PhotoRenderer` lightbox became opt-out via a new `enlargeable` prop (default `true`), threaded through `DynamicFieldRenderer`. Both list views pass `false`: their row navigates to the card detail, and the photo's `onClick` was swallowing that click, so the thumbnail advertised "Ampliar foto" and then never enlarged. Static variant drops the handler, `cursor-pointer` and `aria-label`; the shared footprint moved to a `THUMBNAIL_CLASS` constant. Thumbnails also gained `loading="lazy"` + `decoding="async"` — a 50-row list was firing 50 photo-route round trips to paint ~4 visible rows. Side effect: **Descargar** is now card-detail-only. Bug fix, no ADR.
+
+_Pruned to the 5-entry cap. Still described above: the `?v=` photo cache token
+(2026-09-08) under "Photo display", the shared `getSelectOptions`
+accessor (2026-08-02) under "Select options", the `PhotoRenderer` lightbox
+opt-out (2026-08-02) under "Photo display", `is_system` (2026-08-24) in the
+`field_definitions` table, and the `is_required` scan-time consumer (2026-08-15)
+in the same table._

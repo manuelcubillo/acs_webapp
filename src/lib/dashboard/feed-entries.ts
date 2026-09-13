@@ -155,14 +155,13 @@ function makeEntry({
   presenceAfterValue = null,
   snapshotPayload = null,
 }: MakeEntryArgs): ActivityFeedEntry {
-  // A photo field's value is a signed URL by the time it reaches the client
-  // (the scan action signs them), so its mere presence means the card has a
-  // photo — the same condition getActivityFeed and the photo route apply.
+  // A photo field's value is a presence flag by the time it reaches the client
+  // — every action returning a card to a client component redacts the object
+  // key (`stripCardPhotoKeys`). Truthiness, not `typeof === "string"`: the flag
+  // is a boolean, and reading it as a string is what made this silently drop
+  // every thumbnail when the keys stopped being signed into URLs.
   const hasPhoto = card.fields.some(
-    (f) =>
-      f.fieldType === "photo" &&
-      typeof f.value === "string" &&
-      f.value.length > 0,
+    (f) => f.fieldType === "photo" && Boolean(f.value),
   );
 
   return {
@@ -174,7 +173,9 @@ function makeEntry({
     cardTypeName: config.cardTypeNames[card.cardTypeId] ?? "",
     actionDefinitionId: action?.id ?? null,
     actionName: action?.name ?? null,
-    cardPhotoUrl: hasPhoto ? cardPhotoRoute(card.code) : null,
+    cardPhotoUrl: hasPhoto
+      ? cardPhotoRoute(card.code, { updatedAt: card.updatedAt })
+      : null,
     executedAt,
     // Neither is rendered by ActivityFeedEntryRow. `operatorOverride` is the
     // only thing the server derives from metadata, and the client knows it

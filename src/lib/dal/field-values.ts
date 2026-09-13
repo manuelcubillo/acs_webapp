@@ -51,11 +51,38 @@ export function mapValueToColumn(
 
   switch (fieldType) {
     case "text":
-    case "photo":
-    case "select": {
+    case "photo": {
       if (typeof value !== "string") {
         throw new ValidationError(
           `Expected string for field type "${fieldType}", got ${typeof value}`,
+        );
+      }
+      return { ...base, valueText: value };
+    }
+    /**
+     * A select holds EITHER a single option (`value_text`) or several
+     * (`value_json`), dispatched on the runtime shape rather than on the
+     * field's `allowMultiple` rule — this function only receives `fieldType`,
+     * and the shape is self-describing on the way back out.
+     *
+     * Single values therefore keep the exact storage they have always had, so
+     * every existing row, filter and snapshot is untouched by multi-select.
+     */
+    case "select": {
+      if (Array.isArray(value)) {
+        const invalid = value.find((v) => typeof v !== "string");
+        if (invalid !== undefined) {
+          throw new ValidationError(
+            `Expected an array of strings for field type "select", got ${typeof invalid}`,
+          );
+        }
+        // An emptied multi-select clears the row rather than storing `[]`,
+        // so "no selection" has one representation instead of two.
+        return value.length > 0 ? { ...base, valueJson: value } : base;
+      }
+      if (typeof value !== "string") {
+        throw new ValidationError(
+          `Expected string or string[] for field type "select", got ${typeof value}`,
         );
       }
       return { ...base, valueText: value };
@@ -106,8 +133,13 @@ export function extractValue(row: FieldValue, fieldType: FieldType): unknown {
   switch (fieldType) {
     case "text":
     case "photo":
-    case "select":
       return row.valueText;
+    // Multi-select lives in `value_json`, single-select in `value_text`. A
+    // field switched from multiple back to single still reads its stored
+    // array here; the input coerces it, so the value stays visible instead of
+    // silently disappearing.
+    case "select":
+      return row.valueJson ?? row.valueText;
     case "number":
       return row.valueNumber;
     case "boolean":

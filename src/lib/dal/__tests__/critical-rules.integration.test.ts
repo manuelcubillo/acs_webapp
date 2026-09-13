@@ -164,7 +164,7 @@ describe("Rule: required fields must have values", () => {
 
     await expect(
       createCard(cardTypeA.id, tenantA.id, `${TEST_PREFIX}REQ-MISSING`, {}),
-    ).rejects.toThrow(/is required/);
+    ).rejects.toThrow(/es obligatorio/);
   });
 
   it("rejects card creation when required field is null", async () => {

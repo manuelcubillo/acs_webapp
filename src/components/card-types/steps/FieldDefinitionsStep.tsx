@@ -14,6 +14,7 @@ import { Plus } from "lucide-react";
 import FieldList from "../fields/FieldList";
 import FieldEditor from "../fields/FieldEditor";
 import { Button } from "@/components/ui/button";
+import { countValidationRules } from "@/lib/validation/rules";
 import type { FieldDefinitionDraft } from "@/hooks/useCardTypeWizard";
 
 const TEXT = {
@@ -87,7 +88,7 @@ export default function FieldDefinitionsStep({
         <div className="flex gap-5 rounded-[10px] border bg-muted px-4 py-3">
           <Stat label={TEXT.STAT_TOTAL} value={fields.length} />
           <Stat label={TEXT.STAT_REQ} value={fields.filter((f) => f.isRequired).length} />
-          <Stat label={TEXT.STAT_VALID} value={fields.filter((f) => f.validationRules?.rules.length).length} />
+          <Stat label={TEXT.STAT_VALID} value={fields.filter((f) => countValidationRules(f.validationRules) > 0).length} />
         </div>
       )}
 

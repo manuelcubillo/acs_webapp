@@ -860,6 +860,13 @@ export interface ActionHistoryEntry {
    * renamed after this row was written. For display, prefer `cardCodeAtEvent`.
    */
   cardCode: string;
+  /**
+   * The card's `updatedAt` TODAY — cache-busting token for the photo route,
+   * live for the same reason `cardCode` is. Never frozen to the event: the
+   * thumbnail resolves the card's current photo, so a stale token would pin a
+   * stale image. See `cardPhotoRoute`.
+   */
+  cardUpdatedAt: Date;
   cardTypeId: string;
   /** The card type's name TODAY. For display, prefer `cardTypeNameAtEvent`. */
   cardTypeName: string;

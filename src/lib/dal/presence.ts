@@ -133,6 +133,10 @@ export async function getPresenceOccupants(
       cardTypeId: cardTypes.id,
       cardTypeName: cardTypes.name,
       insideSince: fieldValues.updatedAt,
+      // Cache-busting token for the photo route. Note this is the CARD's
+      // timestamp, not the joined presence field's `updatedAt` above — a toggle
+      // must not invalidate the photo, and only an edit changes the photo.
+      cardUpdatedAt: cards.updatedAt,
     })
     .from(cards)
     .innerJoin(cardTypes, eq(cardTypes.id, cards.cardTypeId))
@@ -254,7 +258,9 @@ export async function getPresenceOccupants(
       cardTypeId: row.cardTypeId,
       cardTypeName: row.cardTypeName,
       insideSince: row.insideSince,
-      photoUrl: cardsWithPhoto.has(row.cardId) ? cardPhotoRoute(row.code) : null,
+      photoUrl: cardsWithPhoto.has(row.cardId)
+        ? cardPhotoRoute(row.code, { updatedAt: row.cardUpdatedAt })
+        : null,
       summaryFields,
       presenceActionDefinitionId: actionByCardType.get(row.cardTypeId) ?? null,
     };

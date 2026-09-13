@@ -4,13 +4,21 @@
  * ValidationRulesEditor
  *
  * Dynamically renders rule configuration inputs based on the field type.
- * Uses getRulesForFieldType() to know which rules are available.
+ * Uses getValidationRulesForFieldType() to know which rules are available —
+ * field-CONFIGURATION rules (a select's options and multiplicity) are
+ * deliberately excluded and edited in their own section. See
+ * FIELD_CONFIGURATION_RULES in `@/lib/validation/rules`.
  *
  * Each rule has a toggle (enabled/disabled) and a value input
  * whose type depends on rule.paramType.
  */
 
-import { getRulesForFieldType, PATTERN_PRESETS } from "@/lib/validation/rules";
+import {
+  getValidationRulesForFieldType,
+  PATTERN_PRESETS,
+  removeRule,
+  upsertRule,
+} from "@/lib/validation/rules";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,9 +34,8 @@ import type { FieldType, RuleDefinition } from "@/lib/validation/types";
 import type { ValidationRule } from "@/hooks/useCardTypeWizard";
 
 const TEXT = {
-  EMPTY:        "No hay reglas de validación disponibles para este tipo.",
   ENABLED:      "Activado",
-  ARRAY_HINT:   "Separar opciones con comas",
+  ARRAY_HINT:   "Separar valores con comas",
   PRESET_PH:    "— Seleccionar preset —",
   CUSTOM_REGEX: "Regex personalizado",
 } as const;
@@ -46,20 +53,6 @@ const CUSTOM_SENTINEL = "__custom__";
 
 function getRule(rules: ValidationRule[], ruleName: string): ValidationRule | undefined {
   return rules.find((r) => r.rule === ruleName);
-}
-
-function setRule(rules: ValidationRule[], ruleDef: RuleDefinition, value: unknown): ValidationRule[] {
-  const existing = rules.find((r) => r.rule === ruleDef.rule);
-  if (existing) {
-    return rules.map((r) =>
-      r.rule === ruleDef.rule ? { ...r, value } : r,
-    );
-  }
-  return [...rules, { rule: ruleDef.rule, value }];
-}
-
-function removeRule(rules: ValidationRule[], ruleName: string): ValidationRule[] {
-  return rules.filter((r) => r.rule !== ruleName);
 }
 
 // ─── Rule value input ────────────────────────────────────────────────────────
@@ -182,15 +175,11 @@ export default function ValidationRulesEditor({
   rules,
   onChange,
 }: ValidationRulesEditorProps) {
-  const availableRules = getRulesForFieldType(fieldType);
+  const availableRules = getValidationRulesForFieldType(fieldType);
 
-  if (availableRules.length === 0) {
-    return (
-      <div className="text-sm italic text-muted-foreground">
-        {TEXT.EMPTY}
-      </div>
-    );
-  }
+  // The parent decides whether to show a heading, so an empty catalogue
+  // (today: `select`) renders nothing at all rather than a placeholder.
+  if (availableRules.length === 0) return null;
 
   return (
     <div className="flex flex-col gap-3.5">
@@ -215,7 +204,7 @@ export default function ValidationRulesEditor({
             >
               <div>
                 <div className="text-sm font-semibold text-foreground">
-                  {def.rule}
+                  {def.label}
                 </div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
                   {def.description}
@@ -239,7 +228,7 @@ export default function ValidationRulesEditor({
                         : def.paramType === "iso-date"
                         ? ""
                         : (def.example ?? "");
-                    onChange(setRule(rules, def, defaultVal));
+                    onChange(upsertRule(rules, def.rule, defaultVal));
                   }
                 }}
               />
@@ -250,7 +239,7 @@ export default function ValidationRulesEditor({
               <RuleValueInput
                 def={def}
                 value={existingRule.value}
-                onChange={(v) => onChange(setRule(rules, def, v))}
+                onChange={(v) => onChange(upsertRule(rules, def.rule, v))}
               />
             )}
           </div>

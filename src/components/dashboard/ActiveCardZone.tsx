@@ -483,6 +483,7 @@ function SummaryGrid({ activeCard, layout }: SummaryGridProps) {
             tall={false}
             cardCode={activeCard.code}
             fieldDefinitionId={f.fieldDefinitionId}
+            updatedAt={activeCard.updatedAt}
           />
         ))}
       </dl>
@@ -512,6 +513,7 @@ function SummaryGrid({ activeCard, layout }: SummaryGridProps) {
             tall={tall}
             cardCode={activeCard.code}
             fieldDefinitionId={cell.fieldDefinitionId}
+            updatedAt={activeCard.updatedAt}
             className={cn(
               COL_START_CLASS[colOf(cell.position)],
               ROW_START_CLASS[rowOf(cell.position)],
@@ -534,6 +536,8 @@ interface SummaryCellProps {
   /** Photo fields only — addresses the stable photo route (see `PhotoRenderer`). */
   cardCode: string;
   fieldDefinitionId: string;
+  /** Photo fields only — cache-busting token, see `cardPhotoRoute`. */
+  updatedAt: Date;
 }
 
 function SummaryCell({
@@ -544,6 +548,7 @@ function SummaryCell({
   className,
   cardCode,
   fieldDefinitionId,
+  updatedAt,
 }: SummaryCellProps) {
   return (
     <div className={cn("min-w-0", className)}>
@@ -562,6 +567,7 @@ function SummaryCell({
             label={label}
             cardCode={cardCode}
             fieldDefinitionId={fieldDefinitionId}
+            updatedAt={updatedAt}
             enlargeable={false}
             className={cn(
               "block h-auto w-auto rounded-md border border-border object-contain",
@@ -618,6 +624,8 @@ function stateMeta(state: SurfaceState) {
 function formatFieldValue(value: unknown, fieldType: string): string {
   if (value === null || value === undefined) return TEXT.DASH;
   if (fieldType === "boolean") return value ? TEXT.YES : TEXT.NO;
+  // A multi-select value is a string[]; `String()` would drop the spaces.
+  if (Array.isArray(value)) return value.map((v) => String(v)).join(", ");
   return String(value);
 }
 

@@ -74,6 +74,24 @@ function indexByFieldId(
 }
 
 /**
+ * Whether two frozen values are the same reading.
+ *
+ * Scalars compare with `!==` — `null` and `""` are NOT coerced together, since
+ * the field engine treats them differently and the audit trail must not smooth
+ * that over. A multi-select value is a `string[]`, which would otherwise
+ * compare by reference and report every scan as a change; its items are already
+ * sorted by `serializeValue`, so element order is a real difference and never
+ * an artefact of click order.
+ */
+function sameValue(a: CardSnapshotValue | null, b: CardSnapshotValue | null): boolean {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    return a.length === b.length && a.every((item, i) => item === b[i]);
+  }
+  return a === b;
+}
+
+/**
  * Differences between two snapshots of one card, ordered for display.
  *
  * Order: the card's identity keys first (code, then card type), then the fields
@@ -123,11 +141,10 @@ export function diffSnapshots(
 
   for (const field of current.fields) {
     const before = prevByFieldId.get(field.fieldDefinitionId);
-    // Absent in `previous` → a change FROM null. `null` and `""` are compared
-    // with `!==`, never coerced: the field engine treats them differently and
-    // the audit trail must not smooth that over.
+    // Absent in `previous` → a change FROM null. See `sameValue` for why
+    // `null` and `""` are never coerced together.
     const beforeValue = before ? before.value : null;
-    if (beforeValue === field.value) continue;
+    if (sameValue(beforeValue, field.value)) continue;
 
     changes.push({
       fieldDefinitionId: field.fieldDefinitionId,

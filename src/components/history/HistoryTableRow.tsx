@@ -122,6 +122,8 @@ function formatValue(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "boolean") return value ? "Sí" : "No";
   if (value instanceof Date) return value.toLocaleDateString("es-ES");
+  // A multi-select value is a string[]; `String()` would drop the spaces.
+  if (Array.isArray(value)) return value.map((v) => String(v)).join(", ");
   return String(value);
 }
 
@@ -297,6 +299,7 @@ export default function HistoryTableRow({
                     <img
                       src={cardPhotoRoute(entry.cardCode, {
                         fieldDefinitionId: sf.fieldDefinitionId,
+                        updatedAt: entry.cardUpdatedAt,
                       })}
                       alt={sf.label}
                       loading="lazy"

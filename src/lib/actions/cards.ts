@@ -57,7 +57,10 @@ import {
   getErrorLevelChecks,
   type ScanValidationResult,
 } from "@/lib/validation/scan-validator";
-import { signCardPhotos, stripCardListPhotoKeys } from "@/lib/dal/photo-urls";
+import {
+  stripCardPhotoKeys,
+  stripCardListPhotoKeys,
+} from "@/lib/dal/photo-urls";
 
 // ─── Composite types ──────────────────────────────────────────────────────────
 
@@ -68,22 +71,26 @@ export interface CardScanResult {
 }
 
 /**
- * Replace the result card's photo object keys with short-lived signed read
- * URLs so the client `ActiveCardZone` can render photo fields as thumbnails.
+ * Redact the result card's photo object keys to presence flags.
+ *
+ * `ActiveCardZone` renders photo cells through the stable route
+ * (`cardPhotoRoute`), so it needs to know a photo exists and nothing more —
+ * ADR `2026-08-25-active-card-zone-stable-photo-route.md`. This used to sign
+ * the keys instead, from when the panel read the value as an `<img src>`; that
+ * shipped a bearer-token URL the client no longer looks at, and left the two
+ * paths that forgot to call it shipping the raw key.
  *
  * Runs after `actionHandler` so validation (which used the raw card, and never
- * reads photo values) is untouched. Signing failures degrade gracefully — the
- * scan still succeeds; photo fields simply render nothing.
+ * reads photo values) is untouched.
  */
-async function signScanResultPhotos(
+function stripScanResultPhotos(
   result: ActionResult<ScanWithAutoActionsResult>,
-): Promise<ActionResult<ScanWithAutoActionsResult>> {
+): ActionResult<ScanWithAutoActionsResult> {
   if (!result.success) return result;
-  try {
-    return { ...result, data: { ...result.data, card: await signCardPhotos(result.data.card) } };
-  } catch {
-    return result;
-  }
+  return {
+    ...result,
+    data: { ...result.data, card: stripCardPhotoKeys(result.data.card) },
+  };
 }
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
@@ -153,11 +160,14 @@ export async function getCardByCodeAction(
     const { tenantId } = await requireOperator();
     const card = await getCardByCode(code, tenantId);
 
-    // Run scan validations (never throws — informational only)
+    // Run scan validations (never throws — informational only). Validated on
+    // the raw card: the rules read typed values, never photo keys.
     const svRules = await getScanValidationsByCardType(card.cardTypeId);
     const scanResult = validateScan(card.fields, svRules);
 
-    return { card, scanResult };
+    // Both callers are client components that address photos through the
+    // stable route, so the key must not cross — see `stripCardPhotoKeys`.
+    return { card: stripCardPhotoKeys(card), scanResult };
   });
 }
 
@@ -415,7 +425,7 @@ export async function executeScanWithAutoActionsAction(
     };
   });
 
-  return signScanResultPhotos(result);
+  return stripScanResultPhotos(result);
 }
 
 /**
@@ -593,7 +603,7 @@ export async function resumeAutoActionsAction(
     };
   });
 
-  return signScanResultPhotos(result);
+  return stripScanResultPhotos(result);
 }
 
 /**

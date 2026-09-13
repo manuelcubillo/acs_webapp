@@ -9,16 +9,37 @@
  * This is a bottom-docked sheet anchored to the content area (right of the
  * sidebar). shadcn has no Sheet primitive installed, so the panel layout is
  * intentionally bespoke; only chrome/colors are tokenized.
+ *
+ * The sheet is capped at `--field-editor-width` and centred over the content
+ * area, with a gutter that falls back to `px-4` on a narrow screen. One padding
+ * box (`px-7`) then aligns header, body and footer — no inner max-widths.
+ *
+ * Its height is FIXED rather than content-driven. Field types differ a lot in
+ * how much they configure (a `photo` has no rules at all, a `select` carries an
+ * option list), so a content-driven height moved the header and the save button
+ * every time the type changed. Only the body scrolls; short content simply
+ * leaves whitespace.
  */
 
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
+import DefaultValueInput, { hasDefaultValue } from "./DefaultValueInput";
 import FieldTypeSelector from "./FieldTypeSelector";
+import SelectOptionsEditor from "./SelectOptionsEditor";
 import ValidationRulesEditor from "./ValidationRulesEditor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import {
+  ALLOW_MULTIPLE_RULE,
+  getAllowMultiple,
+  getSelectOptions,
+  getValidationRulesForFieldType,
+  removeRule,
+  SELECT_OPTIONS_RULE,
+  upsertRule,
+} from "@/lib/validation/rules";
 import { cn } from "@/lib/utils";
 import type { FieldDefinitionDraft, FieldType, ValidationRule } from "@/hooks/useCardTypeWizard";
 
@@ -41,9 +62,8 @@ const TEXT = {
   REQUIRED_OFF:  "Opcional",
   DEFAULT_LABEL: "Valor por defecto",
   DEFAULT_HINT:  "Opcional",
-  DEFAULT_PLACEHOLDER: "Dejar en blanco si no aplica",
-  RULES_LABEL:   "Reglas de validación, aplicadas cuando rellen el campo",
-  RULES_HINT:    "Activa las reglas que necesites para este campo",
+  RULES_LABEL:   "Reglas de validación",
+  RULES_HINT:    "Se comprueban cuando alguien rellena el campo. Activa las que necesites.",
   CANCEL:        "Cancelar",
   SAVE_EDIT:     "Guardar cambios",
   SAVE_NEW:      "Añadir campo",
@@ -99,13 +119,29 @@ export default function FieldEditor({ draft, onSave, onClose }: FieldEditorProps
 
   const rules: ValidationRule[] = form.validationRules?.rules ?? [];
 
+  /**
+   * A `select` has no input-validation rules of its own — its options and its
+   * multiplicity are configuration and get their own section — so the whole
+   * "Reglas de validación" block is hidden for it rather than rendering empty.
+   */
+  const validationRuleDefs = getValidationRulesForFieldType(form.fieldType);
+
+  const selectOptions = getSelectOptions(form.validationRules);
+
   function setField<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
   function handleFieldTypeChange(type: FieldType) {
-    // Reset validation rules when field type changes
-    setForm((prev) => ({ ...prev, fieldType: type, validationRules: null }));
+    // Reset validation rules AND the default value: both are shaped by the
+    // type, so carrying them across would leave e.g. "mañana" sitting in a
+    // date field's default.
+    setForm((prev) => ({
+      ...prev,
+      fieldType: type,
+      validationRules: null,
+      defaultValue: null,
+    }));
   }
 
   function handleRulesChange(newRules: ValidationRule[]) {
@@ -113,6 +149,22 @@ export default function FieldEditor({ draft, onSave, onClose }: FieldEditorProps
       ...prev,
       validationRules: newRules.length > 0 ? { rules: newRules } : null,
     }));
+  }
+
+  function handleOptionsChange(options: string[]) {
+    handleRulesChange(
+      options.length > 0
+        ? upsertRule(rules, SELECT_OPTIONS_RULE, options)
+        : removeRule(rules, SELECT_OPTIONS_RULE),
+    );
+  }
+
+  function handleAllowMultipleChange(allowMultiple: boolean) {
+    handleRulesChange(
+      allowMultiple
+        ? upsertRule(rules, ALLOW_MULTIPLE_RULE, true)
+        : removeRule(rules, ALLOW_MULTIPLE_RULE),
+    );
   }
 
   function handleSave() {
@@ -133,8 +185,17 @@ export default function FieldEditor({ draft, onSave, onClose }: FieldEditorProps
         className="fixed inset-0 z-40 bg-black/35 backdrop-blur-[2px]"
       />
 
-      {/* Panel — docked to the content area (right of the sidebar) */}
-      <div className="animate-slideup fixed right-0 bottom-0 left-0 z-50 flex max-h-[85vh] flex-col overflow-hidden rounded-t-[20px] bg-card shadow-2xl md:left-[var(--sidebar-width)]">
+      {/* Centring wrapper — pins the sheet to the bottom of the content area
+          (right of the sidebar) and centres it, so the panel itself only has to
+          declare its own size. `pointer-events-none` lets a click in the side
+          gutters fall through to the overlay and close the editor. */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 md:left-[var(--sidebar-width)]">
+        {/* Panel — FIXED height, not content-driven. Its geometry must not
+            depend on which field type is selected: a `photo` has no rules and a
+            `select` has an option list, so a height that followed the content
+            would move the header and the save button every time the type
+            changed. The body scrolls and leaves whitespace instead. */}
+        <div className="animate-slideup pointer-events-auto flex h-[min(85vh,46rem)] w-full max-w-[var(--field-editor-width)] flex-col overflow-hidden rounded-t-[20px] bg-card shadow-2xl">
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between border-b px-7 py-4">
           <div>
@@ -150,9 +211,9 @@ export default function FieldEditor({ draft, onSave, onClose }: FieldEditorProps
           </Button>
         </div>
 
-        {/* Body */}
+        {/* Body — the only scrolling region. */}
         <div className="flex-1 overflow-auto px-7 py-6">
-          <div className="flex max-w-[720px] flex-col gap-6">
+          <div className="flex flex-col gap-6">
 
             {/* Name + Label row */}
             <div className="grid grid-cols-2 gap-4">
@@ -228,36 +289,51 @@ export default function FieldEditor({ draft, onSave, onClose }: FieldEditorProps
                   </span>
                 </label>
               </div>
-              <div>
-                <Label htmlFor="fe-default">{TEXT.DEFAULT_LABEL}</Label>
-                <div className="mt-1 mb-1.5 text-xs text-muted-foreground">
-                  {TEXT.DEFAULT_HINT}
+              {hasDefaultValue(form.fieldType) && (
+                <div>
+                  <Label htmlFor="fe-default">{TEXT.DEFAULT_LABEL}</Label>
+                  <div className="mt-1 mb-1.5 text-xs text-muted-foreground">
+                    {TEXT.DEFAULT_HINT}
+                  </div>
+                  <DefaultValueInput
+                    fieldType={form.fieldType}
+                    value={form.defaultValue}
+                    onChange={(v) => setField("defaultValue", v)}
+                    selectOptions={selectOptions}
+                  />
                 </div>
-                <Input
-                  id="fe-default"
-                  value={form.defaultValue ?? ""}
-                  onChange={(e) => setField("defaultValue", e.target.value || null)}
-                  placeholder={TEXT.DEFAULT_PLACEHOLDER}
-                />
-              </div>
+              )}
             </div>
 
-            {/* Validation rules */}
-            <div>
-              <Label>{TEXT.RULES_LABEL}</Label>
-              <div className="mt-1 mb-3 text-xs text-muted-foreground">
-                {TEXT.RULES_HINT}
-              </div>
-              <ValidationRulesEditor
-                fieldType={form.fieldType}
-                rules={rules}
-                onChange={handleRulesChange}
+            {/* Select configuration — options are the field's definition,
+                not a constraint on what the operator typed. */}
+            {form.fieldType === "select" && (
+              <SelectOptionsEditor
+                options={selectOptions}
+                allowMultiple={getAllowMultiple(form.validationRules)}
+                onOptionsChange={handleOptionsChange}
+                onAllowMultipleChange={handleAllowMultipleChange}
               />
-            </div>
+            )}
+
+            {/* Validation rules */}
+            {validationRuleDefs.length > 0 && (
+              <div>
+                <Label>{TEXT.RULES_LABEL}</Label>
+                <div className="mt-1 mb-3 text-xs text-muted-foreground">
+                  {TEXT.RULES_HINT}
+                </div>
+                <ValidationRulesEditor
+                  fieldType={form.fieldType}
+                  rules={rules}
+                  onChange={handleRulesChange}
+                />
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Footer */}
+        {/* Footer — outside the scrolling body, so the save button stays put. */}
         <div className="flex shrink-0 justify-end gap-3 border-t bg-card px-7 py-4">
           <Button variant="ghost" onClick={onClose}>
             {TEXT.CANCEL}
@@ -265,6 +341,7 @@ export default function FieldEditor({ draft, onSave, onClose }: FieldEditorProps
           <Button onClick={handleSave} disabled={!canSave}>
             {isEditing ? TEXT.SAVE_EDIT : TEXT.SAVE_NEW}
           </Button>
+        </div>
         </div>
       </div>
     </>

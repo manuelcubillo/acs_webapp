@@ -85,6 +85,7 @@ export default function CardProfileView({
                     label={f.label}
                     cardCode={card.code}
                     fieldDefinitionId={fieldIdMap[f.id]}
+                    updatedAt={card.updatedAt}
                     // The whole card is a link to the card detail; a photo
                     // lightbox here would swallow that click.
                     enlargeable={false}

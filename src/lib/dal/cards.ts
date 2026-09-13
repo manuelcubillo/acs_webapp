@@ -21,6 +21,7 @@ import {
   inArray,
 } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { fieldValueTextEquals, fieldValueTextIlike } from "./field-value-sql";
 import {
   actionLogs,
   cards,
@@ -820,14 +821,14 @@ function buildFieldFilterCondition(filter: SearchFilter) {
     // ── Text ──────────────────────────────────────────────────────────────────
     case "contains": {
       const v = "%" + escapeLike(String(value ?? "")) + "%";
-      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_text ILIKE ${v})`;
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND ${fieldValueTextIlike(v)})`;
     }
     case "starts_with": {
       const v = escapeLike(String(value ?? "")) + "%";
-      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_text ILIKE ${v})`;
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND ${fieldValueTextIlike(v)})`;
     }
     case "equals_text":
-      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND fv.value_text = ${String(value ?? "")})`;
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE fv.card_id = ${cards.id} AND ${idMatch} AND ${fieldValueTextEquals(String(value ?? ""))})`;
 
     // ── Numeric ───────────────────────────────────────────────────────────────
     case "eq":

@@ -1,7 +1,7 @@
 /**
  * Validation System - Error Messages
  *
- * Default error message templates for each validation rule.
+ * Default error message templates for each validation rule, in Spanish.
  * Templates support {{label}} and {{value}} placeholders.
  *
  * To internationalise: swap DEFAULT_MESSAGES for a locale-specific object
@@ -12,26 +12,32 @@
 export type MessageMap = Record<string, string>;
 
 /**
- * Default English message templates.
- * {{label}} → field label, {{value}} → rule parameter value.
+ * Default message templates, in Spanish — the language of every operator-facing
+ * surface in this system. {{label}} → field label, {{value}} → rule parameter.
+ *
+ * Entries exist for rules that no longer appear in the card-type wizard
+ * (`mustBeTrue`, `pastOnly`, `futureOnly`, `maxSizeKb`, `allowedFormats`).
+ * That is deliberate: those rules were hidden from the configurator, not
+ * unregistered, so a field definition that already stores one still needs its
+ * message. See RULES_BY_FIELD_TYPE in `rules.ts`.
  */
 export const DEFAULT_MESSAGES: MessageMap = {
-  required: "{{label}} is required",
-  minLength: "{{label}} must be at least {{value}} characters",
-  maxLength: "{{label}} must be at most {{value}} characters",
-  pattern: "{{label}} has an invalid format",
-  min: "{{label}} must be at least {{value}}",
-  max: "{{label}} must be at most {{value}}",
-  integer: "{{label}} must be a whole number",
-  mustBeTrue: "{{label}} must be accepted",
-  minDate: "{{label}} must be on or after {{value}}",
-  maxDate: "{{label}} must be on or before {{value}}",
-  pastOnly: "{{label}} must be a past date",
-  futureOnly: "{{label}} must be a future date",
-  maxSizeKb: "{{label}} must be smaller than {{value}}KB",
-  allowedFormats: "{{label}} must be one of: {{value}}",
-  options: "{{label}} has an invalid selection",
-  allowMultiple: "{{label}} contains invalid selections",
+  required: "{{label}} es obligatorio",
+  minLength: "{{label}} debe tener al menos {{value}} caracteres",
+  maxLength: "{{label}} no puede superar {{value}} caracteres",
+  pattern: "El formato de {{label}} no es válido",
+  min: "{{label}} no puede ser menor que {{value}}",
+  max: "{{label}} no puede ser mayor que {{value}}",
+  integer: "{{label}} debe ser un número entero",
+  mustBeTrue: "Debes marcar {{label}}",
+  minDate: "{{label}} no puede ser anterior al {{value}}",
+  maxDate: "{{label}} no puede ser posterior al {{value}}",
+  pastOnly: "{{label}} debe ser una fecha pasada",
+  futureOnly: "{{label}} debe ser una fecha futura",
+  maxSizeKb: "{{label}} no puede superar {{value}} KB",
+  allowedFormats: "{{label}} debe tener uno de estos formatos: {{value}}",
+  options: "{{label}} contiene una opción que no es válida",
+  allowMultiple: "{{label}} contiene opciones que no son válidas",
 };
 
 /**
@@ -66,7 +72,7 @@ export function resolveMessage(
   const template = messages[rule];
 
   if (!template) {
-    return `${fieldLabel} failed validation rule "${rule}"`;
+    return `${fieldLabel} no cumple la regla de validación "${rule}"`;
   }
 
   return template

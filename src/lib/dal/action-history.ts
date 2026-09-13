@@ -18,6 +18,7 @@
 import { eq, and, or, desc, inArray, ilike, gte, lte, isNotNull, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { fieldValueTextEquals, fieldValueTextIlike } from "./field-value-sql";
 import {
   actionLogs,
   cards,
@@ -93,14 +94,14 @@ function buildFieldFilterSQL(filter: FieldFilter): SQL | null {
   switch (operator) {
     case "contains": {
       const v = "%" + escapeLike(String(value ?? "")) + "%";
-      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE ${base} AND fv.value_text ILIKE ${v})`;
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE ${base} AND ${fieldValueTextIlike(v)})`;
     }
     case "starts_with": {
       const v = escapeLike(String(value ?? "")) + "%";
-      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE ${base} AND fv.value_text ILIKE ${v})`;
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE ${base} AND ${fieldValueTextIlike(v)})`;
     }
     case "equals_text": {
-      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE ${base} AND fv.value_text = ${String(value ?? "")})`;
+      return sql`EXISTS (SELECT 1 FROM field_values fv WHERE ${base} AND ${fieldValueTextEquals(String(value ?? ""))})`;
     }
     case "eq": {
       return sql`EXISTS (SELECT 1 FROM field_values fv WHERE ${base} AND fv.value_number = ${Number(value)})`;
@@ -223,6 +224,7 @@ type RawRow = {
   logType: LogType;
   cardId: string;
   cardCode: string;
+  cardUpdatedAt: Date;
   cardTypeId: string;
   cardTypeName: string;
   actionDefinitionId: string | null;
@@ -404,6 +406,7 @@ async function enrichWithSummaryFields(
       logType: row.logType,
       cardId: row.cardId,
       cardCode: row.cardCode,
+      cardUpdatedAt: row.cardUpdatedAt,
       cardTypeId: row.cardTypeId,
       cardTypeName: row.cardTypeName,
       // Frozen identity, for display. The live `cardCode` above stays the one
@@ -444,6 +447,10 @@ function baseQuery(tenantId: string, filters: ActionHistoryFilters) {
       cardCode: cards.code,
       cardTypeId: cards.cardTypeId,
       cardTypeName: cardTypes.name,
+      // Cache-busting token for the photo route. Live like `cardCode`, not
+      // frozen like the snapshot fields: the thumbnail always shows the card's
+      // photo as it stands today, so it must be busted on today's timestamp.
+      cardUpdatedAt: cards.updatedAt,
       actionDefinitionId: actionLogs.actionDefinitionId,
       actionName: actionDefinitions.name,
       actionColor: actionDefinitions.color,
@@ -658,6 +665,9 @@ function formatCsvValue(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (value instanceof Date) return value.toISOString().replace("T", " ").slice(0, 19);
+  // A multi-select value is a string[]; `String()` would drop the spaces. The
+  // joined cell contains commas, so `escapeCsvCell` quotes it.
+  if (Array.isArray(value)) return value.map((v) => String(v)).join(", ");
   return String(value);
 }
 

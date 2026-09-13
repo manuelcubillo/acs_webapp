@@ -200,6 +200,7 @@ export default function CardDetailClient({
                     label={fv.label}
                     cardCode={card.code}
                     fieldDefinitionId={fv.fieldDefinitionId}
+                    updatedAt={card.updatedAt}
                   />
                 </div>
               ))}

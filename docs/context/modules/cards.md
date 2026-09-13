@@ -1,6 +1,6 @@
 # Module: cards
 
-**Last updated**: 2026-08-28 · **Last feature**: card snapshots — every mutation (a code change included) freezes state and audits itself; the read paths now render it
+**Last updated**: 2026-09-08 · **Last feature**: the card form and its filters handle a multi-select value
 
 ## Responsibility
 
@@ -34,7 +34,7 @@ Card lifecycle: creation, editing, viewing, searching, and the multiple UI repre
 - `src/components/cards/CardTableView.tsx` — Table + `useCardColumns` + `CardColumnSelector`. Passes `card.code` + the card's own `fieldDefinitionId` to each renderer (see "Photo rendering in lists").
 - `src/components/cards/CardProfileView.tsx` — Single-card detail view. Same code + field-id threading as the table.
 - `src/components/cards/CardSearch.tsx` — Search + filter interface.
-- `src/components/shared/FieldFilterBuilder.tsx` — Field-level filter rows (field / operator / value), shared with `history`. A `select` field's value input is a dropdown populated by `getSelectOptions` (see `modules/fields.md` → "Select options"); every other type gets a typed `Input`.
+- `src/components/shared/FieldFilterBuilder.tsx` — Field-level filter rows (field / operator / value), shared with `history`. A `select` field's value input is a dropdown populated by `getSelectOptions` (see `modules/fields.md` → "Select options"); every other type gets a typed `Input`. The text operators it produces match a multi-select's `value_json` array as well as `value_text`, via `src/lib/dal/field-value-sql.ts`.
 - `src/components/cards/CardViewToggle.tsx` — Toggle between list / table / profile.
 - `src/components/cards/CardColumnSelector.tsx` — Column visibility picker (localStorage via `useCardColumns`).
 - `src/components/cards/ScanAlerts.tsx` — Displays `ScanValidationResult` entries.
@@ -222,12 +222,20 @@ commits. Both are handled by `readPageScroll` / `restorePageScroll`.
 ### Photo rendering in lists
 
 List surfaces do **not** receive a photo URL. `PhotoRenderer` builds the
-`<img src>` itself from `cardPhotoRoute(code, { fieldDefinitionId })`, so the
-address is derived from data every response already carries and survives every
-client-side refetch. Consequently the three list producers (`/cards/page.tsx`,
-`searchCardsAction`, `listCardsAction`) run `stripCardListPhotoKeys` instead of
-signing: each photo value — and its `raw.value_text` — becomes a boolean
-presence flag, and object keys never reach the browser.
+`<img src>` itself from `cardPhotoRoute(code, { fieldDefinitionId, updatedAt })`,
+so the address is derived from data every response already carries and survives
+every client-side refetch. `updatedAt` is the **card's** (`CardWithFields
+extends Card`, so it is always in hand) and serialises to `?v=`, which is what
+makes a replaced photo appear immediately despite the route's multi-day cache —
+ADR `2026-09-08-photo-cache-version-token.md`.
+
+Consequently no producer of a card destined for a client component signs
+anything: they run `stripCardPhotoKeys` / `stripCardListPhotoKeys`, and each
+photo value — with its `raw.value_text` — becomes a boolean presence flag, so
+object keys never reach the browser. That covers the three list producers
+(`/cards/page.tsx`, `searchCardsAction`, `listCardsAction`) and all three
+single-card actions (`getCardByCodeAction`, `executeScanWithAutoActionsAction`,
+`resumeAutoActionsAction`). ADR `2026-09-08-card-payload-photo-key-redaction.md`.
 
 Both views must pass **the card's own** `fieldDefinitionId`, not the display
 column id: `mergeFieldColumns` collapses same-name fields across card types, so
@@ -300,13 +308,14 @@ Restore reuses `restoreCardAction` (admin+master) / `restoreCardTypeAction` (mas
 
 ## Recent changes
 
+- 2026-09-08 — A `select` field can hold several options. `CardForm` needed no change (`useCardForm` values are `unknown`), but `SelectInput` gained a checkbox-popover variant, `SelectRenderer` renders one chip per selection, and the card-list text filters now match inside `value_json`. ADR `2026-09-08-multi-select-storage.md`.
+- 2026-09-08 — **Photo keys stop leaking, and photo URLs gained a version.** `getCardByCodeAction` — the manual-action refresh path — was shipping the raw storage object key to the browser: `stripCardListPhotoKeys` only ever covered the three list producers, and the two scan paths signed via `signScanResultPhotos` while this one did neither. All three single-card paths now share `stripCardPhotoKeys`; `signScanResultPhotos` is gone, since ADR `2026-08-25` had already moved `ActiveCardZone` off reading the value as a URL. `signCardPhotos` survives only for the design-preview renderer and the external API. Knock-on caught in the same pass: `feed-entries.ts` tested `typeof f.value === "string"` for photo presence, which silently dropped every feed thumbnail once the value became a boolean — it now tests truthiness. Separately, `PhotoRenderer` / `DynamicFieldRenderer` take an `updatedAt` (the card's) threaded from all three card views, so a replaced photo busts the browser cache. ADRs `2026-09-08-card-payload-photo-key-redaction.md`, `2026-09-08-photo-cache-version-token.md`.
 - 2026-08-28 — **Card snapshots, read path (A2).** `updateCardCode` now versions the card and writes its own `card_edit` row (the code is part of the payload, so a rename was previously folded into whatever event happened next). New pure `diff.ts` (13 unit tests) and `project.ts`, plus server-only `resolve.ts`; `project.ts` is split out of `resolve.ts` because the CLIENT feed builder must import the projection and `resolve.ts` touches the DB. Two shipped tests that asserted an English `NotFoundError` message against the Spanish one were corrected. `/history` and the feed now render frozen values — see those modules. 26 tests added; suite 641/641. ADR `2026-08-28-card-snapshots-read-path.md`.
 - 2026-08-28 — **Card snapshots, write path (A1).** New `card_snapshots` table plus `cards.current_snapshot_id`; `createCard` takes a V0 at birth and `updateCard` snapshots and — only when the content hash actually changed — writes the first `log_type = 'card_edit'` audit row this project has ever had (a manual edit previously left no trace of who changed what, or when). `updateCard` gained a 4th `executedBy` param, threaded from `requireAdmin()`. New pure `payload.ts` (20 unit tests) + `ensure-snapshot.ts` (one data-modifying CTE) + `source.ts`, the one loader all write paths share — necessary because `CardWithFields.fields` omits valueless fields and inactive definitions and carries no card type name, so the payload contract cannot be met from memory. ADR `2026-08-28-card-snapshots-write-path.md`.
 - 2026-08-25 — The operational scan pipeline gained a correlation key. `executeScanWithAutoActionsAction` captures the id of the scan row it inserts (`logScanEntry` always returned it; the call simply discarded it), stamps it on every auto-action via `metadataExtra`, and returns it as `ScanWithAutoActionsResult.scanLogId`. `ResumeAutoActionsInput` gained an optional `scanLogId` and stamps the SAME id, so a scan that paused for an override stays one feed entry instead of splitting — the id round-trips through `DashboardView`'"'"'s paused state, because a pause waits on a human and no time window could stitch the rows back together. `CardDetailClient` takes `presenceActionDefinitionId` and renders that one action as `PresenceControl`. ADR `2026-08-25-feed-grouping-and-scan-correlation.md`.
-- 2026-08-24 — System fields (`is_system = true`) are excluded from every card surface an operator configures or fills in: both card forms, the list/table/profile columns, and the card-detail value grid. `EnrichedFieldValue` gained `isSystem` to make that possible from `card.fields`. The edit form's `initialValues` is now scoped to the rendered fields — it was submitting every loaded value wholesale, which would have reset the presence timestamp on unrelated edits. `CardActions` switched from `!is_auto_execute` to `is_operator_visible`, and a `toggle` action renders as a switch — which makes the card detail page mutate presence, a documented exception to the informational invariant. ADR `2026-08-24-presence-control.md`.
-- 2026-08-15 — The card-type multi-select moved from its own row above the toolbar into the "Filtros" panel, as the first section ("Tipo de carnet"), above the field filters. Same pills, same immediate-apply behaviour (a type change still drops the field filters). The panel and its button are now offered whenever there is more than one card type **or** a common filterable field — gating on the field filters alone would have stranded the type selector for a tenant whose types share none. The badge counts a narrowed type selection as one filter, and the panel opens on mount for either dimension, so a collapsed panel never hides that the list is filtered. "Limpiar" still clears field filters only; resetting the types is the "Todos" pill. UI-only, no ADR — query keys, `parseCardListParams` and `searchCards` untouched.
 
 _Pruned to the 5-entry cap: the card-list URL-state entry (2026-08-02) lives on
-in ADR `2026-08-02-card-list-url-state-and-return.md`, and code autogeneration
+in ADR `2026-08-02-card-list-url-state-and-return.md`, code autogeneration
 (2026-08-06) is described above under "Code allocation" and in
-`2026-08-06-autogenerated-card-codes.md`._
+`2026-08-06-autogenerated-card-codes.md`, and the card-type multi-select move
+into the Filtros panel (2026-08-15) is visible in `CardList` itself._

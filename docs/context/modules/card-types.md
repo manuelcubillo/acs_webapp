@@ -1,6 +1,6 @@
 # Module: card-types
 
-**Last updated**: 2026-08-24 · **Last feature**: the "Control de presencia" checkbox in the wizard
+**Last updated**: 2026-09-08 · **Last feature**: the Fields step trimmed — typed defaults, Spanish rule labels, fewer rules
 
 ## Responsibility
 
@@ -19,7 +19,7 @@ Field definition, action definition, and scan validation details are owned by th
 - `src/components/card-types/CardTypeCard.tsx` — Card-type tile in list view.
 - `src/components/card-types/CardTypeList.tsx` — Grid of `CardTypeCard`.
 - `src/components/card-types/steps/BasicInfoStep.tsx` — Name + description + the **"Control de presencia"** checkbox. That checkbox is the entire user-facing surface of presence control; the field and action it needs are provisioned server-side and never appear in the Fields or Actions steps. See `modules/presence.md`.
-- `src/components/card-types/steps/FieldDefinitionsStep.tsx` — `FieldList` + `FieldEditor`.
+- `src/components/card-types/steps/FieldDefinitionsStep.tsx` — `FieldList` + `FieldEditor`. Its "Con validación" stat counts through `countValidationRules`, so a select's options do not inflate it.
 - `src/components/card-types/steps/ActionsStep.tsx` — Action add/remove/configure.
 - `src/components/card-types/steps/ScanValidationsStep.tsx` — Scan validation rules.
 - `src/components/card-types/steps/ReviewStep.tsx` — Read-only summary.
@@ -88,8 +88,8 @@ Depends on `field_definitions`, `action_definitions`, `scan_validations` (owned 
 
 ## Recent changes
 
+- 2026-09-08 — The field editor was simplified for the master configuring a card type. «Valor por defecto» now matches the field type (`DefaultValueInput`) and disappears for a photo; the rules configurator shows Spanish labels instead of raw identifiers (`minLength` → «Longitud mínima»); and `mustBeTrue`, `pastOnly`/`futureOnly`, `maxSizeKb`/`allowedFormats` no longer appear, which leaves `boolean` and `photo` with no «Reglas de validación» section at all. Owned by `fields` / `validations`. ADR `2026-09-08-validation-rules-configurator-surface.md`.
+- 2026-09-08 — The Fields step stopped presenting a select's option list as a validation rule. `FieldEditor` renders the new `SelectOptionsEditor` for `select` and hides the «Reglas de validación» heading for it (the type has no validation rules left once its two configuration rules are filtered out). `ReviewStep`, `FieldDefinitionsStep` and the card-type detail page now badge «N opciones» apart from «N reglas» via `countValidationRules`. Owned by `fields` / `validations`; this module only orchestrates. ADR `2026-09-08-select-options-are-configuration.md`.
 - 2026-08-24 — Presence control is a single checkbox in `BasicInfoStep` ("Control de presencia"), surfaced again in `ReviewStep`. `card_types` gained `presence_field_definition_id`; `setPresenceControlAction` (MASTER) delegates to the provisioning CTEs. The wizard's edit loader now excludes `is_system` rows before the tempId mapping, and the card-type detail page and list tiles do the same, so the auto-created field and action appear in ZERO configuration screens. ADR `2026-08-24-presence-control.md`.
-- 2026-07-17 — Archived types in the trash view + hard delete, phase 4 of 5. `listArchivedCardTypes` (only archived, with the archiver's name and a grouped cascade card count) feeds the "Tipos archivados" tab of `/archived`. `hardDeleteArchivedCardType` physically deletes a type and its whole cascade in one statement (the project's only hard delete; no purge audit); `purgeArchivedCardTypeNowAction` + `emptyTrashAction` are MASTER-only and typed-phrase confirmed. Restoring a type stays MASTER-only. ADR `2026-07-17-card-lifecycle-trash-view.md`.
 - 2026-07-17 — Lifecycle state controls, phase 3 of 5. `CardTypeLifecycleControls` on the detail page (MASTER) lets a master activate / deactivate / archive a type; archive confirmation states the cascade size via `countLiveCardsForCardType` and redirects with `?flash=type-archived&n=`. Placed on the detail page, not inside the edit wizard (see ADR). ADR `2026-07-17-card-lifecycle-edit-controls.md`.
 - 2026-07-17 — Card lifecycle + archiving, phase 1 of 5. `is_active` boolean replaced by `status` (`lifecycle_status`) + trash metadata. `listCardTypes` now shows `inactive` types (it previously hid them) and hides `archived` ones. Archiving a type cascades to all its live cards, tagging each with `archived_via_type_id`; restoring revives only those. Lifecycle is MASTER-only, matching every other card type mutation. `deactivateCardTypeAction` moved from `actions/card-types.ts` to `actions/lifecycle.ts`. ADR `2026-07-17-card-lifecycle-archiving.md`.
-- 2026-04-27 — Added `CardTypeLinkedDesigns` section on detail page; updated module interactions to include `card-designs`.

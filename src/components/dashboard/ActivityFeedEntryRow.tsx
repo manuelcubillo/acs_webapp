@@ -65,6 +65,8 @@ function formatFieldValue(value: unknown, fieldType: string): string {
     return value.toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" });
   }
   if (typeof value === "number") return value.toLocaleString("es-ES");
+  // A multi-select value is a string[]; `String()` would drop the spaces.
+  if (Array.isArray(value)) return value.map((v) => String(v)).join(", ");
   return String(value);
 }
 

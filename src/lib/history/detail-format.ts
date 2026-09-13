@@ -41,6 +41,10 @@ export const MAX_INLINE_CHANGES = 3;
 export function formatSnapshotValue(value: unknown): string {
   if (value === null || value === undefined || value === "") return DETAIL_TEXT.EMPTY;
   if (typeof value === "boolean") return value ? DETAIL_TEXT.YES : DETAIL_TEXT.NO;
+  // A multi-select value is a string[]; `String()` would drop the spaces.
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.map((v) => String(v)).join(", ") : DETAIL_TEXT.EMPTY;
+  }
   return String(value);
 }
 

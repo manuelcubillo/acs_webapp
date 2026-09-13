@@ -45,8 +45,15 @@ import type { FieldType } from "@/lib/dal/types";
  */
 export const CARD_SNAPSHOT_PAYLOAD_VERSION = 1;
 
-/** A value as frozen into a snapshot. Always a JSON scalar. */
-export type CardSnapshotValue = string | number | boolean | null;
+/**
+ * A value as frozen into a snapshot.
+ *
+ * A JSON scalar, plus `string[]` for a multi-select — the one field shape that
+ * is genuinely a set rather than a single reading. Anything else that cannot be
+ * represented degrades to a string (see `serializeValue`), so the payload stays
+ * comparable and hashable.
+ */
+export type CardSnapshotValue = string | number | boolean | string[] | null;
 
 /** One field definition and the value the card held for it. */
 export interface CardSnapshotField {
@@ -136,9 +143,23 @@ function serializeValue(type: FieldType, value: unknown): CardSnapshotValue {
       break;
     }
     case "text":
-    case "select":
     case "photo": {
       if (typeof value === "string") return value;
+      break;
+    }
+    /**
+     * A select is a single option or, with `allowMultiple`, several.
+     *
+     * The array is SORTED before freezing. A multi-select is a set, so the
+     * order two writers happened to produce carries no meaning — but the hash
+     * is taken over these bytes, and an unsorted array would make the same
+     * selection dedupe as a different state depending on click order.
+     */
+    case "select": {
+      if (typeof value === "string") return value;
+      if (Array.isArray(value)) {
+        return value.map((v) => String(v)).sort();
+      }
       break;
     }
   }
