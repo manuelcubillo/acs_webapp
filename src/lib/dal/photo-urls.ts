@@ -44,22 +44,32 @@ export async function signCardPhotos(
  * browser, which `src/lib/storage/read.ts` forbids and which the ADR rejected
  * explicitly when it declined to put keys in the route path.
  *
- * Applies to every producer of a card list, so a client-side refetch returns
- * the same shape the server rendered.
+ * This is the redaction EVERY action returning a card to a client component
+ * must apply. Signing instead (`signCardPhotos`) is for the two server-side
+ * consumers that genuinely need a URL: the card-design preview renderer and
+ * the external API.
  */
-export function stripCardListPhotoKeys(
-  cards: CardWithFields[],
-): CardWithFields[] {
-  return cards.map((c) => ({
-    ...c,
-    fields: c.fields.map((f) => {
+export function stripCardPhotoKeys(card: CardWithFields): CardWithFields {
+  return {
+    ...card,
+    fields: card.fields.map((f) => {
       if (f.fieldType !== "photo") return f;
       const hasPhoto = typeof f.value === "string" && f.value.length > 0;
       // `raw` is the untouched field_values row, so it carries the key a second
       // time in `value_text`. Redact both or the key ships anyway.
       return { ...f, value: hasPhoto, raw: { ...f.raw, valueText: null } };
     }),
-  }));
+  };
+}
+
+/**
+ * `stripCardPhotoKeys` across a list. Applies to every producer of a card
+ * list, so a client-side refetch returns the same shape the server rendered.
+ */
+export function stripCardListPhotoKeys(
+  cards: CardWithFields[],
+): CardWithFields[] {
+  return cards.map(stripCardPhotoKeys);
 }
 
 /**

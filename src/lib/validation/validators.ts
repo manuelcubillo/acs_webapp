@@ -13,7 +13,13 @@
  *   4. Add its default message to DEFAULT_MESSAGES in messages.ts.
  */
 
-import { getSelectOptions, PATTERN_PRESETS, SELECT_OPTIONS_RULE } from "./rules";
+import {
+  ALLOW_MULTIPLE_RULE,
+  getAllowMultiple,
+  getSelectOptions,
+  PATTERN_PRESETS,
+  SELECT_OPTIONS_RULE,
+} from "./rules";
 import type { FieldValidationContext, ValidatorFn } from "./types";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -284,23 +290,47 @@ export const validateAllowedFormats: ValidatorFn = (
 };
 
 /**
- * Check that a select value is one of the allowed options.
+ * Normalize a select value to the list of selected items.
+ *
+ * A select holds a single string OR an array of them, depending on whether
+ * `allowMultiple` is configured. Both readers below accept both shapes, so a
+ * field toggled between single and multiple keeps validating either way.
+ */
+function toSelectedOptions(value: unknown): string[] {
+  return (Array.isArray(value) ? value : [value]).map((v) => String(v));
+}
+
+/**
+ * Check that a select value is one of the allowed options — and that a
+ * single-select field did not receive several.
+ *
+ * The arity check lives here rather than in `validateAllowMultiple` because a
+ * disabled rule is ABSENT from `rules[]`, so its validator never runs: nothing
+ * would be left to reject an array on a single-select field.
+ *
  * @param ruleValue - Array of valid option strings.
  */
 export const validateOptions: ValidatorFn = (
   value,
   ruleValue,
-  _context,
+  context,
 ): boolean => {
+  const allowMultiple = getAllowMultiple(context.fieldDefinition.validationRules);
+  if (!allowMultiple && Array.isArray(value) && value.length > 1) return false;
+
   const options = Array.isArray(ruleValue) ? (ruleValue as string[]) : [];
   if (options.length === 0) return true;
-  return options.includes(String(value));
+
+  return toSelectedOptions(value).every((item) => options.includes(item));
 };
 
 /**
- * Check that all items in a multi-select array are valid options.
- * Requires the value to be an array. If allowMultiple is false, a non-array
- * value is acceptable (handled by the `options` rule instead).
+ * Check that every item of a multi-select value is a configured option.
+ *
+ * Accepts a lone string as well as an array: turning `allowMultiple` on for a
+ * field that already holds single values must not invalidate every existing
+ * card. The empty case never reaches here — the engine skips all rules for an
+ * empty value, and `[]` counts as empty.
  *
  * @param ruleValue - true to enforce multi-select, false to skip.
  */
@@ -311,13 +341,10 @@ export const validateAllowMultiple: ValidatorFn = (
 ): boolean => {
   if (!ruleValue) return true; // rule disabled
 
-  if (!Array.isArray(value)) return false;
-
-  // Each selected item must appear in the `options` rule's list.
   const options = getSelectOptions(context.fieldDefinition.validationRules);
-
   if (options.length === 0) return true;
-  return (value as unknown[]).every((item) => options.includes(String(item)));
+
+  return toSelectedOptions(value).every((item) => options.includes(item));
 };
 
 // ─── Validator registry ───────────────────────────────────────────────────────
@@ -344,5 +371,5 @@ export const VALIDATOR_REGISTRY: Record<string, ValidatorFn> = {
   maxSizeKb: validateMaxSizeKb,
   allowedFormats: validateAllowedFormats,
   [SELECT_OPTIONS_RULE]: validateOptions,
-  allowMultiple: validateAllowMultiple,
+  [ALLOW_MULTIPLE_RULE]: validateAllowMultiple,
 };

@@ -64,6 +64,11 @@ interface PhotoRendererProps {
   /** This photo field's definition id — selects the exact object to serve. */
   fieldDefinitionId?: string;
   /**
+   * The card's `updatedAt` — cache-busting token, so a replaced photo is a new
+   * URL rather than a stale cache hit. See `cardPhotoRoute`.
+   */
+  updatedAt?: Date | string | number;
+  /**
    * Whether clicking the thumbnail opens the lightbox. Pass `false` wherever an
    * ancestor already owns the click (see file header).
    */
@@ -77,6 +82,7 @@ export default function PhotoRenderer({
   label,
   cardCode,
   fieldDefinitionId,
+  updatedAt,
   enlargeable = true,
   className,
 }: PhotoRendererProps) {
@@ -86,7 +92,7 @@ export default function PhotoRenderer({
   // Stable route when the card is identified, signed URL otherwise.
   const routeSrc =
     cardCode && fieldDefinitionId
-      ? cardPhotoRoute(cardCode, { fieldDefinitionId })
+      ? cardPhotoRoute(cardCode, { fieldDefinitionId, updatedAt })
       : null;
   const src = routeSrc ?? (typeof value === "string" ? value : null);
 
@@ -112,7 +118,7 @@ export default function PhotoRenderer({
 
   const downloadHref =
     cardCode && fieldDefinitionId
-      ? cardPhotoRoute(cardCode, { fieldDefinitionId, download: true })
+      ? cardPhotoRoute(cardCode, { fieldDefinitionId, updatedAt, download: true })
       : null;
 
   return (

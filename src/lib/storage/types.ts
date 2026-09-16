@@ -72,6 +72,16 @@ export interface ReadUrlOptions {
    * `Content-Disposition: attachment`. Omit for inline viewing (`<img>`).
    */
   downloadFilename?: string;
+  /**
+   * `Cache-Control` the object store must return with the bytes. Without it
+   * the response carries no cache directive at all and the browser falls back
+   * to heuristic caching, which is undefined and provider-dependent.
+   *
+   * Only meaningful for a caller whose URL is stable enough to be re-requested
+   * — a signed URL that changes on every mint is a fresh cache key each time,
+   * so no directive can help it. See `signPhotoForRead`.
+   */
+  responseCacheControl?: string;
 }
 
 export interface HeadResult {

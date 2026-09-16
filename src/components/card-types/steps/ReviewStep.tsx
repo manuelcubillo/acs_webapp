@@ -24,6 +24,7 @@ import type {
   ScanValidationSeverity,
 } from "@/hooks/useCardTypeWizard";
 import { getScanRuleLabel } from "@/lib/validation/scan-rules";
+import { countValidationRules, getSelectOptions } from "@/lib/validation/rules";
 
 const TEXT = {
   HEADING:      "Revisión final",
@@ -38,6 +39,8 @@ const TEXT = {
   PRESENCE_ON:  "Activado — cada escaneo alterna entrada y salida",
   PRESENCE_OFF: "Desactivado",
   EMPTY_FIELDS: "No se han definido campos.",
+  OPTION:       "opción",
+  OPTIONS:      "opciones",
   EMPTY_ACTIONS: "No se han definido acciones.",
   EMPTY_SCANVAL: "No se han definido validaciones de escaneo.",
   REQUIRED:     "Obligatorio",
@@ -144,6 +147,12 @@ export default function ReviewStep({
             {fields.map((field, i) => {
               const meta = FIELD_META[field.fieldType];
               const Icon = meta.icon;
+              // A select's options are configuration, not validation.
+              const ruleCount = countValidationRules(field.validationRules);
+              const optionCount =
+                field.fieldType === "select"
+                  ? getSelectOptions(field.validationRules).length
+                  : 0;
               return (
                 <div
                   key={field.tempId}
@@ -166,9 +175,14 @@ export default function ReviewStep({
                   <div className="flex shrink-0 gap-1.5">
                     <Badge className={meta.chip}>{meta.label}</Badge>
                     {field.isRequired && <Badge variant="outline">{TEXT.REQUIRED}</Badge>}
-                    {field.validationRules && field.validationRules.rules.length > 0 && (
+                    {optionCount > 0 && (
                       <Badge variant="outline">
-                        {field.validationRules.rules.length} regla{field.validationRules.rules.length !== 1 ? "s" : ""}
+                        {optionCount} {optionCount === 1 ? TEXT.OPTION : TEXT.OPTIONS}
+                      </Badge>
+                    )}
+                    {ruleCount > 0 && (
+                      <Badge variant="outline">
+                        {ruleCount} regla{ruleCount !== 1 ? "s" : ""}
                       </Badge>
                     )}
                   </div>

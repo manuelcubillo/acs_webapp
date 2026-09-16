@@ -98,6 +98,11 @@ export class S3CompatibleStorage implements CardPhotoStorage {
             ResponseContentDisposition: `attachment; filename="${opts.downloadFilename}"`,
           }
         : {}),
+      // Signed too, for the same reason: the caller cannot widen the cache
+      // directive after the fact by editing the query string.
+      ...(opts?.responseCacheControl
+        ? { ResponseCacheControl: opts.responseCacheControl }
+        : {}),
     });
     return getSignedUrl(this.client, cmd, { expiresIn: ttl });
   }

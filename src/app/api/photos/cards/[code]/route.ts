@@ -10,6 +10,12 @@
  * stable per card, the browser can actually cache the image instead of
  * re-downloading it whenever a signed URL is re-issued.
  *
+ * Freshness is not this route's job: callers append a `?v=` version token built
+ * from the card's `updatedAt` (see `storage/photo-routes.ts`), so a replaced
+ * photo is a different URL and therefore a guaranteed cache miss. That is what
+ * allows the long `max-age` below — the two concerns are independent, and
+ * conflating them is what kept both windows short before.
+ *
  * Auth model — session (OPERATOR+), NOT the `x-tenant-id` header used by the
  * external device API under `/api/cards/[code]`. It lives in a separate route
  * tree on purpose: two auth models in one tree is how cross-tenant mistakes get
@@ -44,11 +50,38 @@ import { buildCardPhotoDownloadFilename } from "@/lib/storage/keys";
 export const dynamic = "force-dynamic";
 
 /**
- * How long the browser may reuse the redirect without asking again.
- * MUST stay below the signature TTL (900s, see `storage/read.ts`) so a reused
- * redirect can never point at an already-expired signature.
+ * Signature TTL for this route only, passed explicitly rather than raised in
+ * `storage/read.ts`. 604800s is the SigV4 ceiling — `@smithy/signature-v4`
+ * rejects anything above its `MAX_PRESIGNED_TTL`, which is exactly 7 days.
+ *
+ * The shared default stays at 15 minutes because every other caller of
+ * `signPhotoForRead` embeds the signed URL directly in HTML, in a Server
+ * Action result or in the external API's response — there the string is a
+ * bearer token in someone's hands, and its short life is the only thing
+ * bounding a leak. Here it is merely the target of a same-origin redirect the
+ * client never gets to copy.
  */
-const REDIRECT_MAX_AGE_SECONDS = 600;
+const READ_URL_TTL_SECONDS = 604800;
+
+/**
+ * How long the browser may reuse the redirect without asking again.
+ * MUST stay below `READ_URL_TTL_SECONDS` so a reused redirect can never point
+ * at an already-expired signature; the day of margin absorbs clock drift
+ * between this function and the object store.
+ *
+ * Safe to set this high only because the `<img src>` carries a version token
+ * derived from the card's `updatedAt` (see `storage/photo-routes.ts`). Without
+ * it, this value would double as the worst-case delay before an edited photo
+ * became visible.
+ */
+const REDIRECT_MAX_AGE_SECONDS = 518400;
+
+/**
+ * Returned by the object store with the bytes. `immutable` is true by
+ * construction: `buildObjectKey` mints a fresh UUID per upload and keys are
+ * never overwritten in place, so a given signed URL's content cannot change.
+ */
+const OBJECT_CACHE_CONTROL = `private, max-age=${READ_URL_TTL_SECONDS}, immutable`;
 
 interface RouteParams {
   params: Promise<{ code: string }>;
@@ -61,6 +94,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   // field (default: the primary photo); `?download` returns the object as an
   // attachment named `<code>_<fieldName>_<random>.<ext>` so it is both
   // human-readable and traceable to its storage object.
+  //
+  // `?v=<epoch>` is deliberately not read here. It exists to give the browser a
+  // new cache key when a photo is replaced; this route always resolves whatever
+  // key the database holds right now, so honouring it would at best be a no-op
+  // and at worst let a stale token pin a stale object.
   const { searchParams } = new URL(request.url);
   const fieldId = searchParams.get("field");
   const isDownload = searchParams.has("download");
@@ -115,12 +153,20 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return new NextResponse(null, { status: 404 });
   }
 
+  // Both branches take the same TTL: the `Cache-Control` below is set on every
+  // response, so a download whose signature outlived its cached redirect would
+  // break the invariant just as surely as an inline read would.
+  // No `immutable` on the download, though — an attachment is saved once, not
+  // re-requested from cache.
   const signedUrl = isDownload
     ? await signPhotoForDownload(
         key,
         buildCardPhotoDownloadFilename({ code, fieldName, key }),
+        READ_URL_TTL_SECONDS,
       )
-    : await signPhotoForRead(key);
+    : await signPhotoForRead(key, READ_URL_TTL_SECONDS, {
+        responseCacheControl: OBJECT_CACHE_CONTROL,
+      });
 
   const response = NextResponse.redirect(signedUrl, 302);
   // `private` is load-bearing: a shared cache (CDN, corporate proxy) must never

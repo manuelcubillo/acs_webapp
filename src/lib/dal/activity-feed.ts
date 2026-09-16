@@ -100,6 +100,9 @@ export async function getActivityFeed(
       cardCode: cards.code,
       cardTypeId: cards.cardTypeId,
       cardTypeName: cardTypes.name,
+      // Cache-busting token for the photo route — the card's own timestamp,
+      // which an action never bumps and an edit always does.
+      cardUpdatedAt: cards.updatedAt,
       actionDefinitionId: actionLogs.actionDefinitionId,
       actionName: actionDefinitions.name,
       executedAt: actionLogs.executedAt,
@@ -333,7 +336,7 @@ export async function getActivityFeed(
       actionDefinitionId: row.actionDefinitionId,
       actionName: row.actionName ?? null,
       cardPhotoUrl: cardsWithPhoto.has(row.cardId)
-        ? cardPhotoRoute(row.cardCode)
+        ? cardPhotoRoute(row.cardCode, { updatedAt: row.cardUpdatedAt })
         : null,
       executedAt: row.executedAt,
       executedBy: row.executedBy,

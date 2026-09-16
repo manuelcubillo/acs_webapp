@@ -152,8 +152,16 @@ describe("extractValue", () => {
     expect(extractValue(baseRow, "photo")).toBe("hello");
   });
 
-  it("extracts valueText for select field type", () => {
-    expect(extractValue(baseRow, "select")).toBe("hello");
+  it("extracts valueText for a single-select field type", () => {
+    expect(extractValue({ ...baseRow, valueJson: null }, "select")).toBe("hello");
+  });
+
+  it("prefers valueJson for a multi-select field type", () => {
+    // Multi-select writes `value_json` and leaves `value_text` null, so the
+    // array is what a select row reads back when one is present.
+    expect(
+      extractValue({ ...baseRow, valueText: null, valueJson: ["a", "b"] }, "select"),
+    ).toEqual(["a", "b"]);
   });
 
   it("extracts valueNumber for number field type", () => {

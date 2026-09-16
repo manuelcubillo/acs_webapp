@@ -18,6 +18,8 @@ interface DynamicFieldRendererProps {
   cardCode?: string;
   /** Field definition id — forwarded to photo fields to select the object. */
   fieldDefinitionId?: string;
+  /** Card `updatedAt` — forwarded to photo fields to bust a replaced photo. */
+  updatedAt?: Date | string | number;
   /**
    * Forwarded to photo fields. Pass `false` where an ancestor owns the click
    * (list rows navigate to the card detail), so the photo stays static.
@@ -31,6 +33,7 @@ export default function DynamicFieldRenderer({
   label,
   cardCode,
   fieldDefinitionId,
+  updatedAt,
   enlargeable,
 }: DynamicFieldRendererProps) {
   switch (fieldType) {
@@ -49,6 +52,7 @@ export default function DynamicFieldRenderer({
           label={label}
           cardCode={cardCode}
           fieldDefinitionId={fieldDefinitionId}
+          updatedAt={updatedAt}
           enlargeable={enlargeable}
         />
       );

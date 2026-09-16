@@ -39,11 +39,14 @@ import {
 } from "lucide-react";
 import type { ActionDefinitionWithField, ScanValidationWithField, FieldType } from "@/lib/dal";
 import { getScanRuleLabel } from "@/lib/validation/scan-rules";
+import { countValidationRules, getSelectOptions } from "@/lib/validation/rules";
 
 export const dynamic = "force-dynamic";
 
 const TEXT = {
   BREADCRUMB:        "Tipos de Tarjeta",
+  OPTIONS_SUFFIX:    "opción(es)",
+  RULES_SUFFIX:      "regla(s)",
   ACTIVE:            "Activo",
   INACTIVE:          "Inactivo",
   BTN_EDIT:          "Editar",
@@ -258,13 +261,20 @@ export default async function CardTypeDetailPage({ params }: PageProps) {
                           {TEXT.DEFAULT_PREFIX} {field.defaultValue}
                         </Badge>
                       )}
-                      {(() => {
-                        const vr = field.validationRules as { rules?: unknown[] } | null | undefined;
-                        const count = vr?.rules?.length ?? 0;
-                        return count > 0 ? (
-                          <Badge variant="outline">{count} regla(s)</Badge>
-                        ) : null;
-                      })()}
+                      {/* A select's options are configuration, not validation. */}
+                      {field.fieldType === "select" &&
+                        getSelectOptions(field.validationRules).length > 0 && (
+                          <Badge variant="outline">
+                            {getSelectOptions(field.validationRules).length}{" "}
+                            {TEXT.OPTIONS_SUFFIX}
+                          </Badge>
+                        )}
+                      {countValidationRules(field.validationRules) > 0 && (
+                        <Badge variant="outline">
+                          {countValidationRules(field.validationRules)}{" "}
+                          {TEXT.RULES_SUFFIX}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </div>

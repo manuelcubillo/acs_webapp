@@ -15,7 +15,7 @@ import type { CardTypeWithFullSchema } from "@/lib/dal";
 const TEXT = {
   EMPTY_TITLE: "Sin tipos de tarjeta",
   EMPTY_BODY:
-    "Todavía no hay tipos de tarjeta definidos para este tenant. Crea el primero para empezar a gestionar tarjetas.",
+    "Todavía no hay tipos de tarjeta definidos para esta organización. Crea el primero para empezar a gestionar tarjetas.",
   BTN_CREATE: "Crear tipo de tarjeta",
 } as const;
 
@@ -23,6 +23,7 @@ interface CardTypeListProps {
   cardTypes: CardTypeWithFullSchema[];
   /** If true, shows Edit buttons on each card. */
   canEdit?: boolean;
+  
 }
 
 export default function CardTypeList({

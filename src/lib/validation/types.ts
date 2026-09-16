@@ -121,7 +121,12 @@ export type RuleParamType =
 export interface RuleDefinition {
   /** Rule identifier — matches the key in VALIDATOR_REGISTRY. */
   rule: string;
-  /** Human-readable description for the rule configurator UI. */
+  /**
+   * Operator-facing name, in Spanish. The configurator shows this, never the
+   * raw identifier — `minLength` is a key, not something to put on screen.
+   */
+  label: string;
+  /** Operator-facing description, in Spanish. */
   description: string;
   /** Type of the rule's value parameter. */
   paramType: RuleParamType;

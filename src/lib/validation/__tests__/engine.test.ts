@@ -279,7 +279,7 @@ describe("validateField — custom message overrides default", () => {
         validationRules: { rules: [{ rule: "minLength", value: 5 }] },
       }),
     );
-    expect(result.errors[0].message).toContain("at least 5 characters");
+    expect(result.errors[0].message).toContain("al menos 5 caracteres");
   });
 });
 
@@ -371,7 +371,7 @@ describe("validateCard — multiple fields", () => {
 describe("resolveMessage", () => {
   it("uses default template with {{label}} and {{value}} replaced", () => {
     const msg = resolveMessage("minLength", "Nombre", 5);
-    expect(msg).toBe("Nombre must be at least 5 characters");
+    expect(msg).toBe("Nombre debe tener al menos 5 caracteres");
   });
 
   it("custom message overrides default", () => {
@@ -386,7 +386,7 @@ describe("resolveMessage", () => {
 
   it("formats arrays as comma-separated in {{value}}", () => {
     const msg = resolveMessage("allowedFormats", "Foto", ["jpg", "png", "webp"]);
-    expect(msg).toBe("Foto must be one of: jpg, png, webp");
+    expect(msg).toBe("Foto debe tener uno de estos formatos: jpg, png, webp");
   });
 
   it("returns generic fallback for unknown rule", () => {

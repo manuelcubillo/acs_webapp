@@ -38,11 +38,14 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { countValidationRules, getSelectOptions } from "@/lib/validation/rules";
 import { cn } from "@/lib/utils";
 import type { FieldDefinitionDraft, FieldType } from "@/hooks/useCardTypeWizard";
 
 const TEXT = {
   REQUIRED:    "Obligatorio",
+  OPTION:      "opción",
+  OPTIONS:     "opciones",
   EDIT:        "Editar campo",
   DELETE:      "Eliminar campo",
   DEFAULT:     "Defecto:",
@@ -95,6 +98,11 @@ function SortableFieldRow({ field, onEdit, onRemove }: SortableFieldRowProps) {
   const meta = FIELD_TYPE_META[field.fieldType];
   const Icon = meta.icon;
 
+  // A select's options are configuration, not validation — badge them apart.
+  const ruleCount = countValidationRules(field.validationRules);
+  const optionCount =
+    field.fieldType === "select" ? getSelectOptions(field.validationRules).length : 0;
+
   return (
     <div
       ref={setNodeRef}
@@ -135,10 +143,14 @@ function SortableFieldRow({ field, onEdit, onRemove }: SortableFieldRowProps) {
           {field.isRequired && (
             <Badge variant="outline">{TEXT.REQUIRED}</Badge>
           )}
-          {field.validationRules && field.validationRules.rules.length > 0 && (
+          {optionCount > 0 && (
             <Badge variant="outline">
-              {field.validationRules.rules.length} regla
-              {field.validationRules.rules.length !== 1 ? "s" : ""}
+              {optionCount} {optionCount === 1 ? TEXT.OPTION : TEXT.OPTIONS}
+            </Badge>
+          )}
+          {ruleCount > 0 && (
+            <Badge variant="outline">
+              {ruleCount} regla{ruleCount !== 1 ? "s" : ""}
             </Badge>
           )}
         </div>

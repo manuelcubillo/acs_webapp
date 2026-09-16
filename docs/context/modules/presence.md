@@ -1,6 +1,6 @@
 # Module: presence
 
-**Last updated**: 2026-08-27 · **Last feature**: manual bulk close ("Vaciar recinto") — one CTE marks everyone out and logs one exit per occupant
+**Last updated**: 2026-09-08 · **Last feature**: occupant photos carry a card-level `?v=` token, so a toggle never busts their cache
 
 ## Responsibility
 
@@ -176,7 +176,11 @@ through `presence_field_definition_id`, filtered to `status = 'active'` and
 `value_boolean = true`, then enriches with the tenant's configured summary fields
 (reusing `getFeedSummaryFieldConfig`) and a photo presence flag. Photos are
 addressed by the **stable route** `/api/photos/cards/[code]` — this page stays
-open, so an embedded signed URL would expire in place.
+open, so an embedded signed URL would expire in place. The URL carries `?v=`
+built from `cards.updated_at` (one extra column on the existing join, NOT the
+presence field's own `updatedAt`, which is `insideSince` and changes on every
+toggle — versioning on that would re-download every photo on the recinto each
+time someone walks in). ADR `2026-09-08-photo-cache-version-token.md`.
 
 Lifecycle falls out for free: `status = 'active'` excludes inactive, expired and
 archived cards, and archiving a card TYPE cascades its live cards to archived, so
@@ -217,6 +221,7 @@ bounded by the domain, so there is no server-side pagination.
 
 ## Recent changes
 
+- 2026-09-08 — Occupant photos gained a `?v=` cache-busting token, taken from `cards.updated_at` — deliberately not the presence field's `updatedAt`, which is `insideSince` and moves on every entry and exit. Action execution never touches `cards.updated_at`, so the recinto's thumbnails now cache for days across arbitrary toggle traffic and refresh only on a real card edit. ADR `2026-09-08-photo-cache-version-token.md`.
 - 2026-08-27 — Manual bulk close ("Vaciar recinto"). New `closeAllPresence` (`src/lib/server/presence/close.ts`): one data-modifying CTE marks every card flagged inside as out and writes one exit `action_logs` row per row the UPDATE returned, reproducing `executeAction`'s metadata shape so `isPresenceRowSql` and `presenceDirectionLabel` classify them without changes anywhere downstream. It reaches **ghosts** (inactive/expired/archived cards still flagged inside, which the read path hides) and never reaches through a NULL designation. New `closePresenceAction` (OPERATOR+, attributed to the operator, not the sentinel) and a neutral "Vaciar recinto" button on `/presence` behind the shared `ConfirmDialog`. This is the first and only place presence writes `field_values` directly. ADR `2026-08-27-presence-bulk-close.md`.
 - 2026-08-25 — Fixed: the direction label stopped at the scan group. A manual Entrada/Salida — the concierge's correction — showed the system action's name ("Presencia") in the feed, because `presenceDirectionLabel` was only reached via the badges a scan absorbs. `ActivityFeed` now resolves the label for standalone action rows too; `ActivityFeedEntryRow` takes it as `actionLabel` and stays presence-agnostic. Also: `executeAndRefresh` hands its synthetic `AutoActionResult` the execution result, so the locally-appended row knows `newValue` and reads the direction before any Refrescar; and `repeatKey` gained the direction, so an entry and an exit inside the 10s window are no longer collapsed under the newer one's label. Dashboard-side fix — no change to `labels.ts`, the DAL predicate or provisioning.
 - 2026-08-25 — Presence became legible to the operator. `PresenceControl` (two named segments) replaces the phase-1 `Switch` on all three surfaces; a successful presence toggle is dropped from the auto-action summary while a failed one stays. Rows read as **Entrada / Salida** in the feed badge, the history table, the CSV export and the filter dropdown — all four through the single `presenceDirectionLabel`, with `isPresence` derived in SQL at read time (`isPresenceRowSql`). The history scan toggle now defaults off for presence tenants. ADR `2026-08-25-feed-grouping-and-scan-correlation.md`.

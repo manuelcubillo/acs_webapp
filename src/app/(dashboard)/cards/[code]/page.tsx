@@ -150,6 +150,9 @@ export default async function CardDetailPage({ params, searchParams }: CardDetai
       fieldValues[f.fieldDefinitionId] = f.value ? "Sí" : "No";
     } else if (f.fieldType === "date" && f.value) {
       fieldValues[f.fieldDefinitionId] = new Date(f.value as string).toLocaleDateString("es-ES");
+    } else if (Array.isArray(f.value)) {
+      // A multi-select value is a string[]; `String()` would drop the spaces.
+      fieldValues[f.fieldDefinitionId] = f.value.map((v) => String(v)).join(", ");
     } else {
       fieldValues[f.fieldDefinitionId] = String(f.value ?? "");
     }
