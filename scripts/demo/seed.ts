@@ -16,18 +16,35 @@
  * feed group a scan with the action it caused, and `/presence` answer from
  * field state rather than from a log query.
  *
- * Local by default, like every command in this project. Run it against the
- * Dockerized Postgres + MinIO:
+ * Local by default, like every command in this project:
  *
  *   pnpm demo:seed              # tops up what is missing; refuses to touch existing cards
  *   pnpm demo:seed --reset      # DROPS the demo tenant and its accounts, then rebuilds
  *   pnpm demo:seed --designs    # only rewrites the two card designs
+ *
+ * The demo is also shown from the deployed site, so the same script reaches the
+ * Neon branch and production through their own commands, which layer the env
+ * file and `ALLOW_NEON_DB=1` exactly like every other `:branch` / `:prod`
+ * script does:
+ *
+ *   pnpm demo:seed-branch       # rehearsal on the Neon branch
+ *   pnpm demo:seed-prod         # the real thing
+ *
+ * Every write is scoped to the demo tenant, so this NEVER touches the live
+ * Veredillas data sitting in the same database — unlike `db:push-prod`, which
+ * replaces the whole schema and is not how the demo gets deployed.
+ *
+ * Two brakes exist for the remote case: the target is printed before the first
+ * write, and `--reset` (the one destructive path) refuses to run against a
+ * remote database unless `--force-remote` is also typed.
  *
  * Nothing here is tenant-agnostic on purpose: it targets one demo tenant by id
  * (`./tenant.ts`), and every write is scoped to it.
  */
 
 import "../load-env";
+
+import { readFileSync } from "node:fs";
 
 import { and, eq, sql } from "drizzle-orm";
 
@@ -38,7 +55,11 @@ import { captureCardSnapshot } from "../../src/lib/snapshots";
 import { mapValueToColumn } from "../../src/lib/dal/field-values";
 import { SCAN_LOG_ID_METADATA_KEY } from "../../src/lib/dal/metadata-keys";
 
-import { uploadDemoAvatars, uploadGuestPhoto } from "./avatars";
+import {
+  assertPhotoStorageReachable,
+  uploadDemoAvatars,
+  uploadGuestPhoto,
+} from "./avatars";
 import { buildDwelling, buildPeople, type Person } from "./people";
 import { chance, createRng, intBetween, pick, shuffled, type Rng } from "./random";
 import {
@@ -78,6 +99,7 @@ const DESIGN_BONO_NAME = "Carnet · Bono de accesos";
 const argv = new Set(process.argv.slice(2));
 const RESET = argv.has("--reset");
 const DESIGNS_ONLY = argv.has("--designs");
+const FORCE_REMOTE = argv.has("--force-remote");
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -197,6 +219,88 @@ async function insertLog(input: LogRowInput): Promise<string> {
     .returning({ id: schema.actionLogs.id });
 
   return row.id;
+}
+
+// ─── Target ──────────────────────────────────────────────────────────────────
+
+interface Target {
+  host: string;
+  /** True for a Neon endpoint: production or one of its branches. */
+  remote: boolean;
+  storage: string;
+}
+
+/**
+ * Where this run is about to write, read from the env the command layered on.
+ *
+ * `src/lib/db/guard.ts` already refuses a remote host without `ALLOW_NEON_DB=1`;
+ * this is the human half of the same job. A demo seeded into the wrong database
+ * or with its photos in the wrong bucket is not a data-loss event, but it is an
+ * hour of confusion, and both facts fit on two lines.
+ */
+function describeTarget(): Target {
+  const url = process.env.DATABASE_URL ?? "";
+  let host = "<DATABASE_URL sin definir>";
+  try {
+    host = new URL(url).host;
+  } catch {
+    /* keep the placeholder */
+  }
+  return {
+    host,
+    remote: /\bneon\.tech\b/i.test(url),
+    storage: process.env.STORAGE_DRIVER ?? "minio",
+  };
+}
+
+/**
+ * Refuse to run against a database whose schema is behind this checkout.
+ *
+ * The seed writes through the app's own DAL, so a column this code knows about
+ * and the target does not fails somewhere in the middle, leaving a half-built
+ * tenant. Comparing the migration journal to what the database has applied
+ * turns that into a message before the first write.
+ */
+async function assertSchemaCurrent(target: Target): Promise<void> {
+  const journal = JSON.parse(
+    readFileSync("drizzle/meta/_journal.json", "utf8"),
+  ) as { entries: Array<{ tag: string }> };
+
+  const applied = await db.execute<{ n: number }>(
+    sql`SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations`,
+  );
+  const have = applied.rows[0]?.n ?? 0;
+
+  if (have < journal.entries.length) {
+    throw new Error(
+      `El esquema de ${target.host} está por detrás de este checkout ` +
+        `(${have} migraciones aplicadas, ${journal.entries.length} en drizzle/).\n` +
+        `Aplica primero las que faltan: ` +
+        `${target.remote ? "pnpm db:migrate:prod" : "pnpm db:migrate"}.`,
+    );
+  }
+}
+
+/** Print the destination, and stop a destructive run that did not name it. */
+async function preflight(): Promise<Target> {
+  const target = describeTarget();
+
+  console.log(
+    `Destino: ${target.host}${target.remote ? "  ⚠️  REMOTO" : ""} · ` +
+      `fotos: ${target.storage}`,
+  );
+
+  if (RESET && target.remote && !FORCE_REMOTE) {
+    throw new Error(
+      `--reset borra el tenant demo y sus cuentas en ${target.host}, que es ` +
+        `una base de datos remota.\n` +
+        `Si es lo que quieres, añade --force-remote al comando.`,
+    );
+  }
+
+  await assertSchemaCurrent(target);
+  if (!DESIGNS_ONLY) await assertPhotoStorageReachable(TENANT_ID);
+  return target;
 }
 
 // ─── Reset ───────────────────────────────────────────────────────────────────
@@ -660,6 +764,7 @@ async function writeDesigns(
 
 async function main(): Promise<void> {
   const rng = createRng(RNG_SEED);
+  const target = await preflight();
 
   if (DESIGNS_ONLY) {
     const { personal, bono } = await ensureTenantSchema();
@@ -796,7 +901,7 @@ async function main(): Promise<void> {
   // The display configuration was already applied by `ensureTenantSchema`.
   await writeDesigns(personal, bono);
 
-  await report();
+  await report(target);
 }
 
 /** Push each card's creation date behind the history it will accumulate. */
@@ -901,7 +1006,7 @@ function buildEditEvents(
 }
 
 /** Final counts, so a run can be checked at a glance. */
-async function report(): Promise<void> {
+async function report(target: Target): Promise<void> {
   const rows = await db.execute<{ label: string; total: number }>(sql`
     SELECT 'carnets' AS label, count(*)::int AS total FROM cards WHERE tenant_id = ${TENANT_ID}::uuid
     UNION ALL SELECT 'valores', count(*)::int FROM field_values fv
@@ -922,7 +1027,11 @@ async function report(): Promise<void> {
     console.log(`  ${row.label.padEnd(14)} ${row.total}`);
   }
 
-  console.log("\nAcceso a la demo (http://localhost:3000):");
+  console.log(
+    target.remote
+      ? "\nAcceso a la demo (en el sitio que use esta base de datos):"
+      : "\nAcceso a la demo (http://localhost:3000):",
+  );
   for (const account of DEMO_ACCOUNTS) {
     console.log(
       `  ${account.role.padEnd(8)} usuario "${account.username}" · contraseña "${account.password}"`,

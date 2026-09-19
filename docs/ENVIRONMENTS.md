@@ -17,8 +17,8 @@ llegar a producción por olvido.
 | **Tests** | `pnpm test` | Docker `acs_test` ⚠️ borra filas | MinIO local | consola | `.env.test.local` + `.env` |
 | **Docker** *(ensayo de prod)* | `docker compose --profile all up` | Docker `acs_db` | MinIO contenedor | consola | `.env.docker` |
 | **Rama de Neon** *(staging)* | `pnpm dev:branch` | Neon, rama `test` | según config | consola | `.env.neon-branch` |
-| **Producción** ⚠️ | `pnpm dev:prod` | **Neon producción** | **R2 real** | consola | `.env.prod` |
-| **Producción (real)** | despliegue en Vercel | Neon producción | R2 real | Resend real | variables del proyecto en Vercel |
+| **Producción** ⚠️ | `pnpm dev:prod` | **Neon producción** | **S3 real** | consola | `.env.prod` |
+| **Producción (real)** | despliegue en Vercel | Neon producción | S3 real | Resend real | variables del proyecto en Vercel |
 
 Las cuatro bases de datos viven en el mismo contenedor `acs-postgres` salvo Neon:
 
@@ -66,6 +66,9 @@ local, así que no hay nada más que configurar.
 | Llevar mis datos locales a producción ⚠️ | `pnpm db:push-prod` | **sobrescribe producción** |
 | Subir al bucket las fotos que le falten | `pnpm push:photos` | bucket de producción |
 | Datos de ejemplo | `pnpm db:seed` | `acs_dev` |
+| Sembrar el tenant de demos | `pnpm demo:seed` | `acs_dev` |
+| ...en la rama de Neon | `pnpm demo:seed-branch` | rama `test` |
+| ...en producción ⚠️ | `pnpm demo:seed-prod` | **producción** |
 
 ### Tests
 
@@ -148,6 +151,37 @@ importa, cópialo a otro sitio.
 `session` se reemplaza, así que todo el mundo vuelve a entrar. Y ojo con las
 contraseñas: si alguien cambió la suya en producción, el volcado la revierte a
 la que tenga en local.
+
+---
+
+## Sembrar la demo comercial
+
+El tenant "Comunidad de vecinos" (`4285d806-…`) es la cuenta que se enseña a
+clientes potenciales. `scripts/demo/` la construye entera —tenant, cuentas,
+tipos de carnet, 100 carnets con foto, ~2.000 registros de historial y los dos
+diseños— de forma determinista, así que una demo reconstruida es la misma demo.
+
+```bash
+pnpm demo:seed                                 # local
+pnpm demo:seed-branch                          # ensayo en la rama de Neon
+pnpm demo:seed-prod                            # producción
+pnpm demo:seed-prod --reset --force-remote     # reconstruirla desde cero
+```
+
+**Esto no es `db:push-prod`.** El seed escribe fila a fila por el DAL de la app
+y todo lo que escribe cuelga del id del tenant demo, así que es **aditivo**: los
+datos de Veredillas que viven en la misma base no se tocan. Llevar la demo a
+producción no requiere —ni debe usar— el volcado que reemplaza el esquema.
+
+Antes de la primera escritura el script imprime a qué host y a qué bucket va, y
+se niega a arrancar si el esquema del destino está por detrás de `drizzle/`
+(aplica primero `pnpm db:migrate:prod`). `--reset`, que es el único camino
+destructivo, exige además `--force-remote` cuando el destino es remoto.
+
+Las fotos van al bucket que diga `STORAGE_DRIVER` en el fichero de env del
+comando. Para que se vean en el sitio desplegado tiene que ser **el mismo bucket
+que usa Vercel**: `.env.prod` se quedó en `r2` tras la migración a S3 del
+2026-09-05 y se corrigió el 2026-09-16 con `npx vercel env pull`.
 
 ---
 

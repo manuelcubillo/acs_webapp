@@ -34,6 +34,8 @@
     "resync:legacy": "tsx scripts/legacyDBMigration/resync.ts",
     "design:veredillas-personal": "tsx scripts/veredillasPersonalCardDesign.ts",
     "demo:seed": "tsx scripts/demo/seed.ts",
+    "demo:seed-branch": "dotenv -e .env.neon-branch -v ALLOW_NEON_DB=1 -- tsx scripts/demo/seed.ts",
+    "demo:seed-prod": "dotenv -e .env.prod -v ALLOW_NEON_DB=1 -- tsx scripts/demo/seed.ts",
     "backfill-photos:legacy": "tsx scripts/legacyDBMigration/backfillPhotos.ts"
   },
   "dependencies": {

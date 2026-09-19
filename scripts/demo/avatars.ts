@@ -37,6 +37,46 @@ const EXPRESSION = "&mouth=smile&eyes=default,happy,wink";
 
 const MAX_ATTEMPTS = 3;
 
+/**
+ * Fail before the first download if the photo bucket is not reachable.
+ *
+ * The seed spends a minute fetching avatars before it ever touches storage, so
+ * a misconfigured bucket surfaces late and wastes the whole run — which is
+ * exactly what `[SENSITIVE]` in `S3_BUCKET` did once, because `vercel env pull`
+ * writes that placeholder for variables Vercel marks as sensitive.
+ *
+ * One HEAD against a key that does not exist is enough: what matters is that
+ * the bucket answers. 404 (absent) and 403 (absent, and the caller cannot list)
+ * both prove it is there; a 400 is the malformed-bucket case.
+ */
+export async function assertPhotoStorageReachable(tenantId: string): Promise<void> {
+  const key = buildObjectKey({
+    kind: "card-photo",
+    tenantId,
+    ownerId: crypto.randomUUID(),
+    mime: "image/png",
+  });
+
+  let status: number;
+  try {
+    const url = await getPhotoStorage().getReadUrl(key, { ttlSeconds: 60 });
+    status = (await fetch(url, { method: "HEAD" })).status;
+  } catch (err) {
+    throw new Error(
+      `No se pudo alcanzar el almacén de fotos ` +
+        `(STORAGE_DRIVER=${process.env.STORAGE_DRIVER ?? "minio"}): ${String(err)}`,
+    );
+  }
+
+  if (status === 404 || status === 403 || status === 200) return;
+
+  throw new Error(
+    `El almacén de fotos respondió ${status} a una lectura de prueba ` +
+      `(STORAGE_DRIVER=${process.env.STORAGE_DRIVER ?? "minio"}). ` +
+      `Revisa S3_BUCKET y las credenciales del fichero de env del comando.`,
+  );
+}
+
 /** Fetch one avatar as PNG bytes. */
 async function fetchAvatar(seed: string, index: number): Promise<Buffer> {
   const background = BACKGROUNDS[index % BACKGROUNDS.length];

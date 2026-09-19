@@ -16,7 +16,7 @@
  * columns are Better Auth's business rather than this script's.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, or } from "drizzle-orm";
 
 import { auth } from "../../src/lib/auth";
 import { db } from "../../src/lib/db";
@@ -93,6 +93,57 @@ async function ensureMember(userId: string, role: TenantRole): Promise<void> {
 }
 
 /**
+ * Refuse to run if one of the demo identities already belongs to somebody else.
+ *
+ * `ensureAccounts` matches an existing account by email and then rewrites its
+ * name, username and `tenantId`. That is the right behaviour for a re-run of
+ * the demo and the wrong one for a stranger: on the production database these
+ * demo rows sit next to real accounts, and an email or username collision would
+ * quietly move a real user into the demo tenant. The unique index on `username`
+ * would also abort the run halfway.
+ *
+ * Neither collision can happen by accident — the addresses are at a domain
+ * nobody else uses — but "cannot happen" is cheaper to assert than to assume.
+ */
+async function assertNoForeignCollision(): Promise<void> {
+  const emails = DEMO_ACCOUNTS.map((a) => a.email);
+  const usernames = DEMO_ACCOUNTS.map((a) => a.username);
+
+  const clashes = await db
+    .select({
+      id: schema.user.id,
+      email: schema.user.email,
+      username: schema.user.username,
+      tenantId: schema.user.tenantId,
+    })
+    .from(schema.user)
+    .where(
+      and(
+        or(
+          inArray(schema.user.email, emails),
+          inArray(schema.user.username, usernames),
+        ),
+        // `user.tenant_id` is nullable, and `<> ` against NULL is NULL, not
+        // true — without the explicit IS NULL an account with no tenant would
+        // slip through the very check meant to catch it.
+        or(isNull(schema.user.tenantId), ne(schema.user.tenantId, TENANT_ID)),
+      ),
+    );
+
+  if (clashes.length > 0) {
+    const detail = clashes
+      .map((c) => `  ${c.email} (usuario "${c.username}", tenant ${c.tenantId})`)
+      .join("\n");
+    throw new Error(
+      `Hay cuentas que usan el email o el usuario de la demo pero pertenecen a ` +
+        `otro tenant:\n${detail}\n` +
+        `Sembrar la demo las movería al tenant demo. Cambia las credenciales en ` +
+        `DEMO_ACCOUNTS antes de continuar.`,
+    );
+  }
+}
+
+/**
  * Create the demo accounts and attach them to the tenant.
  *
  * An account that already exists keeps its password — Better Auth owns the
@@ -102,6 +153,8 @@ async function ensureMember(userId: string, role: TenantRole): Promise<void> {
  * @returns The user id of each account, keyed by username.
  */
 export async function ensureAccounts(): Promise<Record<string, string>> {
+  await assertNoForeignCollision();
+
   const ids: Record<string, string> = {};
 
   for (const account of DEMO_ACCOUNTS) {
